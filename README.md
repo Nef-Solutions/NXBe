@@ -146,5 +146,7 @@ Estado del proyecto
 El proyecto se encuentra en su etapa inicial de definición y planificación. Este README será actualizado a medida que se establezcan las tecnologías, los roles, la metodología definitiva y las instrucciones de ejecución.
 
 Equipo responsable
-
+Ximena Campos García.
+Nefi Apablaza Olivares.
+Benjamin Osses Venegas.
 Desarrollado por NXBe como proyecto de título.
