@@ -99,15 +99,15 @@ Rol
 
 Benjamín Osses
 
-Pendiente de definición
+Desarrollador Front-End / UX
 
 Nefi Apablaza
 
-Pendiente de definición
+Desarrollador Back-End
 
 Ximena Campos
 
-Pendiente de definición
+Product Owner / Analista De Requisitos
 
 Metodología de trabajo
 
