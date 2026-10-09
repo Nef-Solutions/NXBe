@@ -1,0 +1,337 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* ============================================================
+   OVEROL · Hoja de estilos
+   El tema claro se fija en .streamlit/config.toml, por eso aquí
+   NO se fuerzan colores globales con !important.
+   ============================================================ */
+
+:root {
+    --navy: #111827;
+    --slate: #374151;
+    --muted: #6B7280;
+    --border: #E5E7EB;
+    --bg: #F6F7F9;
+    --amber: #F59E0B;
+    --amber-dark: #D97706;
+    --amber-soft: #FEF3C7;
+    --green: #15803D;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(17,24,39,.05), 0 8px 24px rgba(17,24,39,.06);
+}
+
+.stApp {
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* ---------- Layout general ---------- */
+.block-container {
+    max-width: 1280px;
+    padding-top: 1.2rem;
+    padding-bottom: 3rem;
+}
+
+#MainMenu, footer { visibility: hidden; }
+header[data-testid="stHeader"] { background: transparent; }
+
+[data-testid="stSidebar"] {
+    background: #FFFFFF;
+    border-right: 1px solid var(--border);
+}
+
+hr { border-color: var(--border) !important; }
+
+/* ---------- Barra superior ---------- */
+.navbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 22px;
+    margin-bottom: 22px;
+    box-shadow: var(--shadow);
+}
+
+.logo {
+    color: var(--navy);
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: .5px;
+}
+
+.navbar .tagline {
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 14px;
+    border-left: 2px solid var(--amber);
+    padding-left: 14px;
+}
+
+/* ---------- Hero ---------- */
+.hero {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #111827 0%, #1F2A44 60%, #2B3A5C 100%);
+    border-radius: 22px;
+    padding: 42px 44px;
+    margin-bottom: 22px;
+    box-shadow: 0 14px 40px rgba(17,24,39,.18);
+}
+
+.hero::after {
+    content: "";
+    position: absolute;
+    right: -60px;
+    top: -60px;
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(245,158,11,.45), rgba(245,158,11,0) 70%);
+}
+
+.hero h1 {
+    color: #FFFFFF !important;
+    font-size: clamp(28px, 4.4vw, 42px);
+    font-weight: 800;
+    line-height: 1.12;
+    margin: 0 0 12px 0;
+    padding: 0;
+}
+
+.hero p {
+    color: #D1D5DB !important;
+    max-width: 780px;
+    font-size: 16px;
+    line-height: 1.65;
+    margin: 0;
+}
+
+/* ---------- Títulos ---------- */
+.section-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--navy);
+    margin: 26px 0 14px 0;
+    padding-left: 12px;
+    border-left: 4px solid var(--amber);
+}
+
+/* ---------- Tarjetas ---------- */
+.card {
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+    height: 100%;
+    margin-bottom: 8px;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(17,24,39,.06), 0 14px 32px rgba(17,24,39,.10);
+}
+
+.card h2, .card h3 { margin: 0 0 6px 0; padding: 0; color: var(--navy); }
+.card p { margin: 6px 0; }
+
+.step-number {
+    width: 40px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 12px;
+    background: var(--amber-soft);
+    color: var(--amber-dark);
+    font-size: 20px; font-weight: 800;
+    margin-bottom: 10px;
+}
+
+.muted { color: var(--muted); font-size: 14px; line-height: 1.55; }
+
+/* ---------- Tarjeta de profesional ---------- */
+.pro-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+
+.avatar {
+    flex: 0 0 auto;
+    width: 52px; height: 52px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--amber), var(--amber-dark));
+    color: #FFFFFF;
+    font-weight: 800; font-size: 18px;
+}
+
+.verified { color: var(--green); font-weight: 700; font-size: 13px; }
+.pro-trade { font-weight: 700; color: var(--navy); margin-bottom: 8px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.chip {
+    background: #EEF2FF; color: #3730A3;
+    border-radius: 999px; padding: 3px 10px;
+    font-size: 12px; font-weight: 600;
+}
+
+.pro-meta, .pro-fee { color: var(--slate); font-size: 14px; margin: 6px 0; }
+.pro-rating { margin: 8px 0; font-size: 14px; }
+.stars { color: var(--amber); letter-spacing: 1px; font-size: 16px; }
+.rating { color: #B45309; font-weight: 800; }
+
+/* ---------- Badges de estado ---------- */
+.badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    background: #F3F4F6; color: var(--slate);
+}
+.badge-ok    { background: #DCFCE7; color: #166534; }
+.badge-warn  { background: #FEF3C7; color: #92400E; }
+.badge-info  { background: #DBEAFE; color: #1E40AF; }
+.badge-bad   { background: #FEE2E2; color: #991B1B; }
+.badge-muted { background: #F3F4F6; color: var(--slate); }
+
+/* ---------- Cajas informativas ---------- */
+.security-box, .warning-box, .success-box {
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin: 8px 0 14px 0;
+    font-size: 14px;
+    line-height: 1.6;
+}
+.security-box { background: #EFF6FF; border: 1px solid #BFDBFE; color: #1E3A8A; }
+.warning-box  { background: #FFF7ED; border: 1px solid #FED7AA; color: #7C2D12; }
+.success-box  { background: #F0FDF4; border: 1px solid #BBF7D0; color: #14532D; }
+
+/* ---------- Métricas ---------- */
+.metric-card {
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow);
+}
+.metric-icon { font-size: 22px; }
+.metric-number { font-size: 30px; font-weight: 800; color: var(--navy); line-height: 1.2; }
+.metric-label { color: var(--muted); font-size: 13px; font-weight: 500; }
+
+[data-testid="stMetric"] {
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 18px;
+    box-shadow: var(--shadow);
+}
+
+/* ---------- Estado vacío ---------- */
+.empty-state {
+    text-align: center;
+    background: #FFFFFF;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 36px 20px;
+    margin: 10px 0;
+}
+.empty-icon { font-size: 40px; margin-bottom: 6px; }
+.empty-title { font-size: 17px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+
+/* ---------- Botones ---------- */
+div.stButton > button,
+div.stFormSubmitButton > button,
+div.stDownloadButton > button,
+a[data-testid^="stBaseLinkButton"] {
+    border-radius: 10px;
+    font-weight: 700;
+    transition: all .15s ease;
+}
+
+button[kind="primary"],
+button[kind="primaryFormSubmit"],
+[data-testid="stBaseButton-primary"],
+[data-testid="stBaseButton-primaryFormSubmit"] {
+    background: var(--amber) !important;
+    border: 1px solid var(--amber-dark) !important;
+    color: var(--navy) !important;
+}
+button[kind="primary"]:hover,
+button[kind="primaryFormSubmit"]:hover,
+[data-testid="stBaseButton-primary"]:hover,
+[data-testid="stBaseButton-primaryFormSubmit"]:hover {
+    background: var(--amber-dark) !important;
+    color: #FFFFFF !important;
+}
+
+button[kind="secondary"],
+button[kind="secondaryFormSubmit"],
+[data-testid="stBaseButton-secondary"],
+[data-testid="stBaseButton-secondaryFormSubmit"] {
+    background: #FFFFFF;
+    border: 1px solid #D1D5DB;
+    color: var(--navy);
+}
+button[kind="secondary"]:hover,
+[data-testid="stBaseButton-secondary"]:hover {
+    border-color: var(--amber);
+    color: var(--amber-dark);
+}
+
+/* ---------- Navegación horizontal (st.radio) en forma de pastillas ---------- */
+div[data-testid="stRadio"] div[role="radiogroup"] { gap: 8px; flex-wrap: wrap; }
+
+div[data-testid="stRadio"] label[data-baseweb="radio"] {
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 16px;
+    margin: 0;
+    cursor: pointer;
+    transition: all .15s ease;
+}
+div[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child { display: none; }
+div[data-testid="stRadio"] label[data-baseweb="radio"]:hover { border-color: var(--amber); }
+div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) {
+    background: var(--navy);
+    border-color: var(--navy);
+}
+div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
+    color: #FFFFFF !important;
+    font-weight: 700;
+}
+
+/* ---------- Campos de formulario ---------- */
+div[data-baseweb="input"] > div,
+div[data-baseweb="textarea"] > div,
+div[data-baseweb="select"] > div {
+    border-radius: 10px;
+    border-color: #D1D5DB;
+}
+div[data-baseweb="input"]:focus-within > div,
+div[data-baseweb="textarea"]:focus-within > div,
+div[data-baseweb="select"]:focus-within > div {
+    border-color: var(--amber) !important;
+    box-shadow: 0 0 0 3px rgba(245,158,11,.20);
+}
+
+/* ---------- Pestañas ---------- */
+button[data-baseweb="tab"] { font-weight: 600; }
+button[data-baseweb="tab"][aria-selected="true"] { font-weight: 800; }
+
+/* ---------- Pie ---------- */
+.overol-footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 18px 0 4px 0;
+}
+
+/* ---------- Cabecera del login ---------- */
+.login-head { text-align: center; margin: 28px 0 18px; }
+.login-head h1 { color: var(--navy); font-size: 34px; font-weight: 800; margin: 6px 0; }
+.login-head p { color: var(--muted); }
+
+@media (max-width: 800px) {
+    .hero { padding: 28px 22px; }
+    .navbar { flex-wrap: wrap; }
+}
