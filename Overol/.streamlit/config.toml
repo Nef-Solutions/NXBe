@@ -1,0 +1,14 @@
+# Tema de Overol: fuerza modo claro aunque el navegador/SO esté en modo oscuro.
+base = "light"
+primaryColor = "#F59E0B"
+backgroundColor = "#F6F7F9"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#111827"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+# Evita límites raros al subir documentos de verificación (el tope real se valida en el código: 5 MB)
+maxUploadSize = 10
