@@ -21,10 +21,12 @@ Clonar el repositorio y entrar en su carpeta:
 
 ```powershell
 git clone <URL_DEL_REPOSITORIO>
-Set-Location overol-backend
+Set-Location overol-backend/backend
 ```
 
-Si el proyecto se entrega como ZIP, descomprimirlo y abrir PowerShell en la carpeta que contiene `manage.py`.
+El repositorio contiene material de proyecto en la raíz y el código ejecutable dentro de `backend/`. Todos los comandos Django y Docker de esta guía se ejecutan desde `backend/`, donde están `manage.py` y `docker-compose.yml`.
+
+Si el proyecto se entrega como ZIP, descomprimirlo y entrar a la carpeta `backend`, que contiene `manage.py`.
 
 ## 3. Configurar variables locales
 
