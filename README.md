@@ -96,13 +96,6 @@ Para crear un administrador:
 ```powershell
 python manage.py createsuperuser
 ```
-
-Para detener PostgreSQL/PostGIS y Redis:
-
-```powershell
-
-```
-
 ## Pruebas
 
 Desde `backend/`:
