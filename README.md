@@ -1,150 +1,167 @@
-Overol
+# Overol
 
-Equipo: NXBe
-Estado: Proyecto de título en desarrollo
+Proyecto Capstone del equipo NXBe para conectar clientes con profesionales de oficios del hogar. Overol permite buscar profesionales, solicitar visitas, coordinar servicios, evaluar resultados y gestionar situaciones de posventa.
 
-Descripción
+Este repositorio reúne el producto, sus dos implementaciones de desarrollo y los documentos del proceso académico:
 
-Overol es una plataforma digital tipo marketplace que conecta a personas que necesitan realizar trabajos, reparaciones o modificaciones en su hogar con trabajadores especializados, como gásfiteres, maestros de construcción, electricistas, pintores y otros profesionales de oficios.
+- Un prototipo integral local para demostraciones.
+- Un backend REST modular preparado para evolucionar hacia una arquitectura productiva.
+- Requisitos, diseño, evidencias y entregables de las distintas fases del proyecto.
 
-Cada trabajador podrá crear un perfil para presentar sus servicios, especialidades y experiencia. A su vez, los usuarios podrán buscar y encontrar al profesional más adecuado según el tipo de trabajo que necesiten realizar.
+## Componentes del proyecto
 
-¿A quién va dirigido?
+### Prototipo integral
 
-A trabajadores independientes y maestros de distintos oficios que desean ofrecer sus servicios y aumentar su visibilidad.
+La carpeta [Overol](Overol/) contiene una aplicación Streamlit ejecutable localmente. Incluye pantallas para clientes, profesionales y administradores, autenticación local y persistencia SQLite para demostraciones. Es la forma más rápida de explorar el flujo completo de la plataforma.
 
-A personas que necesitan encontrar trabajadores para realizar reparaciones, mantenciones o mejoras en su hogar.
+### Backend REST
 
-¿Qué problema resuelve?
+La carpeta [backend](backend/) contiene una API desarrollada con Django y Django REST Framework. Usa PostgreSQL/PostGIS y Redis mediante Docker, JWT para las rutas protegidas y una estructura modular por dominio:
 
-Actualmente, encontrar trabajadores de confianza suele depender de recomendaciones informales, publicaciones en redes sociales o búsquedas dispersas. Esto dificulta comparar alternativas y conocer claramente la experiencia o los servicios de cada trabajador.
+- `authentication`: usuarios, roles, sesiones y verificación profesional.
+- `catalog`: oficios, especialidades y búsqueda.
+- `visits`: visitas, reseñas, posventa, soporte y notificaciones.
+- `assistant`: espacio reservado para el asistente de diagnóstico.
 
-Overol busca centralizar este proceso en una sola plataforma, facilitando la conexión entre clientes y trabajadores, dando mayor visibilidad a quienes ofrecen sus servicios y simplificando la búsqueda de profesionales para trabajos del hogar.
+El backend implementa registro, autenticación, perfiles profesionales, solicitudes de visita, calificaciones, reclamos, tickets y administración.
 
-Funcionalidades principales
+### Documentación y entregables
 
-Las funcionalidades consideradas inicialmente para la plataforma son:
+- [Documentos_equipo](Documentos_equipo/): visión del producto, backlog, diseño, Definition of Done y requisitos funcionales y no funcionales.
+- [Fase 1](Fase%201/): evidencias grupales e individuales de la primera fase.
+- [Fase 2](Fase%202/): evidencias grupales e individuales de la segunda fase.
+- [Documentación técnica del backend](backend/documentacion/): instalación, arquitectura, API, base de datos, Docker y pruebas.
 
-Registro e inicio de sesión de usuarios.
+## Estructura general
 
-Creación de perfiles para trabajadores.
+```text
+overol-backend/
+├── Overol/                  # Prototipo Streamlit con SQLite para demostraciones
+├── backend/                 # API Django, infraestructura y documentación técnica
+├── Documentos_equipo/       # Documentos de producto, requisitos y diseño
+├── Fase 1/                 # Evidencias y entregables de la primera fase
+├── Fase 2/                 # Evidencias y entregables de la segunda fase
+└── readme.md               # Guía general del proyecto
+```
 
-Publicación de servicios, especialidades y experiencia.
+## Requisitos
 
-Búsqueda de trabajadores según el servicio requerido.
+- Git
+- Python 3.14
+- Docker Desktop y Docker Compose para ejecutar el backend
 
-Visualización de perfiles y datos relevantes de cada trabajador.
+En Windows, Docker Desktop debe estar abierto antes de iniciar los servicios del backend.
 
-Contacto entre clientes y trabajadores.
+## Ejecutar el prototipo
 
-Las funcionalidades podrán modificarse o ampliarse durante el desarrollo del proyecto.
+El prototipo instala Streamlit automáticamente si no está disponible. Desde la raíz del repositorio:
 
-Tecnologías utilizadas
+```powershell
+Set-Location Overol
+python app.py
+```
 
-Las tecnologías del proyecto aún se encuentran pendientes de definición.
+También se puede iniciar directamente con:
 
-Área
+```powershell
+streamlit run app.py
+```
 
-Tecnología
+La aplicación se abrirá en la dirección local indicada por Streamlit. Sus datos de demostración se almacenan en SQLite dentro del prototipo y no reemplazan la persistencia del backend.
 
-Frontend
+## Ejecutar el backend
 
-Pendiente de definición
+Todos los comandos del backend se ejecutan desde `backend/`:
 
-Backend
+```powershell
+Set-Location backend
+Copy-Item .env.example .env
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r documentacion/requirements.txt
+docker compose up -d
+python manage.py migrate
+python manage.py check
+python manage.py runserver
+```
 
-Pendiente de definición
+URLs locales:
 
-Base de datos
+- API: `http://127.0.0.1:8000/api/`
+- Administración: `http://127.0.0.1:8000/admin/`
 
-Pendiente de definición
+Para crear un administrador:
 
-Servicios cloud
+```powershell
+python manage.py createsuperuser
+```
 
-Pendiente de definición
+Para detener PostgreSQL/PostGIS y Redis:
 
-Control de versiones
+```powershell
 
-Git / GitHub (por confirmar)
+```
 
-Instrucciones para ejecutar el proyecto localmente
+## Pruebas
 
-Las instrucciones definitivas se incorporarán una vez que el equipo seleccione las tecnologías y configure la estructura inicial del proyecto.
+Desde `backend/`:
 
-El procedimiento general será el siguiente:
+```powershell
+python manage.py test
+```
 
-Clonar el repositorio:
+Las pruebas del backend utilizan una base de datos temporal. El prototipo local utiliza su propia base SQLite para las demostraciones.
 
-git clone <URL_DEL_REPOSITORIO>
+## Funcionalidades y alcance
 
-Entrar en la carpeta del proyecto:
+El proyecto contempla registro y verificación profesional, búsqueda y categorización, perfiles, solicitudes, reputación, centro de desarrollo profesional, administración, posventa y reclamos.
 
-cd overol
+Todavía están fuera del alcance implementado las suscripciones, los pagos, el chatbot con IA y la geolocalización real con mapas o radios de cobertura. El prototipo puede mostrar flujos de estas épicas, pero el backend aún no las implementa como funcionalidades productivas.
 
-Instalar las dependencias:
+## API
 
-# Comando pendiente de definición
+La API usa JSON y JWT para las rutas protegidas:
 
-Configurar las variables de entorno necesarias.
+```http
+Authorization: Bearer <access_token>
+```
 
-Ejecutar el proyecto:
+Prefijos principales:
 
-# Comando pendiente de definición
+| Prefijo | Funcionalidad |
+| :--- | :--- |
+| `/api/auth/` | Registro, autenticación, perfiles y verificación |
+| `/api/catalog/` | Catálogo y búsqueda de profesionales |
+| `/api/requests/` | Solicitudes y estados de visitas |
+| `/api/ratings/` | Calificaciones y reseñas |
+| `/api/claims/` | Reclamos de posventa |
+| `/api/tickets/` | Soporte |
+| `/api/notifications/` | Notificaciones internas |
+| `/api/professional-center/` | Contenido y progreso profesional |
 
-Integrantes del equipo
+Consulta el [contrato completo de la API](backend/documentacion/api.md) para conocer endpoints, cuerpos de petición, respuestas y permisos.
 
-Integrante
+## Documentación
 
-Rol
+- [Índice de documentación del backend](backend/documentacion/README.md)
+- [Instalación en otro computador](backend/documentacion/instalacion.md)
+- [Arquitectura](backend/documentacion/arquitectura.md)
+- [Contrato de API](backend/documentacion/api.md)
+- [Base de datos](backend/documentacion/base-de-datos.md)
+- [Docker](backend/documentacion/docker.md)
+- [Pruebas](backend/documentacion/pruebas.md)
+- [Estado de la Definition of Done](backend/documentacion/estado-dod.md)
+- [Propuesta Capstone](backend/propuesta_capstone_overol.md)
 
-Benjamín Osses
+## Seguridad y mantenimiento
 
-Pendiente de definición
+No subir `backend/.env` al repositorio. Para configurar otro computador, copiar `backend/.env.example` y completar los valores locales.
 
-Nefi Apablaza
+Las credenciales de desarrollo no deben reutilizarse en producción. Antes de desplegar se deben cambiar `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, CORS y las credenciales de la base de datos.
 
-Pendiente de definición
+Las solicitudes pendientes con más de 30 días pueden marcarse como vencidas desde `backend/`:
 
-Ximena Campos
-
-Pendiente de definición
-
-Metodología de trabajo
-
-La metodología de trabajo del equipo se encuentra pendiente de definición.
-
-Como propuesta inicial, el equipo puede utilizar Scrum para organizar el proyecto en periodos cortos de trabajo o sprints, complementándolo con un tablero Kanban para visualizar y controlar las tareas pendientes, en progreso y finalizadas.
-
-La metodología definitiva y sus prácticas se documentarán en esta sección cuando sean acordadas por el equipo NXBe.
-
-Arquitectura de la solución
-
-Overol utilizará una arquitectura cliente-servidor. La interfaz permitirá que clientes y trabajadores interactúen con la plataforma. Las solicitudes serán procesadas por un backend encargado de aplicar la lógica de negocio, gestionar la autenticación y comunicarse con la base de datos.
-
-La arquitectura tecnológica definitiva dependerá de las herramientas seleccionadas por el equipo.
-
-flowchart TD
-    A[Cliente o trabajador] --> B[Aplicación web]
-    B --> C[API / Backend]
-    C --> D[Autenticación]
-    C --> E[Lógica de negocio]
-    C --> F[(Base de datos)]
-    E --> F
-
-Componentes principales
-
-Aplicación web: interfaz utilizada por clientes y trabajadores.
-
-Backend o API: procesa solicitudes y contiene las reglas de negocio.
-
-Autenticación: controla el registro, inicio de sesión y acceso de los usuarios.
-
-Base de datos: almacena usuarios, perfiles, servicios y demás información de la plataforma.
-
-Estado del proyecto
-
-El proyecto se encuentra en su etapa inicial de definición y planificación. Este README será actualizado a medida que se establezcan las tecnologías, los roles, la metodología definitiva y las instrucciones de ejecución.
-
-Equipo responsable
-
-Desarrollado por NXBe como proyecto de título.
+```powershell
+python manage.py expire_visit_requests
+```
