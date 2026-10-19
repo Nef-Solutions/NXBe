@@ -1,0 +1,771 @@
+{
+	"id": "f030ba6f-5d75-4deb-925e-2fa9999860f0",
+	"name": "Overol - Pruebas API",
+	"timestamp": "2026-10-19T00:24:05.279Z",
+	"collection_id": "45339844-63ba179c-3476-4c53-a604-54c5b509a98c",
+	"folder_id": 0,
+	"environment_id": "45339844-bcdfe944-d889-43df-9aeb-2fe66c7be8ba",
+	"totalPass": 54,
+	"delay": 0,
+	"persist": true,
+	"status": "finished",
+	"startedAt": "2026-10-19T00:23:58.695Z",
+	"totalFail": 0,
+	"results": [
+		{
+			"id": "8c672562-31b0-4eb5-a662-e5f895206175",
+			"name": "AUTH-01 Registrar cliente",
+			"url": "http://127.0.0.1:8000/api/auth/register/",
+			"time": 998,
+			"responseCode": {
+				"code": 201,
+				"name": "Created"
+			},
+			"tests": {
+				"Status 201 - Registro exitoso": true,
+				"Respuesta tiene campo id": true,
+				"Respuesta tiene campo email": true,
+				"Content-Type es application/json": true
+			},
+			"testPassFailCounts": {
+				"Status 201 - Registro exitoso": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta tiene campo id": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta tiene campo email": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Content-Type es application/json": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				998
+			],
+			"allTests": [
+				{
+					"Status 201 - Registro exitoso": true,
+					"Respuesta tiene campo id": true,
+					"Respuesta tiene campo email": true,
+					"Content-Type es application/json": true
+				}
+			]
+		},
+		{
+			"id": "c87838e3-0d4a-4fe3-b78c-bd8967bd7ae4",
+			"name": "AUTH-02 Obtener token JWT",
+			"url": "http://127.0.0.1:8000/api/auth/token/",
+			"time": 985,
+			"responseCode": {
+				"code": 200,
+				"name": "OK"
+			},
+			"tests": {
+				"Status 200 - Token obtenido": true,
+				"Respuesta tiene access token": true,
+				"Respuesta tiene refresh token": true,
+				"Access token no está vacío": true
+			},
+			"testPassFailCounts": {
+				"Status 200 - Token obtenido": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta tiene access token": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta tiene refresh token": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Access token no está vacío": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				985
+			],
+			"allTests": [
+				{
+					"Status 200 - Token obtenido": true,
+					"Respuesta tiene access token": true,
+					"Respuesta tiene refresh token": true,
+					"Access token no está vacío": true
+				}
+			]
+		},
+		{
+			"id": "f3c1cd83-44b6-4274-9e7e-b78af07c4bfe",
+			"name": "AUTH-03 Consultar perfil",
+			"url": "http://127.0.0.1:8000/api/auth/me/",
+			"time": 45,
+			"responseCode": {
+				"code": 200,
+				"name": "OK"
+			},
+			"tests": {
+				"Status 200 - Perfil obtenido": true,
+				"Respuesta tiene campo email": true,
+				"Content-Type es application/json": true
+			},
+			"testPassFailCounts": {
+				"Status 200 - Perfil obtenido": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta tiene campo email": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Content-Type es application/json": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				45
+			],
+			"allTests": [
+				{
+					"Status 200 - Perfil obtenido": true,
+					"Respuesta tiene campo email": true,
+					"Content-Type es application/json": true
+				}
+			]
+		},
+		{
+			"id": "b10c8f72-8663-44d1-9081-d73db82168e1",
+			"name": "AUTH-04 Acceso sin token",
+			"url": "http://127.0.0.1:8000/api/auth/me/",
+			"time": 5,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"Status 401 - No autorizado sin token": true,
+				"Respuesta tiene mensaje de error": true
+			},
+			"testPassFailCounts": {
+				"Status 401 - No autorizado sin token": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta tiene mensaje de error": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				5
+			],
+			"allTests": [
+				{
+					"Status 401 - No autorizado sin token": true,
+					"Respuesta tiene mensaje de error": true
+				}
+			]
+		},
+		{
+			"id": "0c6c8fcf-2633-43cd-8092-f2ae0a8268d4",
+			"name": "AUTH-05 Renovar token",
+			"url": "http://127.0.0.1:8000/api/auth/token/refresh/",
+			"time": 40,
+			"responseCode": {
+				"code": 200,
+				"name": "OK"
+			},
+			"tests": {
+				"Status 200 - Token renovado": true,
+				"Respuesta tiene nuevo access token": true,
+				"Nuevo access token no está vacío": true
+			},
+			"testPassFailCounts": {
+				"Status 200 - Token renovado": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta tiene nuevo access token": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Nuevo access token no está vacío": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				40
+			],
+			"allTests": [
+				{
+					"Status 200 - Token renovado": true,
+					"Respuesta tiene nuevo access token": true,
+					"Nuevo access token no está vacío": true
+				}
+			]
+		},
+		{
+			"id": "2928154f-6a89-4dba-afff-2d14049430da",
+			"name": "AUTH-06 Obtener token profesional",
+			"url": "http://127.0.0.1:8000/api/auth/token/",
+			"time": 1049,
+			"responseCode": {
+				"code": 200,
+				"name": "OK"
+			},
+			"tests": {
+				"Status 200 - Token profesional obtenido": true
+			},
+			"testPassFailCounts": {
+				"Status 200 - Token profesional obtenido": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				1049
+			],
+			"allTests": [
+				{
+					"Status 200 - Token profesional obtenido": true
+				}
+			]
+		},
+		{
+			"id": "27dfc366-cfe2-4740-a29c-f97fe909743a",
+			"name": "CAT-01 Listar profesionales",
+			"url": "http://127.0.0.1:8000/api/catalog/professionals/",
+			"time": 63,
+			"responseCode": {
+				"code": 200,
+				"name": "OK"
+			},
+			"tests": {
+				"Status 200 - Listado de profesionales": true,
+				"Respuesta es un array o tiene resultados": true,
+				"Content-Type es application/json": true,
+				"Tiempo de respuesta menor a 3000ms": true
+			},
+			"testPassFailCounts": {
+				"Status 200 - Listado de profesionales": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta es un array o tiene resultados": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Content-Type es application/json": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Tiempo de respuesta menor a 3000ms": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				63
+			],
+			"allTests": [
+				{
+					"Status 200 - Listado de profesionales": true,
+					"Respuesta es un array o tiene resultados": true,
+					"Content-Type es application/json": true,
+					"Tiempo de respuesta menor a 3000ms": true
+				}
+			]
+		},
+		{
+			"id": "4b1ec5e9-0638-480a-854c-059a94c31346",
+			"name": "CAT-02 Buscar profesionales",
+			"url": "http://127.0.0.1:8000/api/catalog/professionals/?keyword=gasfiter&page=1&page_size=20",
+			"time": 62,
+			"responseCode": {
+				"code": 200,
+				"name": "OK"
+			},
+			"tests": {
+				"Status 200 - Búsqueda exitosa": true,
+				"Respuesta es un array o tiene resultados": true,
+				"Content-Type es application/json": true,
+				"Tiempo de respuesta menor a 3000ms": true
+			},
+			"testPassFailCounts": {
+				"Status 200 - Búsqueda exitosa": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta es un array o tiene resultados": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Content-Type es application/json": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Tiempo de respuesta menor a 3000ms": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				62
+			],
+			"allTests": [
+				{
+					"Status 200 - Búsqueda exitosa": true,
+					"Respuesta es un array o tiene resultados": true,
+					"Content-Type es application/json": true,
+					"Tiempo de respuesta menor a 3000ms": true
+				}
+			]
+		},
+		{
+			"id": "8b11cb7d-2437-4d81-901e-73240a0543db",
+			"name": "VIS-01 Crear solicitud",
+			"url": "http://127.0.0.1:8000/api/requests/",
+			"time": 46,
+			"responseCode": {
+				"code": 201,
+				"name": "Created"
+			},
+			"tests": {
+				"Status 201 - Solicitud creada": true,
+				"Respuesta tiene campo id": true,
+				"Respuesta tiene campo status": true,
+				"Content-Type es application/json": true
+			},
+			"testPassFailCounts": {
+				"Status 201 - Solicitud creada": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta tiene campo id": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta tiene campo status": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Content-Type es application/json": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				46
+			],
+			"allTests": [
+				{
+					"Status 201 - Solicitud creada": true,
+					"Respuesta tiene campo id": true,
+					"Respuesta tiene campo status": true,
+					"Content-Type es application/json": true
+				}
+			]
+		},
+		{
+			"id": "8ccd6eb8-8b68-4e0f-a041-f54b7deebd65",
+			"name": "VIS-02 Listar solicitudes",
+			"url": "http://127.0.0.1:8000/api/requests/",
+			"time": 44,
+			"responseCode": {
+				"code": 200,
+				"name": "OK"
+			},
+			"tests": {
+				"Status 200 - Listado de solicitudes": true,
+				"Respuesta es un array o tiene resultados": true,
+				"Content-Type es application/json": true,
+				"Tiempo de respuesta menor a 3000ms": true
+			},
+			"testPassFailCounts": {
+				"Status 200 - Listado de solicitudes": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta es un array o tiene resultados": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Content-Type es application/json": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Tiempo de respuesta menor a 3000ms": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				44
+			],
+			"allTests": [
+				{
+					"Status 200 - Listado de solicitudes": true,
+					"Respuesta es un array o tiene resultados": true,
+					"Content-Type es application/json": true,
+					"Tiempo de respuesta menor a 3000ms": true
+				}
+			]
+		},
+		{
+			"id": "c0a00c50-9936-46b4-9f48-3824cd93aa83",
+			"name": "NEG-01 Registro sin aceptar privacidad",
+			"url": "http://127.0.0.1:8000/api/auth/register/",
+			"time": 53,
+			"responseCode": {
+				"code": 400,
+				"name": "Bad Request"
+			},
+			"tests": {
+				"Status 400 - Error por falta de aceptación de privacidad": true,
+				"Respuesta contiene mensaje de error": true,
+				"Content-Type es application/json": true
+			},
+			"testPassFailCounts": {
+				"Status 400 - Error por falta de aceptación de privacidad": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta contiene mensaje de error": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Content-Type es application/json": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				53
+			],
+			"allTests": [
+				{
+					"Status 400 - Error por falta de aceptación de privacidad": true,
+					"Respuesta contiene mensaje de error": true,
+					"Content-Type es application/json": true
+				}
+			]
+		},
+		{
+			"id": "53dd3349-f72f-47fa-bd13-93fe4ca6d181",
+			"name": "NEG-02 Registro con RUT inválido",
+			"url": "http://127.0.0.1:8000/api/auth/register/",
+			"time": 53,
+			"responseCode": {
+				"code": 400,
+				"name": "Bad Request"
+			},
+			"tests": {
+				"Status 400 - Error por RUT inválido": true,
+				"Respuesta contiene mensaje de error": true,
+				"Content-Type es application/json": true
+			},
+			"testPassFailCounts": {
+				"Status 400 - Error por RUT inválido": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta contiene mensaje de error": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Content-Type es application/json": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				53
+			],
+			"allTests": [
+				{
+					"Status 400 - Error por RUT inválido": true,
+					"Respuesta contiene mensaje de error": true,
+					"Content-Type es application/json": true
+				}
+			]
+		},
+		{
+			"id": "89c687b4-a138-4412-a725-18eec6b33d2f",
+			"name": "NEG-03 Login con contraseña incorrecta",
+			"url": "http://127.0.0.1:8000/api/auth/token/",
+			"time": 1011,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"Status 401 - Credenciales incorrectas": true,
+				"Respuesta tiene campo detail": true,
+				"No se devuelve token": true
+			},
+			"testPassFailCounts": {
+				"Status 401 - Credenciales incorrectas": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta tiene campo detail": {
+					"pass": 1,
+					"fail": 0
+				},
+				"No se devuelve token": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				1011
+			],
+			"allTests": [
+				{
+					"Status 401 - Credenciales incorrectas": true,
+					"Respuesta tiene campo detail": true,
+					"No se devuelve token": true
+				}
+			]
+		},
+		{
+			"id": "cd9ffb6e-ea40-4e4c-bf05-e69bcabae97f",
+			"name": "NEG-04 Consultar perfil sin token",
+			"url": "http://127.0.0.1:8000/api/auth/me/",
+			"time": 5,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"Status 401 - No autorizado sin token": true,
+				"Respuesta tiene campo detail": true,
+				"No se devuelven datos de perfil": true
+			},
+			"testPassFailCounts": {
+				"Status 401 - No autorizado sin token": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta tiene campo detail": {
+					"pass": 1,
+					"fail": 0
+				},
+				"No se devuelven datos de perfil": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				5
+			],
+			"allTests": [
+				{
+					"Status 401 - No autorizado sin token": true,
+					"Respuesta tiene campo detail": true,
+					"No se devuelven datos de perfil": true
+				}
+			]
+		},
+		{
+			"id": "51b96d1f-786e-477d-8352-b5307bbef96b",
+			"name": "NEG-05 Crear solicitud sin campos obligatorios",
+			"url": "http://127.0.0.1:8000/api/requests/",
+			"time": 47,
+			"responseCode": {
+				"code": 400,
+				"name": "Bad Request"
+			},
+			"tests": {
+				"Status 400 - Error por campos faltantes": true,
+				"Respuesta contiene errores de validación": true,
+				"No se crea la solicitud": true
+			},
+			"testPassFailCounts": {
+				"Status 400 - Error por campos faltantes": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta contiene errores de validación": {
+					"pass": 1,
+					"fail": 0
+				},
+				"No se crea la solicitud": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				47
+			],
+			"allTests": [
+				{
+					"Status 400 - Error por campos faltantes": true,
+					"Respuesta contiene errores de validación": true,
+					"No se crea la solicitud": true
+				}
+			]
+		},
+		{
+			"id": "0ab0165d-1ea1-4d9e-8f9e-e130847000e8",
+			"name": "NEG-06 Crear solicitud con profesional inexistente",
+			"url": "http://127.0.0.1:8000/api/requests/",
+			"time": 47,
+			"responseCode": {
+				"code": 400,
+				"name": "Bad Request"
+			},
+			"tests": {
+				"Status 400 o 404 - Profesional no encontrado": true,
+				"Respuesta contiene mensaje de error": true,
+				"No se crea la solicitud": true
+			},
+			"testPassFailCounts": {
+				"Status 400 o 404 - Profesional no encontrado": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta contiene mensaje de error": {
+					"pass": 1,
+					"fail": 0
+				},
+				"No se crea la solicitud": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				47
+			],
+			"allTests": [
+				{
+					"Status 400 o 404 - Profesional no encontrado": true,
+					"Respuesta contiene mensaje de error": true,
+					"No se crea la solicitud": true
+				}
+			]
+		},
+		{
+			"id": "1b9fbbcf-044a-4fdf-80af-9043508dc732",
+			"name": "NEG-07 Rechazar solicitud sin motivo",
+			"url": "http://127.0.0.1:8000/api/requests/2/reject/",
+			"time": 76,
+			"responseCode": {
+				"code": 400,
+				"name": "Bad Request"
+			},
+			"tests": {
+				"Status 400 - Error por falta de motivo": true,
+				"Respuesta contiene mensaje de error": true,
+				"Content-Type es application/json": true
+			},
+			"testPassFailCounts": {
+				"Status 400 - Error por falta de motivo": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Respuesta contiene mensaje de error": {
+					"pass": 1,
+					"fail": 0
+				},
+				"Content-Type es application/json": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				76
+			],
+			"allTests": [
+				{
+					"Status 400 - Error por falta de motivo": true,
+					"Respuesta contiene mensaje de error": true,
+					"Content-Type es application/json": true
+				}
+			]
+		}
+	],
+	"count": 1,
+	"totalTime": 4629,
+	"collection": {
+		"requests": [
+			{
+				"id": "8c672562-31b0-4eb5-a662-e5f895206175",
+				"method": "POST"
+			},
+			{
+				"id": "c87838e3-0d4a-4fe3-b78c-bd8967bd7ae4",
+				"method": "POST"
+			},
+			{
+				"id": "f3c1cd83-44b6-4274-9e7e-b78af07c4bfe",
+				"method": "GET"
+			},
+			{
+				"id": "b10c8f72-8663-44d1-9081-d73db82168e1",
+				"method": "GET"
+			},
+			{
+				"id": "0c6c8fcf-2633-43cd-8092-f2ae0a8268d4",
+				"method": "POST"
+			},
+			{
+				"id": "2928154f-6a89-4dba-afff-2d14049430da",
+				"method": "POST"
+			},
+			{
+				"id": "27dfc366-cfe2-4740-a29c-f97fe909743a",
+				"method": "GET"
+			},
+			{
+				"id": "4b1ec5e9-0638-480a-854c-059a94c31346",
+				"method": "GET"
+			},
+			{
+				"id": "8b11cb7d-2437-4d81-901e-73240a0543db",
+				"method": "POST"
+			},
+			{
+				"id": "8ccd6eb8-8b68-4e0f-a041-f54b7deebd65",
+				"method": "GET"
+			},
+			{
+				"id": "c0a00c50-9936-46b4-9f48-3824cd93aa83",
+				"method": "POST"
+			},
+			{
+				"id": "53dd3349-f72f-47fa-bd13-93fe4ca6d181",
+				"method": "POST"
+			},
+			{
+				"id": "89c687b4-a138-4412-a725-18eec6b33d2f",
+				"method": "POST"
+			},
+			{
+				"id": "cd9ffb6e-ea40-4e4c-bf05-e69bcabae97f",
+				"method": "GET"
+			},
+			{
+				"id": "51b96d1f-786e-477d-8352-b5307bbef96b",
+				"method": "POST"
+			},
+			{
+				"id": "0ab0165d-1ea1-4d9e-8f9e-e130847000e8",
+				"method": "POST"
+			},
+			{
+				"id": "1b9fbbcf-044a-4fdf-80af-9043508dc732",
+				"method": "POST"
+			}
+		]
+	}
+}

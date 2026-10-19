@@ -21,6 +21,8 @@ def validate_rut_chileno(rut: str) -> str:
 
     if not cuerpo.isdigit():
         raise ValidationError("El cuerpo del RUT debe contener únicamente dígitos numéricos.")
+    if set(cuerpo) == {'0'}:
+        raise ValidationError("El cuerpo del RUT no puede estar compuesto solo por ceros.")
 
     # 2. Algoritmo Módulo 11
     suma = 0

@@ -45,6 +45,10 @@ class UserSecurityAndBusinessRulesTestCase(TestCase):
         with self.assertRaises(ValidationError):
             validate_rut_chileno(rut_invalido)
 
+        rut_nulo = "00.000.000-0"
+        with self.assertRaises(ValidationError):
+            validate_rut_chileno(rut_nulo)
+
 
 class JwtAuthenticationTestCase(TestCase):
     def setUp(self):

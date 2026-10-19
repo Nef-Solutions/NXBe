@@ -1,0 +1,1039 @@
+{
+  "info": {
+    "_postman_id": "d201ac33-95ff-4434-a549-ed4b62215660",
+    "name": "Overol - Pruebas API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "45339844",
+    "_collection_link": "https://go.postman.co/collection/45339844-d201ac33-95ff-4434-a549-ed4b62215660?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Autenticación",
+      "item": [
+        {
+          "name": "AUTH-01 Registrar cliente",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = String(10000000 + Math.floor(Math.random() * 8999999));",
+                  "let sum = 0;",
+                  "let multiplier = 2;",
+                  "for (let index = base.length - 1; index >= 0; index -= 1) {",
+                  "    sum += Number(base[index]) * multiplier;",
+                  "    multiplier = multiplier === 7 ? 2 : multiplier + 1;",
+                  "}",
+                  "const remainder = 11 - (sum % 11);",
+                  "const verifier = remainder === 11 ? '0' : (remainder === 10 ? 'K' : String(remainder));",
+                  "pm.environment.set('test_email', `cliente.postman.${Date.now()}@ejemplo.cl`);",
+                  "pm.environment.set('test_rut', `${base}-${verifier}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201 - Registro exitoso\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta tiene campo id\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"id\");",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta tiene campo email\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"email\");",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type es application/json\", function () {",
+                  "    pm.response.to.have.header(\"Content-Type\");",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"first_name\": \"Ana\",\n  \"last_name\": \"Pérez\",\n  \"phone\": \"+56912345678\",\n  \"rut\": \"{{test_rut}}\",\n  \"address\": \"Av. Principal 123\",\n  \"commune\": \"Santiago\",\n  \"role\": \"CLIENT\",\n  \"password\": \"ClaveSegura123!\",\n  \"privacy_policy_accepted\": true,\n  \"privacy_policy_version\": \"2026-10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "AUTH-02 Obtener token JWT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 - Token obtenido\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta tiene access token\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"access\");",
+                  "    pm.environment.set(\"access_token\", json.access);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta tiene refresh token\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"refresh\");",
+                  "    pm.environment.set(\"refresh_token\", json.refresh);",
+                  "});",
+                  "",
+                  "pm.test(\"Access token no está vacío\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.access).to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"ClaveSegura123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/token/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "token",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "AUTH-03 Consultar perfil",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 - Perfil obtenido\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta tiene campo email\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"email\");",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type es application/json\", function () {",
+                  "    pm.response.to.have.header(\"Content-Type\");",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "AUTH-04 Acceso sin token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401 - No autorizado sin token\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta tiene mensaje de error\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"detail\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "AUTH-05 Renovar token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 - Token renovado\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta tiene nuevo access token\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"access\");",
+                  "    pm.environment.set(\"access_token\", json.access);",
+                  "});",
+                  "",
+                  "pm.test(\"Nuevo access token no está vacío\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.access).to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/token/refresh/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "token",
+                "refresh",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "AUTH-06 Obtener token profesional",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 - Token profesional obtenido\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.expect(json).to.have.property(\"access\");",
+                  "pm.environment.set(\"professional_access_token\", json.access);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"profesional.postman@ejemplo.cl\",\n  \"password\": \"ProfesionalSegura123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/token/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "token",
+                ""
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Catálogo",
+      "item": [
+        {
+          "name": "CAT-01 Listar profesionales",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 - Listado de profesionales\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta es un array o tiene resultados\", function () {",
+                  "    const json = pm.response.json();",
+                  "    // Puede ser array directo o paginado con campo results",
+                  "    const list = Array.isArray(json) ? json : json.results;",
+                  "    pm.expect(list).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type es application/json\", function () {",
+                  "    pm.response.to.have.header(\"Content-Type\");",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "",
+                  "pm.test(\"Tiempo de respuesta menor a 3000ms\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(3000);",
+                  "});",
+                  "",
+                  "// Guardar el ID del primer profesional si existe",
+                  "const json = pm.response.json();",
+                  "const list = Array.isArray(json) ? json : (json.results || []);",
+                  "if (list.length > 0 && list[0].id) {",
+                  "    pm.environment.set(\"professional_id\", list[0].id);",
+                  "    pm.environment.set(\"specialty_id\", String(list[0].id) === \"1\" ? \"5\" : \"6\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/catalog/professionals/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "catalog",
+                "professionals",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "CAT-02 Buscar profesionales",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 - Búsqueda exitosa\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta es un array o tiene resultados\", function () {",
+                  "    const json = pm.response.json();",
+                  "    const list = Array.isArray(json) ? json : json.results;",
+                  "    pm.expect(list).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type es application/json\", function () {",
+                  "    pm.response.to.have.header(\"Content-Type\");",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "",
+                  "pm.test(\"Tiempo de respuesta menor a 3000ms\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(3000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/catalog/professionals/?keyword=gasfiter&page=1&page_size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "catalog",
+                "professionals",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "keyword",
+                  "value": "gasfiter"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Solicitudes de visita",
+      "item": [
+        {
+          "name": "VIS-01 Crear solicitud",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201 - Solicitud creada\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta tiene campo id\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"id\");",
+                  "    pm.environment.set(\"visit_id\", json.id);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta tiene campo status\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"status\");",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type es application/json\", function () {",
+                  "    pm.response.to.have.header(\"Content-Type\");",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"professional\": {{professional_id}},\n  \"specialty\": {{specialty_id}},\n  \"problem_description\": \"El enchufe de la cocina no funciona.\",\n  \"tentative_schedule\": \"Sábado por la mañana\",\n  \"visit_address\": \"Calle Ejemplo 123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "VIS-02 Listar solicitudes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 - Listado de solicitudes\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta es un array o tiene resultados\", function () {",
+                  "    const json = pm.response.json();",
+                  "    const list = Array.isArray(json) ? json : json.results;",
+                  "    pm.expect(list).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type es application/json\", function () {",
+                  "    pm.response.to.have.header(\"Content-Type\");",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "",
+                  "pm.test(\"Tiempo de respuesta menor a 3000ms\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(3000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                ""
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Casos inválidos",
+      "item": [
+        {
+          "name": "NEG-01 Registro sin aceptar privacidad",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400 - Error por falta de aceptación de privacidad\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta contiene mensaje de error\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.be.an(\"object\");",
+                  "    // El error puede estar en cualquier campo",
+                  "    const hasError = Object.keys(json).length > 0;",
+                  "    pm.expect(hasError).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type es application/json\", function () {",
+                  "    pm.response.to.have.header(\"Content-Type\");",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"neg01@ejemplo.cl\",\n  \"first_name\": \"Test\",\n  \"last_name\": \"Neg\",\n  \"phone\": \"+56911111111\",\n  \"rut\": \"12.345.678-9\",\n  \"address\": \"Calle Test 1\",\n  \"commune\": \"Santiago\",\n  \"role\": \"CLIENT\",\n  \"password\": \"ClaveSegura123!\",\n  \"privacy_policy_accepted\": false,\n  \"privacy_policy_version\": \"2026-10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "NEG-02 Registro con RUT inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400 - Error por RUT inválido\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta contiene mensaje de error\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.be.an(\"object\");",
+                  "    const hasError = Object.keys(json).length > 0;",
+                  "    pm.expect(hasError).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type es application/json\", function () {",
+                  "    pm.response.to.have.header(\"Content-Type\");",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"neg02@ejemplo.cl\",\n  \"first_name\": \"Test\",\n  \"last_name\": \"Neg\",\n  \"phone\": \"+56911111112\",\n  \"rut\": \"00.000.000-0\",\n  \"address\": \"Calle Test 2\",\n  \"commune\": \"Santiago\",\n  \"role\": \"CLIENT\",\n  \"password\": \"ClaveSegura123!\",\n  \"privacy_policy_accepted\": true,\n  \"privacy_policy_version\": \"2026-10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "NEG-03 Login con contraseña incorrecta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401 - Credenciales incorrectas\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta tiene campo detail\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"detail\");",
+                  "});",
+                  "",
+                  "pm.test(\"No se devuelve token\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.not.have.property(\"access\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"ContraseñaIncorrecta!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/token/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "token",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "NEG-04 Consultar perfil sin token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401 - No autorizado sin token\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta tiene campo detail\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"detail\");",
+                  "});",
+                  "",
+                  "pm.test(\"No se devuelven datos de perfil\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.not.have.property(\"email\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "NEG-05 Crear solicitud sin campos obligatorios",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400 - Error por campos faltantes\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta contiene errores de validación\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.be.an(\"object\");",
+                  "    const hasError = Object.keys(json).length > 0;",
+                  "    pm.expect(hasError).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test(\"No se crea la solicitud\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.not.have.property(\"id\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "NEG-06 Crear solicitud con profesional inexistente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400 o 404 - Profesional no encontrado\", function () {",
+                  "    pm.expect([400, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta contiene mensaje de error\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.be.an(\"object\");",
+                  "    const hasError = Object.keys(json).length > 0;",
+                  "    pm.expect(hasError).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test(\"No se crea la solicitud\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.not.have.property(\"id\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"professional\": 99999,\n  \"specialty\": 4,\n  \"problem_description\": \"Prueba profesional inexistente.\",\n  \"tentative_schedule\": \"Lunes por la tarde\",\n  \"visit_address\": \"Calle Ejemplo 456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "NEG-07 Rechazar solicitud sin motivo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400 - Error por falta de motivo\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Respuesta contiene mensaje de error\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.be.an(\"object\");",
+                  "    const hasError = Object.keys(json).length > 0;",
+                  "    pm.expect(hasError).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test(\"Content-Type es application/json\", function () {",
+                  "    pm.response.to.have.header(\"Content-Type\");",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{professional_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/requests/{{visit_id}}/reject/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "requests",
+                "{{visit_id}}",
+                "reject",
+                ""
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
