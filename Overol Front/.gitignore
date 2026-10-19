@@ -1,0 +1,34 @@
+# Documentos internos del equipo
+CLAUDE.md
+PEDIDO_BACKEND_PARA_NEFI.md
+RESUMEN_PROYECTO_OVEROL.md
+
+# Datos locales de la aplicación
+overol.db
+*.db
+documentos_verificacion/
+
+# Backend (vive en su propio repositorio/carpeta)
+backend/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Variables de entorno y secretos
+.env
+.env.*
+*.env
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+.venv*/
+*_venv/
+Overol_envs/
+
+# Respaldos
+*.zip
+*.bak
+Overol_respaldos/

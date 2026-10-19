@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  #btn {
+    position: relative; overflow: hidden; box-sizing: border-box;
+    height: 52px; border-radius: 12px; cursor: pointer; user-select: none;
+    -webkit-user-select: none; touch-action: none; outline: none;
+    display: flex; align-items: center; justify-content: center;
+    background: #FEE2E2; border: 1.5px solid #DC2626; color: #7F1D1D;
+    font-weight: 700; font-size: 15px;
+  }
+  #btn:focus-visible { box-shadow: 0 0 0 3px rgba(220, 38, 38, .35); }
+  #fill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+    background: #DC2626; transition: width .25s ease-out;
+  }
+  #fill.holding { transition: none; }
+  #label { position: relative; z-index: 1; padding: 0 12px; text-align: center; mix-blend-mode: normal; }
+  #btn.active #label, #btn.done #label { color: #FFFFFF; }
+  #btn.done { background: #DC2626; }
+</style>
+</head>
+<body>
+<div id="btn" role="button" tabindex="0" aria-label="Mantén presionado para confirmar">
+  <div id="fill"></div>
+  <span id="label">Mantén presionado para confirmar</span>
+</div>
+
+<script>
+  // Protocolo mínimo de componentes de Streamlit (sin librerías externas)
+  function send(type, data) {
+    window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data), "*");
+  }
+
+  const btn = document.getElementById("btn");
+  const fill = document.getElementById("fill");
+  const label = document.getElementById("label");
+
+  let seconds = 1.8, idleText = "Mantén presionado para confirmar";
+  let startTime = 0, raf = null, holding = false, done = false;
+
+  window.addEventListener("message", function (event) {
+    if (!event.data || event.data.type !== "streamlit:render") return;
+    const args = event.data.args || {};
+    seconds = args.seconds || seconds;
+    idleText = args.label || idleText;
+    if (!holding && !done) label.textContent = idleText;
+    send("streamlit:setFrameHeight", { height: 56 });
+  });
+
+  function tick(now) {
+    if (!holding) return;
+    const progress = Math.min(1, (now - startTime) / (seconds * 1000));
+    fill.style.width = (progress * 100) + "%";
+    if (progress >= 1) { finish(); return; }
+    raf = requestAnimationFrame(tick);
+  }
+
+  function begin() {
+    if (done || holding) return;
+    holding = true;
+    startTime = performance.now();
+    btn.classList.add("active");
+    fill.classList.add("holding");
+    label.textContent = "Mantén presionado…";
+    raf = requestAnimationFrame(tick);
+  }
+
+  function cancel() {
+    if (!holding) return;
+    holding = false;
+    cancelAnimationFrame(raf);
+    btn.classList.remove("active");
+    fill.classList.remove("holding");
+    fill.style.width = "0%";
+    label.textContent = idleText;
+  }
+
+  function finish() {
+    holding = false;
+    done = true;
+    cancelAnimationFrame(raf);
+    btn.classList.remove("active");
+    btn.classList.add("done");
+    fill.style.width = "100%";
+    label.textContent = "Confirmado ✓";
+    // El valor es único para que Python lo trate como un evento y no como un estado
+    send("streamlit:setComponentValue", { value: String(Date.now()), dataType: "json" });
+  }
+
+  btn.addEventListener("pointerdown", function (e) { e.preventDefault(); begin(); });
+  btn.addEventListener("pointerup", cancel);
+  btn.addEventListener("pointerleave", cancel);
+  btn.addEventListener("pointercancel", cancel);
+  btn.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  btn.addEventListener("keydown", function (e) {
+    if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); begin(); }
+  });
+  btn.addEventListener("keyup", function (e) {
+    if (e.key === " " || e.key === "Enter") cancel();
+  });
+
+  send("streamlit:componentReady", { apiVersion: 1 });
+  send("streamlit:setFrameHeight", { height: 56 });
+</script>
+</body>
+</html>
