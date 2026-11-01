@@ -395,7 +395,7 @@ def client_requests(user):
 
             with d1:
                 st.write(f"**Oficio:** {request['trade'] or request['service']}")
-                st.write(f"**Comuna:** {request['commune']} · **Zona:** {request['home_zone']}")
+                st.write(f"**Comuna:** {request['commune']}")
 
             with d2:
                 st.write(
