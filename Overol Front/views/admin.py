@@ -33,9 +33,11 @@ def admin_dashboard(user):
     menu = nav_bar(
         "admin_navigation",
         [
+            "📊 Indicadores",
             "🪪 Verificación",
             "👥 Usuarios",
             "⭐ Moderación",
+            "🛠️ Reclamos",
             "🎓 Contenidos",
             "📜 Trazabilidad",
             "💬 Soporte",
@@ -49,7 +51,10 @@ def admin_dashboard(user):
         "y trazabilidad de las acciones críticas.",
     )
 
-    if menu == "🪪 Verificación":
+    if menu == "📊 Indicadores":
+        admin_summary()
+
+    elif menu == "🪪 Verificación":
         admin_verification(user)
 
     elif menu == "👥 Usuarios":
@@ -57,6 +62,9 @@ def admin_dashboard(user):
 
     elif menu == "⭐ Moderación":
         admin_moderation(user)
+
+    elif menu == "🛠️ Reclamos":
+        admin_claims(user)
 
     elif menu == "🎓 Contenidos":
         admin_training(user)
@@ -72,7 +80,7 @@ def admin_dashboard(user):
 
 
 def admin_summary():
-    section("📊 Resumen de la plataforma")
+    section("📊 Indicadores de la plataforma")
 
     conn = get_connection()
 
@@ -523,7 +531,7 @@ def admin_moderation(user):
 
 
 def admin_claims(user):
-    section("🛠️ Posventa y mediación")
+    section("🛠️ Reclamos y mediación")
 
     claims = get_all_claims()
 

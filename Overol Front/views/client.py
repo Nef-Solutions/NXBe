@@ -71,6 +71,7 @@ def client_dashboard(user):
         [
             "🏠 Inicio",
             "🔎 Buscar profesionales",
+            "🤖 Asistente",
             "📋 Mis solicitudes",
             "🛠️ Mis reclamos",
             "👤 Mi perfil",
@@ -95,6 +96,9 @@ def client_dashboard(user):
 
     elif menu == "🔎 Buscar profesionales":
         client_search(user)
+
+    elif menu == "🤖 Asistente":
+        client_chatbot(user)
 
     elif menu == "📋 Mis solicitudes":
         client_requests(user)
