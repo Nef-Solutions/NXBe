@@ -410,17 +410,22 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
     padding: 8px;
     box-shadow: var(--shadow);
 }
-/* Una sola fila; si no caben, scroll horizontal (también en celular, donde Streamlit apila columnas) */
+/* Grilla de botones del mismo ancho: si no caben en una fila, pasan a dos (o más en pantallas
+   angostas) en vez de hacer scroll. --nav-cols = columnas por fila cuando hay espacio:
+   hasta 6 opciones, una fila; 7 u 8 (cliente), 4 por fila; 9 o 10 (admin), 5 por fila. */
 [class*="st-key-nav_bar_"] [data-testid="stHorizontalBlock"] {
-    flex-wrap: nowrap !important;
+    --nav-cols: 6;
+    --nav-min: 9.5rem;          /* ancho mínimo de un botón antes de pasar a otra fila */
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit,
+        minmax(max(var(--nav-min), calc((100% - (var(--nav-cols) - 1) * 8px) / var(--nav-cols))), 1fr));
     gap: 8px;
-    overflow-x: auto;
-    scrollbar-width: thin;
 }
+[class*="st-key-nav_bar_"] [data-testid="stHorizontalBlock"]:has(> :nth-child(7)) { --nav-cols: 4; }
+[class*="st-key-nav_bar_"] [data-testid="stHorizontalBlock"]:has(> :nth-child(9)) { --nav-cols: 5; }
 [class*="st-key-nav_bar_"] [data-testid="stColumn"] {
-    flex: 1 1 0 !important;     /* todos del mismo ancho */
     width: auto !important;
-    min-width: 7.5rem !important;
+    min-width: 0 !important;
 }
 [class*="st-key-nav_bar_"] div.stButton > button {
     min-height: 3.25rem;        /* misma altura aunque el texto ocupe dos líneas */
@@ -443,6 +448,14 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
 [class*="st-key-nav_bar_"] .st-key-go_login_top button * { color: #FFFFFF !important; }
 [class*="st-key-nav_bar_"] .st-key-go_login_top button:hover {
     background: var(--slate) !important;
+}
+/* Celular: dos columnas; la barra deja de ser fija para no tapar media pantalla con varias filas */
+@media (max-width: 640px) {
+    [data-testid="stLayoutWrapper"]:has(> [class*="st-key-nav_bar_"]),
+    [class*="st-key-nav_bar_"] {
+        position: static;
+    }
+    [class*="st-key-nav_bar_"] [data-testid="stHorizontalBlock"] { --nav-min: 8rem; }
 }
 
 /* ---------- Categorías de la portada como botones grandes (views.shared.category_buttons) ---------- */

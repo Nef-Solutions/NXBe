@@ -310,8 +310,10 @@ def nav_bar(nav_key, options, extra=None, badges=None):
         for i, (col, option) in enumerate(zip(cols, options)):
             with col:
                 count = (badges or {}).get(option)
+                # Con contador, espacios no separables: «🔔 Notificaciones (2)» queda en una línea
+                label = f"{option} ({count})".replace(" ", "\u00a0") if count else option
                 st.button(
-                    f"{option} ({count})" if count else option,
+                    label,
                     key=f"{nav_key}_btn_{i}",
                     type="primary" if option == current else "secondary",
                     on_click=_set_section,
