@@ -32,7 +32,7 @@ def visitor_dashboard():
         st.session_state[PREV_KEY] = menu
 
     if menu == INICIO:
-        home_page(None, NAV_KEY, PREV_KEY, PROFESIONALES, None)
+        home_page(None, NAV_KEY, PREV_KEY, PROFESIONALES)
 
     elif menu == PROFESIONALES:
         client_search(None)

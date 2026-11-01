@@ -438,6 +438,38 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
     background: var(--slate) !important;
 }
 
+/* ---------- Categorías de la portada como botones grandes (views.shared.category_buttons) ---------- */
+[class*="st-key-cat_grid_"] div.stButton > button {
+    min-height: 11rem;
+    height: 100%;
+    padding: 16px 12px;
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+[class*="st-key-cat_grid_"] div.stButton > button:hover {
+    border-color: var(--amber);
+    transform: translateY(-2px);
+}
+[class*="st-key-cat_grid_"] div.stButton > button p {
+    display: block;             /* ::first-line solo se aplica a elementos de bloque */
+    overflow: visible;
+    text-overflow: clip;
+    white-space: pre-line;      /* ícono / oficio / descripción en líneas separadas */
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.45;
+}
+[class*="st-key-cat_grid_"] div.stButton > button p::first-line { font-size: 34px; line-height: 1.5; }
+[class*="st-key-cat_grid_"] div.stButton > button strong {
+    color: var(--navy);
+    font-size: 16px;
+    font-weight: 800;
+}
+
 /* ---------- Campos de formulario ---------- */
 div[data-baseweb="input"] > div,
 div[data-baseweb="textarea"] > div,

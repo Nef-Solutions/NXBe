@@ -164,7 +164,6 @@ def client_home():
         "client_navigation",
         "_client_prev_menu",
         "🔎 Buscar profesionales",
-        None,
         show_hero=False,
     )
 
