@@ -32,6 +32,7 @@ from ui.components import (
     format_professional_card,
     hero,
     hold_to_confirm,
+    nav_bar,
     section,
     stars,
     status_badge,
@@ -111,29 +112,25 @@ def sugerir_especialidad(texto):
 
 
 def client_dashboard(user):
-    hero(
-        "Encuentra al profesional que necesitas para tu hogar",
-        "Busca por especialidad y ubicación, revisa perfiles verificados, "
-        "solicita una visita y evalúa el servicio.",
-    )
-
     # ?profesional=ID abre directamente el perfil de ese profesional
     apply_deeplink("client_navigation", "🔎 Buscar profesionales", "_client_prev_menu")
 
-    menu = st.radio(
-        "Navegación",
+    menu = nav_bar(
+        "client_navigation",
         [
             "🏠 Inicio",
             "🔎 Buscar profesionales",
-            "🤖 Asistente",
             "📋 Mis solicitudes",
-            "⭐ Mis evaluaciones",
             "🛠️ Mis reclamos",
             "👤 Mi perfil",
             "ℹ️ Quiénes somos",
         ],
-        horizontal=True,
-        key="client_navigation",
+    )
+
+    hero(
+        "Encuentra al profesional que necesitas para tu hogar",
+        "Busca por especialidad y ubicación, revisa perfiles verificados, "
+        "solicita una visita y evalúa el servicio.",
     )
 
     # Al cambiar de sección se descarta el perfil abierto, para que no
@@ -148,14 +145,8 @@ def client_dashboard(user):
     elif menu == "🔎 Buscar profesionales":
         client_search(user)
 
-    elif menu == "🤖 Asistente":
-        client_chatbot(user)
-
     elif menu == "📋 Mis solicitudes":
         client_requests(user)
-
-    elif menu == "⭐ Mis evaluaciones":
-        client_ratings(user)
 
     elif menu == "🛠️ Mis reclamos":
         client_claims(user)
@@ -173,7 +164,7 @@ def client_home():
         "client_navigation",
         "_client_prev_menu",
         "🔎 Buscar profesionales",
-        "🤖 Asistente",
+        None,
         show_hero=False,
     )
 

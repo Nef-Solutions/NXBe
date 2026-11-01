@@ -283,6 +283,46 @@ def navbar(user=None):
     )
 
 
+def _set_section(nav_key, option):
+    # Callback: cambia de sección antes de redibujar la página.
+    st.session_state[nav_key] = option
+
+
+def nav_bar(nav_key, options, extra=None):
+    """
+    Barra de secciones fija bajo la cabecera (estilo en style.css, «st-key-nav_bar_»).
+    Un botón por opción; el de la sección actual va en ámbar (type="primary").
+    La sección elegida se guarda en st.session_state[nav_key], igual que antes con st.radio,
+    por lo que los callbacks que cambian de sección (go_to, deeplinks) siguen funcionando.
+    `extra` es una función opcional que dibuja un botón más al final (p. ej. «Ingresar»).
+    Devuelve la opción seleccionada.
+    """
+    if st.session_state.get(nav_key) not in options:
+        st.session_state[nav_key] = options[0]
+
+    current = st.session_state[nav_key]
+
+    with st.container(key=f"nav_bar_{nav_key}"):
+        cols = st.columns(len(options) + (1 if extra else 0))
+
+        for i, (col, option) in enumerate(zip(cols, options)):
+            with col:
+                st.button(
+                    option,
+                    key=f"{nav_key}_btn_{i}",
+                    type="primary" if option == current else "secondary",
+                    on_click=_set_section,
+                    args=(nav_key, option),
+                    use_container_width=True,
+                )
+
+        if extra:
+            with cols[-1]:
+                extra()
+
+    return current
+
+
 # ------------------------------------------------------------
 # Botón «mantén presionado para confirmar» (componente propio)
 # ------------------------------------------------------------

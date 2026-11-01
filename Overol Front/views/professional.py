@@ -45,6 +45,7 @@ from ui.components import (
     empty_state,
     flash,
     hero,
+    nav_bar,
     section,
     security_note,
     stars,
@@ -53,7 +54,6 @@ from ui.components import (
 )
 from views.about import about_page
 from ui.profile import profile_header, profile_reviews, profile_sections
-from views.shared import user_profile_page
 
 MAX_UPLOAD_MB = 5
 
@@ -75,26 +75,21 @@ def professional_dashboard(user):
         )
         return
 
-    hero(
-        "Panel del profesional",
-        "Gestiona solicitudes, perfil, disponibilidad, cobertura, reputación "
-        "y capacitación profesional.",
-    )
-
-    menu = st.radio(
-        "Navegación",
+    menu = nav_bar(
+        "professional_navigation",
         [
             "📋 Solicitudes",
             "👤 Mi perfil",
             "📍 Cobertura",
-            "⭐ Reputación",
-            "🪪 Datos personales",
             "🎓 Desarrollo profesional",
-            "🛠️ Posventa",
             "ℹ️ Quiénes somos",
         ],
-        horizontal=True,
-        key="professional_navigation",
+    )
+
+    hero(
+        "Panel del profesional",
+        "Gestiona solicitudes, perfil, disponibilidad, cobertura, reputación "
+        "y capacitación profesional.",
     )
 
     if menu == "📋 Solicitudes":
@@ -106,17 +101,8 @@ def professional_dashboard(user):
     elif menu == "📍 Cobertura":
         professional_coverage(user, professional)
 
-    elif menu == "⭐ Reputación":
-        professional_reputation(professional)
-
-    elif menu == "🪪 Datos personales":
-        user_profile_page(user)
-
     elif menu == "🎓 Desarrollo profesional":
         professional_training(user, professional)
-
-    elif menu == "🛠️ Posventa":
-        professional_claims(user, professional)
 
     elif menu == "ℹ️ Quiénes somos":
         about_page()

@@ -32,7 +32,8 @@
 }
 
 #MainMenu, footer { visibility: hidden; }
-header[data-testid="stHeader"] { background: transparent; }
+/* Fondo sólido: la barra de secciones fija queda justo debajo y el contenido no se ve por encima */
+header[data-testid="stHeader"] { background: var(--bg); }
 
 /* ---------- Menú lateral: azul «obra» (denim de overol) con acentos ámbar ---------- */
 [data-testid="stSidebar"] {
@@ -385,6 +386,56 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) {
 div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
     color: #FFFFFF !important;
     font-weight: 700;
+}
+
+/* ---------- Barra de secciones fija (ui.components.nav_bar) ---------- */
+/* Streamlit puede envolver el contenedor en un stLayoutWrapper: se fija el que corresponda. */
+[data-testid="stLayoutWrapper"]:has(> [class*="st-key-nav_bar_"]),
+[class*="st-key-nav_bar_"] {
+    position: sticky;
+    top: 3.75rem;               /* alto de la cabecera de Streamlit */
+    z-index: 999;
+}
+[class*="st-key-nav_bar_"] {
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px;
+    box-shadow: var(--shadow);
+}
+/* Una sola fila; si no caben, scroll horizontal (también en celular, donde Streamlit apila columnas) */
+[class*="st-key-nav_bar_"] [data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+[class*="st-key-nav_bar_"] [data-testid="stColumn"] {
+    flex: 1 1 0 !important;     /* todos del mismo ancho */
+    width: auto !important;
+    min-width: 7.5rem !important;
+}
+[class*="st-key-nav_bar_"] div.stButton > button {
+    min-height: 3.25rem;        /* misma altura aunque el texto ocupe dos líneas */
+    line-height: 1.2;
+    padding: 6px 10px;
+    border-radius: 8px;
+}
+/* Streamlit corta la etiqueta con «…»: se deja partir en dos líneas */
+[class*="st-key-nav_bar_"] div.stButton > button p {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+}
+/* «Ingresar» del visitante: azul, para no confundirlo con la sección actual (ámbar) */
+[class*="st-key-nav_bar_"] .st-key-go_login_top button {
+    background: var(--navy) !important;
+    border-color: var(--navy) !important;
+    color: #FFFFFF !important;
+}
+[class*="st-key-nav_bar_"] .st-key-go_login_top button * { color: #FFFFFF !important; }
+[class*="st-key-nav_bar_"] .st-key-go_login_top button:hover {
+    background: var(--slate) !important;
 }
 
 /* ---------- Campos de formulario ---------- */

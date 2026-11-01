@@ -22,6 +22,7 @@ from ui.components import (
     flash,
     hero,
     metric_card,
+    nav_bar,
     section,
     security_note,
     status_badge,
@@ -29,33 +30,26 @@ from ui.components import (
 
 
 def admin_dashboard(user):
+    menu = nav_bar(
+        "admin_navigation",
+        [
+            "🪪 Verificación",
+            "👥 Usuarios",
+            "⭐ Moderación",
+            "🎓 Contenidos",
+            "📜 Trazabilidad",
+            "💬 Soporte",
+            "ℹ️ Quiénes somos",
+        ],
+    )
+
     hero(
         "Panel de administración",
         "Gestiona verificaciones, usuarios, reputación, reclamos, contenidos "
         "y trazabilidad de las acciones críticas.",
     )
 
-    menu = st.radio(
-        "Navegación administrativa",
-        [
-            "📊 Resumen",
-            "🪪 Verificación",
-            "👥 Usuarios",
-            "⭐ Moderación",
-            "🛠️ Posventa",
-            "🎓 Contenidos",
-            "📜 Trazabilidad",
-            "💬 Soporte",
-            "ℹ️ Quiénes somos",
-        ],
-        horizontal=True,
-        key="admin_navigation",
-    )
-
-    if menu == "📊 Resumen":
-        admin_summary()
-
-    elif menu == "🪪 Verificación":
+    if menu == "🪪 Verificación":
         admin_verification(user)
 
     elif menu == "👥 Usuarios":
@@ -63,9 +57,6 @@ def admin_dashboard(user):
 
     elif menu == "⭐ Moderación":
         admin_moderation(user)
-
-    elif menu == "🛠️ Posventa":
-        admin_claims(user)
 
     elif menu == "🎓 Contenidos":
         admin_training(user)

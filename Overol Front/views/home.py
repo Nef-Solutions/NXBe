@@ -54,7 +54,7 @@ def home_page(role, nav_key, prev_key, search_target, assistant_target, show_her
     with c2:
         if anonymous:
             go_login_button("go_login_hero", "Crear mi cuenta gratis")
-        else:
+        elif assistant_target:  # None si el rol no tiene la sección Asistente
             st.button(
                 "🤖 Probar el asistente",
                 use_container_width=True,
