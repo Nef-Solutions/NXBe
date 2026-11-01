@@ -11,7 +11,7 @@ from views.shared import (
 )
 
 PASOS = [
-    ("1", "Describe tu necesidad", "Elige un oficio o cuéntale tu problema al asistente."),
+    ("1", "Describe tu necesidad", "Elige un oficio o busca por palabra clave."),
     ("2", "Compara profesionales", "Revisa experiencia, especialidades, cobertura y opiniones."),
     ("3", "Solicita una visita", "Envía tu solicitud al profesional que prefieras."),
     ("4", "Coordina y evalúa", "Cuando acepta, tienes su contacto. Al terminar, lo evalúas."),

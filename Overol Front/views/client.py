@@ -73,7 +73,6 @@ def client_dashboard(user):
         [
             "🏠 Inicio",
             "🔎 Buscar profesionales",
-            "🤖 Asistente",
             "📋 Mis solicitudes",
             "🛠️ Mis reclamos",
             "🔔 Notificaciones",
@@ -100,9 +99,6 @@ def client_dashboard(user):
 
     elif menu == "🔎 Buscar profesionales":
         client_search(user)
-
-    elif menu == "🤖 Asistente":
-        client_chatbot(user)
 
     elif menu == "📋 Mis solicitudes":
         client_requests(user)
@@ -399,7 +395,7 @@ def client_requests(user):
 
             with d1:
                 st.write(f"**Oficio:** {request['trade'] or request['service']}")
-                st.write(f"**Comuna:** {request['commune']} · **Zona:** {request['home_zone']}")
+                st.write(f"**Comuna:** {request['commune']}")
 
             with d2:
                 st.write(

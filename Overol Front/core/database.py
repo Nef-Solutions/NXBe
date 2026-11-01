@@ -1597,7 +1597,7 @@ def create_request(client_id, professional_id, trade, home_zone, commune, date, 
     Devuelve (True, id) o (False, mensaje).
     Solo un usuario con rol «cliente» puede agendar.
     """
-    from core.constants import DIAS_SEMANA
+    from core.constants import DIAS_SEMANA, HORAS_VENCIMIENTO
 
     conn = get_connection()
     client = conn.execute("SELECT role, active FROM users WHERE id = ?", (client_id,)).fetchone()
@@ -1677,6 +1677,10 @@ def create_request(client_id, professional_id, trade, home_zone, commune, date, 
          str(date), time, description.strip(), now_str(), now_str()),
     )
     request_id = cur.lastrowid
+    notify_request(conn, request_id, "professional", "Nueva solicitud",
+                   "Recibiste la solicitud #{id} de {trade} para el "
+                   f"{date:%d-%m-%Y} ({time}). Respóndela dentro de {HORAS_VENCIMIENTO} horas "
+                   "o vencerá.")
     conn.commit()
     conn.close()
     return True, request_id

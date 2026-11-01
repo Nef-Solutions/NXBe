@@ -11,7 +11,6 @@ from core.constants import (
     OFICIOS_INFO,
     PREFERENCIAS_CONTACTO,
     ROLES,
-    ZONAS_HOGAR,
     use_api,
 )
 from core.database import (
@@ -393,12 +392,6 @@ def professional_profile_client(user_id, professional_id):
             key=f"request_commune_{professional_id}",
         )
 
-        home_zone = st.selectbox(
-            "Zona del hogar",
-            ZONAS_HOGAR,
-            key=f"request_zone_{professional_id}",
-        )
-
         # La fecha propuesta por defecto es el próximo día en que el profesional trabaja
         date = st.date_input(
             "Fecha tentativa",
@@ -438,7 +431,7 @@ def professional_profile_client(user_id, professional_id):
             key=f"send_request_{professional_id}",
         ):
             ok, result = create_request(
-                user_id, professional_id, trade, home_zone, commune, date, time, description
+                user_id, professional_id, trade, "", commune, date, time, description
             )
 
             if not ok:
