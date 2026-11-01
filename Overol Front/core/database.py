@@ -2,9 +2,10 @@
 
 import re
 import sqlite3
+import unicodedata
 from datetime import datetime, timedelta
 
-from core.constants import DB_PATH, UPLOAD_DIR
+from core.constants import DB_PATH, PALABRAS_CLAVE_OFICIO, UPLOAD_DIR
 from core.security import hash_password, normalize_rut
 
 
@@ -663,6 +664,59 @@ def get_all_professionals(
             continue
 
         result.append(row)
+
+    return result
+
+
+def normalize_text(text):
+    """Minúsculas y sin tildes (la ñ pasa a n), para comparar lo que escribe una persona."""
+    text = unicodedata.normalize("NFKD", str(text or "").lower())
+    return "".join(c for c in text if not unicodedata.combining(c))
+
+
+# Palabras que no aportan a la búsqueda: «fuga de agua» busca «fuga» y «agua»
+_STOPWORDS = {
+    "a", "al", "con", "de", "del", "el", "en", "la", "las", "los", "me", "mi",
+    "mis", "o", "para", "por", "que", "se", "un", "una", "y",
+}
+
+
+def search_professionals(professionals, text, include_name=True):
+    """
+    Historia 4.16: filtra un listado por palabra clave, sin distinguir mayúsculas ni tildes.
+    Busca en nombre (solo si include_name), oficios activos, especialidades, presentación
+    y palabras clave de cada oficio. Con varias palabras deben coincidir TODAS.
+    Nunca busca en datos de contacto ni personales (correo, teléfono, dirección, RUT).
+    """
+    words = [w for w in re.findall(r"\w+", normalize_text(text)) if w not in _STOPWORDS]
+
+    if not words:
+        return professionals
+
+    result = []
+
+    for row in professionals:
+        trades = get_trades(row["id"])
+        parts = [row["about"]]
+        parts += [t["trade"] for t in trades]
+        parts += [t["specialties"] for t in trades]
+        if include_name:
+            parts.append(row["name"])
+
+        keywords = [
+            normalize_text(k)
+            for t in trades
+            for k in PALABRAS_CLAVE_OFICIO.get(t["trade"], [])
+        ]
+        haystack = normalize_text(" ".join(p or "" for p in parts)) + " " + " ".join(keywords)
+
+        # Una palabra coincide si aparece en el texto del profesional, o si contiene una
+        # palabra clave de sus oficios («cañerías» contiene «caneria»).
+        if all(
+            w in haystack or any(len(k) >= 4 and k in w for k in keywords)
+            for w in words
+        ):
+            result.append(row)
 
     return result
 

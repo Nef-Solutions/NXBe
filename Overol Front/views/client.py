@@ -10,12 +10,14 @@ from core.constants import (
     ESTADOS_SOLICITUD,
     HORAS_VENCIMIENTO,
     OFICIOS,
+    PALABRAS_CLAVE_OFICIO,
 )
 from core.database import (
     audit,
     cancel_request_by_client,
     confirm_request_completion,
     get_all_professionals,
+    search_professionals,
     get_claims_for_client,
     get_connection,
     get_contact_info,
@@ -53,58 +55,7 @@ from views.shared import (
 def sugerir_especialidad(texto):
     texto = texto.lower().strip()
 
-    grupos = {
-        "Gasfitería": [
-            "agua",
-            "fuga",
-            "filtración",
-            "filtracion",
-            "cañería",
-            "caneria",
-            "tubería",
-            "tuberia",
-            "llave",
-            "lavaplatos",
-            "baño",
-            "wc",
-            "inodoro",
-            "desagüe",
-            "desague",
-        ],
-        "Electricidad": [
-            "luz",
-            "enchufe",
-            "corriente",
-            "cable",
-            "eléctrico",
-            "electrico",
-            "electricidad",
-            "interruptor",
-            "automático",
-            "automatico",
-        ],
-        "Carpintería": [
-            "mueble",
-            "madera",
-            "puerta",
-            "mesa",
-            "silla",
-            "closet",
-            "clóset",
-            "estante",
-        ],
-        "Pintura": [
-            "pintar",
-            "pintura",
-            "pared",
-            "techo",
-            "color",
-            "mancha",
-            "pintado",
-        ],
-    }
-
-    for specialty, words in grupos.items():
+    for specialty, words in PALABRAS_CLAVE_OFICIO.items():
         if any(word in texto for word in words):
             return specialty
 
@@ -206,8 +157,17 @@ def _professional_grid(professionals, key_prefix, anonymous=False):
                 st.rerun()
 
 
+def _clear_search():
+    # Callback de «Limpiar búsqueda»: borra la palabra clave y vuelve los filtros a «Todas».
+    st.session_state["search_text"] = ""
+    st.session_state["search_trade"] = "Todas"
+    st.session_state["search_commune"] = "Todas"
+    for key in [k for k in st.session_state if str(k).startswith("search_specialty_")]:
+        del st.session_state[key]
+
+
 def client_search(user):
-    """Historias 002 y 008. `user` es None para visitantes."""
+    """Historias 002, 008 y 4.16 (palabra clave). `user` es None para visitantes."""
     if _show_selected_profile(user):
         return
 
@@ -215,6 +175,14 @@ def client_search(user):
     uid = None if anonymous else user["id"]
 
     section("🔎 Buscar profesionales")
+
+    text = st.text_input(
+        "Buscar por palabra clave",
+        key="search_text",
+        max_chars=100,
+        placeholder="Busca por oficio, especialidad o palabra clave (ej. fuga, enchufe, pintar)",
+        label_visibility="collapsed",
+    ).strip()
 
     c1, c2, c3, c4 = st.columns(4)
 
@@ -260,6 +228,9 @@ def client_search(user):
         trade=trade,
     )
 
+    # El visitante ve tarjetas anónimas: buscar por nombre le revelaría quién es cada uno.
+    professionals = search_professionals(professionals, text, include_name=not anonymous)
+
     if order == "Mejor evaluados":
         professionals = sorted(
             professionals,
@@ -268,7 +239,7 @@ def client_search(user):
         )
 
     # Se registra la búsqueda solo cuando cambian los filtros (no en cada rerun).
-    signature = (trade, specialty, commune)
+    signature = (trade, specialty, commune, text)
     if st.session_state.get("_last_search_signature") != signature:
         st.session_state["_last_search_signature"] = signature
         audit(
@@ -276,17 +247,26 @@ def client_search(user):
             "SEARCH",
             "professionals",
             None,
-            f"Oficio={trade}; Especialidad={specialty}; Comuna={commune}",
+            f"Oficio={trade}; Especialidad={specialty}; Comuna={commune}; Texto={text}",
         )
 
     st.write(f"**{len(professionals)} profesionales disponibles**")
 
     if not professionals:
-        empty_state(
-            "🔍",
-            "No encontramos profesionales con esos filtros",
-            "Prueba ampliando la comuna o cambiando el oficio o la especialidad.",
-        )
+        filters_on = any(value != "Todas" for value in (trade, specialty, commune))
+
+        if text:
+            title = f"No encontramos profesionales para «{text}»"
+            hint = "Prueba con otras palabras (ej. fuga, enchufe, mueble, pintar)"
+            hint += " o quita algunos filtros." if filters_on else "."
+        else:
+            title = "No encontramos profesionales con esos filtros"
+            hint = "Prueba ampliando la comuna o cambiando el oficio o la especialidad."
+
+        empty_state("🔍", title, hint)  # empty_state escapa el texto
+
+        if text or filters_on:
+            st.button("Limpiar búsqueda", key="search_clear", on_click=_clear_search)
         return
 
     _professional_grid(professionals, "client_view_prof", anonymous)
