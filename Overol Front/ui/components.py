@@ -414,18 +414,30 @@ def support_box(user, request_id, role_label):
     Conversación con soporte (administrador) sobre una solicitud.
     `role_label` distingue las claves de widgets entre cliente y profesional.
     """
-    from core.constants import MAX_TEXTO
-    from core.database import add_support_message, audit, get_support_thread
+    from core.constants import MAX_ASUNTO, MAX_TEXTO
+    from core.database import add_support_message, audit, get_support_thread, get_support_ticket
 
     thread = get_support_thread(request_id, user["id"])
-    suffix = f" ({len(thread)} mensajes)" if thread else ""
+    ticket = get_support_ticket(request_id, user["id"])
 
-    with st.expander(f"💬 Contactar a soporte{suffix}"):
-        if not thread:
+    if ticket:
+        count = f"{len(thread)} mensaje" + ("" if len(thread) == 1 else "s")
+        title = f"💬 Ticket de soporte #{ticket['id']} · {ticket['status']} ({count})"
+    else:
+        title = "💬 Contactar a soporte"
+
+    with st.expander(title):
+        if not ticket:
             st.caption(
-                "Escribe aquí si tienes un problema con esta solicitud. "
+                "Abre un ticket si tienes un problema con esta solicitud. "
                 "El equipo de Overol te responderá en este mismo lugar."
             )
+        else:
+            st.markdown(f"**Asunto:** {escape(ticket['subject'])}", unsafe_allow_html=True)
+            status_badge(ticket["status"])
+
+            if ticket["status"] == "Resuelto":
+                st.caption("Este ticket está resuelto. Si escribes otro mensaje, se vuelve a abrir.")
 
         for message in thread:
             who = "Soporte Overol" if message["from_admin"] else "Tú"
@@ -443,6 +455,14 @@ def support_box(user, request_id, role_label):
             )
 
         with st.form(f"support_form_{role_label}_{request_id}", clear_on_submit=True):
+            subject = None
+            if not ticket:
+                subject = st.text_input(
+                    "Asunto",
+                    max_chars=MAX_ASUNTO,
+                    placeholder="Ej.: El profesional no llegó a la visita",
+                    key=f"support_subject_{role_label}_{request_id}",
+                )
             body = st.text_area(
                 "Tu mensaje para soporte",
                 max_chars=MAX_TEXTO,
@@ -450,18 +470,19 @@ def support_box(user, request_id, role_label):
                 key=f"support_text_{role_label}_{request_id}",
             )
             sent = st.form_submit_button(
-                "Enviar a soporte",
+                "Abrir ticket" if not ticket else "Enviar a soporte",
                 use_container_width=True,
                 key=f"support_send_{role_label}_{request_id}",
             )
 
         if sent:
-            ok, error = add_support_message(request_id, user["id"], body)
+            ok, error = add_support_message(request_id, user["id"], body, subject=subject)
 
             if not ok:
                 st.error(error)
             else:
                 audit(user["id"], "SUPPORT_MESSAGE", "requests", request_id,
-                      "Mensaje enviado a soporte")
-                flash("Mensaje enviado a soporte.")
+                      "Ticket de soporte abierto" if not ticket else "Mensaje enviado a soporte")
+                flash("Ticket abierto. Soporte te responderá aquí." if not ticket
+                      else "Mensaje enviado a soporte.")
                 st.rerun()

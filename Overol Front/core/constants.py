@@ -220,6 +220,10 @@ FRANJAS_HORARIAS = [
 # Máximo de caracteres en motivos de cancelación y mensajes a soporte
 MAX_TEXTO = 500
 
+# Tickets de soporte (uno por solicitud y usuario, sobre el hilo de mensajes)
+ESTADOS_TICKET = ["Abierto", "Resuelto"]
+MAX_ASUNTO = 100
+
 # Seguridad del inicio de sesión
 MAX_INTENTOS_LOGIN = 3
 MINUTOS_BLOQUEO = 5

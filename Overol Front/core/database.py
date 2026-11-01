@@ -215,6 +215,19 @@ def init_db():
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
+        CREATE TABLE IF NOT EXISTS support_tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            subject TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'Abierto',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            resolved_at TEXT,
+            UNIQUE(request_id, user_id),
+            FOREIGN KEY(request_id) REFERENCES requests(id),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
         """
     )
 
@@ -984,6 +997,17 @@ def run_migrations(conn):
     add_column_if_missing(conn, "requests", "cancel_reason", "TEXT DEFAULT ''")
     # Modo api: token de renovación del backend asociado a la sesión persistente
     add_column_if_missing(conn, "user_sessions", "api_refresh", "TEXT DEFAULT ''")
+
+    # Los hilos de soporte anteriores a los tickets pasan a ser tickets abiertos
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO support_tickets (request_id, user_id, subject, status, created_at, updated_at)
+        SELECT request_id, user_id, 'Consulta sobre la solicitud #' || request_id, 'Abierto',
+               MIN(created_at), MAX(created_at)
+        FROM support_messages
+        GROUP BY request_id, user_id
+        """
+    )
 
     # El horario guardado como texto ("Lun, Mar · 09:00–18:00") pasa a campos propios
     for row in conn.execute(
@@ -1791,13 +1815,25 @@ def _participant_of_request(conn, request_id, user_id):
     return bool(row) and user_id in (row["client_id"], row["professional_user_id"])
 
 
-def add_support_message(request_id, user_id, body, from_admin=False):
+def get_support_ticket(request_id, user_id):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM support_tickets WHERE request_id = ? AND user_id = ?",
+        (request_id, user_id),
+    ).fetchone()
+    conn.close()
+    return row
+
+
+def add_support_message(request_id, user_id, body, from_admin=False, subject=None):
     """
-    Agrega un mensaje al hilo de soporte de una solicitud.
-    Un usuario solo puede escribir sobre solicitudes en las que participa.
+    Agrega un mensaje al ticket de soporte de una solicitud (un ticket por solicitud y usuario).
+    El primer mensaje del usuario abre el ticket y requiere `subject`; si el usuario escribe
+    en un ticket «Resuelto», se reabre. Un usuario solo puede escribir sobre solicitudes en
+    las que participa; el administrador solo responde tickets existentes.
     Devuelve (True, "") o (False, mensaje).
     """
-    from core.constants import MAX_TEXTO
+    from core.constants import MAX_ASUNTO, MAX_TEXTO
 
     body = (body or "").strip()
 
@@ -1812,6 +1848,44 @@ def add_support_message(request_id, user_id, body, from_admin=False):
     if not from_admin and not _participant_of_request(conn, request_id, user_id):
         conn.close()
         return False, "No participas en esta solicitud."
+
+    ticket = conn.execute(
+        "SELECT id, status FROM support_tickets WHERE request_id = ? AND user_id = ?",
+        (request_id, user_id),
+    ).fetchone()
+
+    if not ticket:
+        subject = (subject or "").strip()
+
+        if from_admin:
+            conn.close()
+            return False, "Ese ticket no existe."
+
+        if not subject:
+            conn.close()
+            return False, "Escribe el asunto del ticket."
+
+        if len(subject) > MAX_ASUNTO:
+            conn.close()
+            return False, f"El asunto no puede superar los {MAX_ASUNTO} caracteres."
+
+        conn.execute(
+            """
+            INSERT INTO support_tickets (request_id, user_id, subject, status, created_at, updated_at)
+            VALUES (?, ?, ?, 'Abierto', ?, ?)
+            """,
+            (request_id, user_id, subject, now_str(), now_str()),
+        )
+    elif ticket["status"] == "Resuelto" and not from_admin:
+        conn.execute(
+            "UPDATE support_tickets SET status = 'Abierto', resolved_at = NULL, updated_at = ? WHERE id = ?",
+            (now_str(), ticket["id"]),
+        )
+    else:
+        conn.execute(
+            "UPDATE support_tickets SET updated_at = ? WHERE id = ?",
+            (now_str(), ticket["id"]),
+        )
 
     conn.execute(
         """
@@ -1859,16 +1933,49 @@ def get_support_inbox():
             r.trade AS trade,
             COUNT(*) AS total,
             SUM(CASE WHEN m.from_admin = 0 AND m.read_by_admin = 0 THEN 1 ELSE 0 END) AS unread,
-            MAX(m.id) AS last_id
+            MAX(m.id) AS last_id,
+            t.id AS ticket_id,
+            t.subject AS subject,
+            COALESCE(t.status, 'Abierto') AS ticket_status
         FROM support_messages m
         JOIN users u ON u.id = m.user_id
         JOIN requests r ON r.id = m.request_id
+        LEFT JOIN support_tickets t ON t.request_id = m.request_id AND t.user_id = m.user_id
         GROUP BY m.request_id, m.user_id
-        ORDER BY unread DESC, last_id DESC
+        ORDER BY ticket_status = 'Resuelto', unread DESC, last_id DESC
         """
     ).fetchall()
     conn.close()
     return rows
+
+
+def set_support_ticket_status(request_id, user_id, status):
+    """El administrador marca el ticket como «Resuelto» o lo reabre. True si cambió."""
+    resolved_at = now_str() if status == "Resuelto" else None
+
+    conn = get_connection()
+    cur = conn.execute(
+        """
+        UPDATE support_tickets SET status = ?, resolved_at = ?, updated_at = ?
+        WHERE request_id = ? AND user_id = ? AND status != ?
+        """,
+        (status, resolved_at, now_str(), request_id, user_id, status),
+    )
+    changed = cur.rowcount == 1
+
+    if changed and status == "Resuelto":
+        subject = conn.execute(
+            "SELECT subject FROM support_tickets WHERE request_id = ? AND user_id = ?",
+            (request_id, user_id),
+        ).fetchone()["subject"]
+        notify(conn, user_id, "Ticket resuelto",
+               f"Soporte marcó como resuelto tu ticket «{subject}» (solicitud #{request_id}). "
+               "Si necesitas algo más, escríbenos de nuevo y se reabrirá.",
+               request_id)
+
+    conn.commit()
+    conn.close()
+    return changed
 
 
 def mark_support_thread_read(request_id, user_id):
