@@ -16,6 +16,7 @@ from core.database import (
     audit,
     cancel_request_by_client,
     confirm_request_completion,
+    count_unread_notifications,
     get_all_professionals,
     search_professionals,
     get_claims_for_client,
@@ -35,6 +36,7 @@ from ui.components import (
     hero,
     hold_to_confirm,
     nav_bar,
+    notifications_page,
     section,
     stars,
     status_badge,
@@ -74,9 +76,11 @@ def client_dashboard(user):
             "🤖 Asistente",
             "📋 Mis solicitudes",
             "🛠️ Mis reclamos",
+            "🔔 Notificaciones",
             "👤 Mi perfil",
             "ℹ️ Quiénes somos",
         ],
+        badges={"🔔 Notificaciones": count_unread_notifications(user["id"])},
     )
 
     hero(
@@ -105,6 +109,9 @@ def client_dashboard(user):
 
     elif menu == "🛠️ Mis reclamos":
         client_claims(user)
+
+    elif menu == "🔔 Notificaciones":
+        notifications_page(user)
 
     elif menu == "👤 Mi perfil":
         user_profile_page(user)

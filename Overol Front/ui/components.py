@@ -288,13 +288,15 @@ def _set_section(nav_key, option):
     st.session_state[nav_key] = option
 
 
-def nav_bar(nav_key, options, extra=None):
+def nav_bar(nav_key, options, extra=None, badges=None):
     """
     Barra de secciones fija bajo la cabecera (estilo en style.css, «st-key-nav_bar_»).
     Un botón por opción; el de la sección actual va en ámbar (type="primary").
     La sección elegida se guarda en st.session_state[nav_key], igual que antes con st.radio,
     por lo que los callbacks que cambian de sección (go_to, deeplinks) siguen funcionando.
     `extra` es una función opcional que dibuja un botón más al final (p. ej. «Ingresar»).
+    `badges` ({opción: número}) agrega un contador a la etiqueta, p. ej. «🔔 Notificaciones (2)»;
+    el valor guardado sigue siendo la opción sin contador.
     Devuelve la opción seleccionada.
     """
     if st.session_state.get(nav_key) not in options:
@@ -307,8 +309,9 @@ def nav_bar(nav_key, options, extra=None):
 
         for i, (col, option) in enumerate(zip(cols, options)):
             with col:
+                count = (badges or {}).get(option)
                 st.button(
-                    option,
+                    f"{option} ({count})" if count else option,
                     key=f"{nav_key}_btn_{i}",
                     type="primary" if option == current else "secondary",
                     on_click=_set_section,
@@ -351,6 +354,60 @@ def hold_to_confirm(key, label="Mantén presionado para confirmar", seconds=1.8)
 # ------------------------------------------------------------
 # Mensajes a soporte
 # ------------------------------------------------------------
+
+def notifications_page(user):
+    """Lista de notificaciones del usuario (cliente o profesional) con «marcar como leída»."""
+    from core.database import get_notifications, mark_all_notifications_read, mark_notification_read
+
+    section("🔔 Notificaciones")
+
+    items = get_notifications(user["id"])
+
+    if not items:
+        empty_state(
+            "🔔",
+            "No tienes notificaciones",
+            "Aquí verás los cambios de tus solicitudes y las respuestas de soporte.",
+        )
+        return
+
+    unread = sum(1 for item in items if not item["is_read"])
+
+    if unread:
+        # Los callbacks marcan antes de redibujar, así el contador de la barra se actualiza al tiro.
+        st.button(
+            f"Marcar todas como leídas ({unread})",
+            key="notif_read_all",
+            on_click=mark_all_notifications_read,
+            args=(user["id"],),
+        )
+
+    for item in items:
+        state = "notif-read" if item["is_read"] else "notif-unread"
+        new = "" if item["is_read"] else '<span class="badge badge-warn">Nueva</span> '
+
+        with st.container(border=True, key=f"notif_{item['id']}"):
+            st.markdown(
+                _html(
+                    f"""
+                    <div class="notif {state}">
+                        <div class="notif-title">{new}{escape(item["title"])}</div>
+                        <div>{escape(item["message"])}</div>
+                        <div class="when">{escape(item["created_at"])}</div>
+                    </div>
+                    """
+                ),
+                unsafe_allow_html=True,
+            )
+
+            if not item["is_read"]:
+                st.button(
+                    "Marcar como leída",
+                    key=f"notif_read_{item['id']}",
+                    on_click=mark_notification_read,
+                    args=(item["id"], user["id"]),
+                )
+
 
 def support_box(user, request_id, role_label):
     """

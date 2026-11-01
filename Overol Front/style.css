@@ -535,6 +535,12 @@ button[data-baseweb="tab"][aria-selected="true"] { font-weight: 800; }
 .support-user  { background: #EFF6FF; border: 1px solid #BFDBFE; color: #1E3A8A; }
 .support-admin { background: #FFF7ED; border: 1px solid #FED7AA; color: #7C2D12; }
 
+/* ---------- Notificaciones ---------- */
+.notif { font-size: 14px; line-height: 1.5; color: var(--slate); }
+.notif-title { font-weight: 700; color: var(--navy); margin-bottom: 2px; }
+.notif .when { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.notif-read { opacity: 0.75; }
+
 /* ---------- Contacto habilitado ---------- */
 .contact-box {
     background: #F0FDF4;

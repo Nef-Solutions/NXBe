@@ -204,6 +204,17 @@ def init_db():
             created_at TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            request_id INTEGER,
+            is_read INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
         """
     )
 
@@ -934,8 +945,14 @@ def change_request_status(
 
     conn = get_connection()
     cur = conn.execute(sql, params)
-    conn.commit()
     changed = cur.rowcount == 1
+
+    if changed and new_status == "Aceptada":
+        notify_request(conn, request_id, "client", "Solicitud aceptada",
+                       "El profesional aceptó tu solicitud #{id} de {trade}. "
+                       "Ya puedes ver sus datos de contacto.")
+
+    conn.commit()
     conn.close()
     return changed
 
@@ -1234,6 +1251,7 @@ def confirm_request_completion(request_id, party, client_id=None, professional_i
         (request_id,),
     ).fetchone()
 
+    other = "professional" if party == "client" else "client"
     outcome = "Esperando"
     if row["client_confirmed"] and row["professional_confirmed"]:
         conn.execute(
@@ -1241,6 +1259,14 @@ def confirm_request_completion(request_id, party, client_id=None, professional_i
             (now_str(), request_id),
         )
         outcome = "Finalizada"
+        notify_request(conn, request_id, other, "Servicio finalizado",
+                       "Ambas partes confirmaron el término de la solicitud #{id} de {trade}. "
+                       "Ya puedes dejar tu valoración.")
+    else:
+        who = "El cliente" if party == "client" else "El profesional"
+        notify_request(conn, request_id, other, "Confirma el término del servicio",
+                       who + " marcó como terminada la solicitud #{id} de {trade}. "
+                       "Confírmalo tú también para finalizarla.")
 
     conn.commit()
     conn.close()
@@ -1258,8 +1284,14 @@ def reject_request(request_id, professional_id, reason, detail=""):
         """,
         (reason, detail.strip(), now_str(), request_id, professional_id),
     )
-    conn.commit()
     changed = cur.rowcount == 1
+
+    if changed:
+        notify_request(conn, request_id, "client", "Solicitud rechazada",
+                       "El profesional rechazó tu solicitud #{id} de {trade}.",
+                       detail=" — ".join(part for part in (reason, detail.strip()) if part))
+
+    conn.commit()
     conn.close()
     return changed
 
@@ -1501,6 +1533,12 @@ def expire_pending_requests():
             f"UPDATE requests SET status = 'Vencida', updated_at = ? WHERE id IN ({marks})",
             [now_str(), *ids],
         )
+        message = ("La solicitud #{id} de {trade} venció porque no tuvo respuesta "
+                   f"en {HORAS_VENCIMIENTO} horas.")
+        for request_id in ids:
+            notify_request(conn, request_id, "client", "Solicitud vencida",
+                           message + " Puedes solicitar una visita a otro profesional.")
+            notify_request(conn, request_id, "professional", "Solicitud vencida", message)
         conn.commit()
     conn.close()
 
@@ -1631,8 +1669,13 @@ def cancel_request_by_client(request_id, client_id):
         """,
         (now_str(), request_id, client_id),
     )
-    conn.commit()
     changed = cur.rowcount == 1
+
+    if changed:
+        notify_request(conn, request_id, "professional", "Solicitud cancelada",
+                       "El cliente canceló la solicitud #{id} de {trade}.")
+
+    conn.commit()
     conn.close()
     return changed
 
@@ -1661,8 +1704,13 @@ def cancel_request_by_professional(request_id, professional_id, reason):
         """,
         (reason, now_str(), request_id, professional_id),
     )
-    conn.commit()
     changed = cur.rowcount == 1
+
+    if changed:
+        notify_request(conn, request_id, "client", "Solicitud cancelada",
+                       "El profesional canceló la solicitud #{id} de {trade}.", detail=reason)
+
+    conn.commit()
     conn.close()
 
     if not changed:
@@ -1772,6 +1820,12 @@ def add_support_message(request_id, user_id, body, from_admin=False):
         """,
         (request_id, user_id, 1 if from_admin else 0, body, 1 if from_admin else 0, now_str()),
     )
+
+    if from_admin:
+        notify(conn, user_id, "Respuesta de soporte",
+               f"El equipo de Overol respondió tu mensaje sobre la solicitud #{request_id}.",
+               request_id)
+
     conn.commit()
     conn.close()
     return True, ""
@@ -1826,6 +1880,84 @@ def mark_support_thread_read(request_id, user_id):
         """,
         (request_id, user_id),
     )
+    conn.commit()
+    conn.close()
+
+
+# ============================================================
+# NOTIFICACIONES DENTRO DE LA PLATAFORMA
+# ============================================================
+
+def notify(conn, user_id, title, message, request_id=None):
+    """Crea una notificación usando la conexión del cambio que la origina (mismo commit)."""
+    conn.execute(
+        """
+        INSERT INTO notifications (user_id, title, message, request_id, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (user_id, title, message, request_id, now_str()),
+    )
+
+
+def notify_request(conn, request_id, to, title, template, detail=""):
+    """
+    Notifica a una de las partes de la solicitud: `to` es 'client' o 'professional'.
+    `template` admite {id} y {trade}; `detail` (p. ej. un motivo escrito por el usuario)
+    se agrega al final sin formatear.
+    """
+    row = conn.execute(
+        """
+        SELECT r.id, r.trade, r.client_id, p.user_id AS professional_user_id
+        FROM requests r JOIN professionals p ON p.id = r.professional_id
+        WHERE r.id = ?
+        """,
+        (request_id,),
+    ).fetchone()
+
+    if not row:
+        return
+
+    message = template.format(id=row["id"], trade=row["trade"] or "servicio")
+    if detail:
+        message += f" Motivo: {detail}"
+
+    user_id = row["client_id"] if to == "client" else row["professional_user_id"]
+    notify(conn, user_id, title, message, request_id)
+
+
+def get_notifications(user_id, limit=50):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+        (user_id, limit),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def count_unread_notifications(user_id):
+    conn = get_connection()
+    total = conn.execute(
+        "SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND is_read = 0",
+        (user_id,),
+    ).fetchone()["n"]
+    conn.close()
+    return total
+
+
+def mark_notification_read(notification_id, user_id):
+    conn = get_connection()
+    conn.execute(
+        "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?",
+        (notification_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def mark_all_notifications_read(user_id):
+    conn = get_connection()
+    conn.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
 

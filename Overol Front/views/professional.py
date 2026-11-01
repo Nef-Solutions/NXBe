@@ -24,6 +24,7 @@ from core.database import (
     cancel_request_by_professional,
     change_request_status,
     confirm_request_completion,
+    count_unread_notifications,
     deactivate_trade,
     get_claims_for_professional,
     get_client_rating_for_request,
@@ -46,6 +47,7 @@ from ui.components import (
     flash,
     hero,
     nav_bar,
+    notifications_page,
     section,
     security_note,
     stars,
@@ -79,11 +81,13 @@ def professional_dashboard(user):
         "professional_navigation",
         [
             "📋 Solicitudes",
+            "🔔 Notificaciones",
             "👤 Mi perfil",
             "📍 Cobertura",
             "🎓 Desarrollo profesional",
             "ℹ️ Quiénes somos",
         ],
+        badges={"🔔 Notificaciones": count_unread_notifications(user["id"])},
     )
 
     hero(
@@ -94,6 +98,9 @@ def professional_dashboard(user):
 
     if menu == "📋 Solicitudes":
         professional_requests(user, professional)
+
+    elif menu == "🔔 Notificaciones":
+        notifications_page(user)
 
     elif menu == "👤 Mi perfil":
         professional_profile(user, professional)
