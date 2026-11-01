@@ -1,7 +1,6 @@
 """Pantallas compartidas entre roles: perfil personal, perfil público del profesional y barra lateral."""
 
 from datetime import datetime
-from html import escape
 
 import streamlit as st
 
@@ -278,31 +277,21 @@ def go_to(nav_key, target):
 
 
 def category_buttons(nav_key, target):
-    """Categorías de oficios como botones que llevan a la lista de profesionales."""
-    cols = st.columns(len(OFICIOS_INFO))
+    """Categorías de oficios: cada tarjeta (ícono, oficio y descripción) es un botón que
+    lleva a la lista de profesionales. Estilo en style.css («st-key-cat_grid_»)."""
+    with st.container(key=f"cat_grid_{nav_key}"):
+        cols = st.columns(len(OFICIOS_INFO))
 
-    for col, (icon, trade, description) in zip(cols, OFICIOS_INFO):
-        with col:
-            st.markdown(
-                "".join(
-                    line.strip()
-                    for line in f"""
-                    <div class="card category-card">
-                        <div class="icon">{icon}</div>
-                        <h3>{escape(trade)}</h3>
-                        <div class="muted">{escape(description)}</div>
-                    </div>
-                    """.splitlines()
-                ),
-                unsafe_allow_html=True,
-            )
-            st.button(
-                "Ver profesionales",
-                key=f"cat_{nav_key}_{trade}",
-                on_click=_go_category,
-                args=(nav_key, target, trade),
-                use_container_width=True,
-            )
+        for col, (icon, trade, description) in zip(cols, OFICIOS_INFO):
+            with col:
+                # Los saltos de línea se muestran gracias a «white-space: pre-line» en el CSS
+                st.button(
+                    f"{icon}\n**{trade}**\n{description}",
+                    key=f"cat_{nav_key}_{trade}",
+                    on_click=_go_category,
+                    args=(nav_key, target, trade),
+                    use_container_width=True,
+                )
 
 
 def go_login_button(key, label="🔑 Iniciar sesión o registrarme"):

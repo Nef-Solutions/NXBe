@@ -283,6 +283,51 @@ def navbar(user=None):
     )
 
 
+def _set_section(nav_key, option):
+    # Callback: cambia de sección antes de redibujar la página.
+    st.session_state[nav_key] = option
+
+
+def nav_bar(nav_key, options, extra=None, badges=None):
+    """
+    Barra de secciones fija bajo la cabecera (estilo en style.css, «st-key-nav_bar_»).
+    Un botón por opción; el de la sección actual va en ámbar (type="primary").
+    La sección elegida se guarda en st.session_state[nav_key], igual que antes con st.radio,
+    por lo que los callbacks que cambian de sección (go_to, deeplinks) siguen funcionando.
+    `extra` es una función opcional que dibuja un botón más al final (p. ej. «Ingresar»).
+    `badges` ({opción: número}) agrega un contador a la etiqueta, p. ej. «🔔 Notificaciones (2)»;
+    el valor guardado sigue siendo la opción sin contador.
+    Devuelve la opción seleccionada.
+    """
+    if st.session_state.get(nav_key) not in options:
+        st.session_state[nav_key] = options[0]
+
+    current = st.session_state[nav_key]
+
+    with st.container(key=f"nav_bar_{nav_key}"):
+        cols = st.columns(len(options) + (1 if extra else 0))
+
+        for i, (col, option) in enumerate(zip(cols, options)):
+            with col:
+                count = (badges or {}).get(option)
+                # Con contador, espacios no separables: «🔔 Notificaciones (2)» queda en una línea
+                label = f"{option} ({count})".replace(" ", "\u00a0") if count else option
+                st.button(
+                    label,
+                    key=f"{nav_key}_btn_{i}",
+                    type="primary" if option == current else "secondary",
+                    on_click=_set_section,
+                    args=(nav_key, option),
+                    use_container_width=True,
+                )
+
+        if extra:
+            with cols[-1]:
+                extra()
+
+    return current
+
+
 # ------------------------------------------------------------
 # Botón «mantén presionado para confirmar» (componente propio)
 # ------------------------------------------------------------
@@ -312,23 +357,89 @@ def hold_to_confirm(key, label="Mantén presionado para confirmar", seconds=1.8)
 # Mensajes a soporte
 # ------------------------------------------------------------
 
+def notifications_page(user):
+    """Lista de notificaciones del usuario (cliente o profesional) con «marcar como leída»."""
+    from core.database import get_notifications, mark_all_notifications_read, mark_notification_read
+
+    section("🔔 Notificaciones")
+
+    items = get_notifications(user["id"])
+
+    if not items:
+        empty_state(
+            "🔔",
+            "No tienes notificaciones",
+            "Aquí verás los cambios de tus solicitudes y las respuestas de soporte.",
+        )
+        return
+
+    unread = sum(1 for item in items if not item["is_read"])
+
+    if unread:
+        # Los callbacks marcan antes de redibujar, así el contador de la barra se actualiza al tiro.
+        st.button(
+            f"Marcar todas como leídas ({unread})",
+            key="notif_read_all",
+            on_click=mark_all_notifications_read,
+            args=(user["id"],),
+        )
+
+    for item in items:
+        state = "notif-read" if item["is_read"] else "notif-unread"
+        new = "" if item["is_read"] else '<span class="badge badge-warn">Nueva</span> '
+
+        with st.container(border=True, key=f"notif_{item['id']}"):
+            st.markdown(
+                _html(
+                    f"""
+                    <div class="notif {state}">
+                        <div class="notif-title">{new}{escape(item["title"])}</div>
+                        <div>{escape(item["message"])}</div>
+                        <div class="when">{escape(item["created_at"])}</div>
+                    </div>
+                    """
+                ),
+                unsafe_allow_html=True,
+            )
+
+            if not item["is_read"]:
+                st.button(
+                    "Marcar como leída",
+                    key=f"notif_read_{item['id']}",
+                    on_click=mark_notification_read,
+                    args=(item["id"], user["id"]),
+                )
+
+
 def support_box(user, request_id, role_label):
     """
     Conversación con soporte (administrador) sobre una solicitud.
     `role_label` distingue las claves de widgets entre cliente y profesional.
     """
-    from core.constants import MAX_TEXTO
-    from core.database import add_support_message, audit, get_support_thread
+    from core.constants import MAX_ASUNTO, MAX_TEXTO
+    from core.database import add_support_message, audit, get_support_thread, get_support_ticket
 
     thread = get_support_thread(request_id, user["id"])
-    suffix = f" ({len(thread)} mensajes)" if thread else ""
+    ticket = get_support_ticket(request_id, user["id"])
 
-    with st.expander(f"💬 Contactar a soporte{suffix}"):
-        if not thread:
+    if ticket:
+        count = f"{len(thread)} mensaje" + ("" if len(thread) == 1 else "s")
+        title = f"💬 Ticket de soporte #{ticket['id']} · {ticket['status']} ({count})"
+    else:
+        title = "💬 Contactar a soporte"
+
+    with st.expander(title):
+        if not ticket:
             st.caption(
-                "Escribe aquí si tienes un problema con esta solicitud. "
+                "Abre un ticket si tienes un problema con esta solicitud. "
                 "El equipo de Overol te responderá en este mismo lugar."
             )
+        else:
+            st.markdown(f"**Asunto:** {escape(ticket['subject'])}", unsafe_allow_html=True)
+            status_badge(ticket["status"])
+
+            if ticket["status"] == "Resuelto":
+                st.caption("Este ticket está resuelto. Si escribes otro mensaje, se vuelve a abrir.")
 
         for message in thread:
             who = "Soporte Overol" if message["from_admin"] else "Tú"
@@ -346,6 +457,14 @@ def support_box(user, request_id, role_label):
             )
 
         with st.form(f"support_form_{role_label}_{request_id}", clear_on_submit=True):
+            subject = None
+            if not ticket:
+                subject = st.text_input(
+                    "Asunto",
+                    max_chars=MAX_ASUNTO,
+                    placeholder="Ej.: El profesional no llegó a la visita",
+                    key=f"support_subject_{role_label}_{request_id}",
+                )
             body = st.text_area(
                 "Tu mensaje para soporte",
                 max_chars=MAX_TEXTO,
@@ -353,18 +472,19 @@ def support_box(user, request_id, role_label):
                 key=f"support_text_{role_label}_{request_id}",
             )
             sent = st.form_submit_button(
-                "Enviar a soporte",
+                "Abrir ticket" if not ticket else "Enviar a soporte",
                 use_container_width=True,
                 key=f"support_send_{role_label}_{request_id}",
             )
 
         if sent:
-            ok, error = add_support_message(request_id, user["id"], body)
+            ok, error = add_support_message(request_id, user["id"], body, subject=subject)
 
             if not ok:
                 st.error(error)
             else:
                 audit(user["id"], "SUPPORT_MESSAGE", "requests", request_id,
-                      "Mensaje enviado a soporte")
-                flash("Mensaje enviado a soporte.")
+                      "Ticket de soporte abierto" if not ticket else "Mensaje enviado a soporte")
+                flash("Ticket abierto. Soporte te responderá aquí." if not ticket
+                      else "Mensaje enviado a soporte.")
                 st.rerun()

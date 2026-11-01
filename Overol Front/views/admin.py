@@ -15,6 +15,7 @@ from core.database import (
     get_verification_documents,
     mark_support_thread_read,
     now_str,
+    set_support_ticket_status,
 )
 from views.about import about_page
 from ui.components import (
@@ -22,6 +23,7 @@ from ui.components import (
     flash,
     hero,
     metric_card,
+    nav_bar,
     section,
     security_note,
     status_badge,
@@ -29,30 +31,28 @@ from ui.components import (
 
 
 def admin_dashboard(user):
+    menu = nav_bar(
+        "admin_navigation",
+        [
+            "📊 Indicadores",
+            "🪪 Verificación",
+            "👥 Usuarios",
+            "⭐ Moderación",
+            "🛠️ Reclamos",
+            "🎓 Contenidos",
+            "📜 Trazabilidad",
+            "💬 Soporte",
+            "ℹ️ Quiénes somos",
+        ],
+    )
+
     hero(
         "Panel de administración",
         "Gestiona verificaciones, usuarios, reputación, reclamos, contenidos "
         "y trazabilidad de las acciones críticas.",
     )
 
-    menu = st.radio(
-        "Navegación administrativa",
-        [
-            "📊 Resumen",
-            "🪪 Verificación",
-            "👥 Usuarios",
-            "⭐ Moderación",
-            "🛠️ Posventa",
-            "🎓 Contenidos",
-            "📜 Trazabilidad",
-            "💬 Soporte",
-            "ℹ️ Quiénes somos",
-        ],
-        horizontal=True,
-        key="admin_navigation",
-    )
-
-    if menu == "📊 Resumen":
+    if menu == "📊 Indicadores":
         admin_summary()
 
     elif menu == "🪪 Verificación":
@@ -64,7 +64,7 @@ def admin_dashboard(user):
     elif menu == "⭐ Moderación":
         admin_moderation(user)
 
-    elif menu == "🛠️ Posventa":
+    elif menu == "🛠️ Reclamos":
         admin_claims(user)
 
     elif menu == "🎓 Contenidos":
@@ -81,7 +81,7 @@ def admin_dashboard(user):
 
 
 def admin_summary():
-    section("📊 Resumen de la plataforma")
+    section("📊 Indicadores de la plataforma")
 
     conn = get_connection()
 
@@ -532,7 +532,7 @@ def admin_moderation(user):
 
 
 def admin_claims(user):
-    section("🛠️ Posventa y mediación")
+    section("🛠️ Reclamos y mediación")
 
     claims = get_all_claims()
 
@@ -855,34 +855,62 @@ def admin_audit(user):
                 )
 
 
+def _set_ticket_status(admin_id, request_id, user_id, status):
+    # Callback: cambia el estado del ticket antes de redibujar la bandeja.
+    if set_support_ticket_status(request_id, user_id, status):
+        audit(admin_id, "SUPPORT_TICKET_STATUS", "requests", request_id,
+              f"Ticket del usuario {user_id}: {status}")
+        flash(f"Ticket marcado como {status.lower()}." if status == "Resuelto" else "Ticket reabierto.")
+
+
 def admin_support(user):
-    """Bandeja mínima: mensajes que clientes y profesionales envían sobre sus solicitudes."""
-    section("💬 Mensajes de soporte")
+    """Bandeja de tickets de soporte que clientes y profesionales abren sobre sus solicitudes."""
+    section("💬 Tickets de soporte")
 
     threads = get_support_inbox()
 
     if not threads:
         empty_state(
             "💬",
-            "No hay mensajes de soporte",
-            "Aquí aparecerán los mensajes que clientes y profesionales envíen sobre sus solicitudes.",
+            "No hay tickets de soporte",
+            "Aquí aparecerán los tickets que clientes y profesionales abran sobre sus solicitudes.",
         )
         return
 
+    open_total = sum(1 for t in threads if t["ticket_status"] == "Abierto")
     unread_total = sum(t["unread"] or 0 for t in threads)
-    st.caption(f"{len(threads)} conversaciones · {unread_total} mensajes sin leer")
+    st.caption(
+        f"{open_total} abiertos · {len(threads) - open_total} resueltos · "
+        f"{unread_total} mensajes sin leer"
+    )
+
+    status_filter = st.radio(
+        "Mostrar",
+        ["Abiertos", "Resueltos", "Todos"],
+        horizontal=True,
+        key="support_filter",
+    )
+    wanted = {"Abiertos": "Abierto", "Resueltos": "Resuelto"}.get(status_filter)
+    threads = [t for t in threads if wanted is None or t["ticket_status"] == wanted]
+
+    if not threads:
+        st.info(f"No hay tickets {status_filter.lower()}.")
+        return
 
     for thread in threads:
         rid, uid = thread["request_id"], thread["user_id"]
         unread = thread["unread"] or 0
 
         label = (
-            f"Solicitud #{rid} · {thread['user_name']} ({ROLES.get(thread['user_role'], thread['user_role'])})"
+            f"Ticket #{thread['ticket_id']} · {thread['subject']} · {thread['ticket_status']}"
+            f" · Solicitud #{rid} · {thread['user_name']} ({ROLES.get(thread['user_role'], thread['user_role'])})"
             f" · {thread['trade'] or 'Servicio'} · {thread['request_status']}"
             + (f" · 🔴 {unread} sin leer" if unread else "")
         )
 
         with st.expander(label, expanded=bool(unread)):
+            st.markdown(f"**Asunto:** {escape(thread['subject'] or '')}", unsafe_allow_html=True)
+            status_badge(thread["ticket_status"])
             for message in get_support_thread(rid, uid):
                 who = "Soporte Overol" if message["from_admin"] else thread["user_name"]
                 css = "support-admin" if message["from_admin"] else "support-user"
@@ -926,3 +954,18 @@ def admin_support(user):
             if unread and st.button("Marcar como leído", key=f"support_read_{rid}_{uid}"):
                 mark_support_thread_read(rid, uid)
                 st.rerun()
+
+            if thread["ticket_status"] == "Abierto":
+                st.button(
+                    "✓ Marcar como resuelto",
+                    key=f"support_resolve_{rid}_{uid}",
+                    on_click=_set_ticket_status,
+                    args=(user["id"], rid, uid, "Resuelto"),
+                )
+            else:
+                st.button(
+                    "Reabrir ticket",
+                    key=f"support_reopen_{rid}_{uid}",
+                    on_click=_set_ticket_status,
+                    args=(user["id"], rid, uid, "Abierto"),
+                )

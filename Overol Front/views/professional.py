@@ -24,6 +24,7 @@ from core.database import (
     cancel_request_by_professional,
     change_request_status,
     confirm_request_completion,
+    count_unread_notifications,
     deactivate_trade,
     get_claims_for_professional,
     get_client_rating_for_request,
@@ -45,6 +46,8 @@ from ui.components import (
     empty_state,
     flash,
     hero,
+    nav_bar,
+    notifications_page,
     section,
     security_note,
     stars,
@@ -53,7 +56,6 @@ from ui.components import (
 )
 from views.about import about_page
 from ui.profile import profile_header, profile_reviews, profile_sections
-from views.shared import user_profile_page
 
 MAX_UPLOAD_MB = 5
 
@@ -75,30 +77,30 @@ def professional_dashboard(user):
         )
         return
 
+    menu = nav_bar(
+        "professional_navigation",
+        [
+            "📋 Solicitudes",
+            "🔔 Notificaciones",
+            "👤 Mi perfil",
+            "📍 Cobertura",
+            "🎓 Desarrollo profesional",
+            "ℹ️ Quiénes somos",
+        ],
+        badges={"🔔 Notificaciones": count_unread_notifications(user["id"])},
+    )
+
     hero(
         "Panel del profesional",
         "Gestiona solicitudes, perfil, disponibilidad, cobertura, reputación "
         "y capacitación profesional.",
     )
 
-    menu = st.radio(
-        "Navegación",
-        [
-            "📋 Solicitudes",
-            "👤 Mi perfil",
-            "📍 Cobertura",
-            "⭐ Reputación",
-            "🪪 Datos personales",
-            "🎓 Desarrollo profesional",
-            "🛠️ Posventa",
-            "ℹ️ Quiénes somos",
-        ],
-        horizontal=True,
-        key="professional_navigation",
-    )
-
     if menu == "📋 Solicitudes":
         professional_requests(user, professional)
+
+    elif menu == "🔔 Notificaciones":
+        notifications_page(user)
 
     elif menu == "👤 Mi perfil":
         professional_profile(user, professional)
@@ -106,17 +108,8 @@ def professional_dashboard(user):
     elif menu == "📍 Cobertura":
         professional_coverage(user, professional)
 
-    elif menu == "⭐ Reputación":
-        professional_reputation(professional)
-
-    elif menu == "🪪 Datos personales":
-        user_profile_page(user)
-
     elif menu == "🎓 Desarrollo profesional":
         professional_training(user, professional)
-
-    elif menu == "🛠️ Posventa":
-        professional_claims(user, professional)
 
     elif menu == "ℹ️ Quiénes somos":
         about_page()

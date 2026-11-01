@@ -7,7 +7,6 @@ from ui.components import format_professional_card, hero, metric_card, section
 from views.shared import (
     category_buttons,
     go_login_button,
-    go_to,
     open_professional,
 )
 
@@ -26,7 +25,7 @@ def _open_from_home(nav_key, prev_key, target, professional_id):
     open_professional(professional_id)
 
 
-def home_page(role, nav_key, prev_key, search_target, assistant_target, show_hero=True):
+def home_page(role, nav_key, prev_key, search_target, show_hero=True):
     """`role` es None para visitantes."""
     anonymous = role is None
     stats = get_platform_stats()
@@ -38,30 +37,6 @@ def home_page(role, nav_key, prev_key, search_target, assistant_target, show_her
             "Plomeros, electricistas, carpinteros, pintores y maestros verificados "
             "por Overol. Compara perfiles, solicita una visita y evalúa el servicio.",
         )
-
-    c1, c2, _ = st.columns([1, 1, 2])
-
-    with c1:
-        st.button(
-            "🔎 Buscar profesionales",
-            type="primary",
-            use_container_width=True,
-            key=f"home_search_{nav_key}",
-            on_click=go_to,
-            args=(nav_key, search_target),
-        )
-
-    with c2:
-        if anonymous:
-            go_login_button("go_login_hero", "Crear mi cuenta gratis")
-        else:
-            st.button(
-                "🤖 Probar el asistente",
-                use_container_width=True,
-                key=f"home_assistant_{nav_key}",
-                on_click=go_to,
-                args=(nav_key, assistant_target),
-            )
 
     # ---------------- Cifras reales ----------------
     cols = st.columns(4)

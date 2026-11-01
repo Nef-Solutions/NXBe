@@ -112,6 +112,59 @@ ESPECIALIDADES_POR_OFICIO = {
     ],
 }
 
+# Palabras clave por oficio: las usan el asistente (sugerir_especialidad) y la
+# búsqueda por palabra clave (Historia 4.16). El orden importa para el asistente.
+PALABRAS_CLAVE_OFICIO = {
+    "Gasfitería": [
+        "agua",
+        "fuga",
+        "filtración",
+        "filtracion",
+        "cañería",
+        "caneria",
+        "tubería",
+        "tuberia",
+        "llave",
+        "lavaplatos",
+        "baño",
+        "wc",
+        "inodoro",
+        "desagüe",
+        "desague",
+    ],
+    "Electricidad": [
+        "luz",
+        "enchufe",
+        "corriente",
+        "cable",
+        "eléctrico",
+        "electrico",
+        "electricidad",
+        "interruptor",
+        "automático",
+        "automatico",
+    ],
+    "Carpintería": [
+        "mueble",
+        "madera",
+        "puerta",
+        "mesa",
+        "silla",
+        "closet",
+        "clóset",
+        "estante",
+    ],
+    "Pintura": [
+        "pintar",
+        "pintura",
+        "pared",
+        "techo",
+        "color",
+        "mancha",
+        "pintado",
+    ],
+}
+
 # Historia 021: motivos para rechazar una solicitud
 MOTIVOS_RECHAZO = [
     "No disponible",
@@ -166,6 +219,10 @@ FRANJAS_HORARIAS = [
 
 # Máximo de caracteres en motivos de cancelación y mensajes a soporte
 MAX_TEXTO = 500
+
+# Tickets de soporte (uno por solicitud y usuario, sobre el hilo de mensajes)
+ESTADOS_TICKET = ["Abierto", "Resuelto"]
+MAX_ASUNTO = 100
 
 # Seguridad del inicio de sesión
 MAX_INTENTOS_LOGIN = 3
