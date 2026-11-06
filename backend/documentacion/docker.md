@@ -25,13 +25,28 @@ Redis está preparado para caché y futuras tareas asíncronas. La ejecución ac
 
 ## Comandos habituales
 
-Ejecutar desde la raíz del proyecto, donde está `docker-compose.yml`.
+Ejecutar desde `backend/`, donde están `docker-compose.yml` y `.env`:
+
+```powershell
+Set-Location backend
+```
 
 ### Iniciar servicios
 
 ```powershell
 docker compose up -d
 ```
+
+Si aparece un conflicto porque `/overol_db` ya está en uso, revisa el contenedor
+existente antes de eliminar nada:
+
+```powershell
+docker ps --filter name=overol_db
+docker exec overol_db pg_isready -U overol_user -d overol_db
+```
+
+No uses `docker compose down -v` para resolverlo, porque elimina los datos del
+volumen de PostgreSQL.
 
 ### Revisar estado
 
@@ -91,6 +106,11 @@ Después de iniciar el contenedor, aplicar migraciones:
 ```powershell
 python manage.py migrate
 ```
+
+La migración de catálogo crea automáticamente los oficios y especialidades base
+(Electricidad, Gasfitería y Cerrajería). Por eso quedan disponibles también en
+una instalación nueva realizada en otro computador; no es necesario copiar la
+base de datos ni ejecutar un script manual.
 
 ## Solución de problemas
 

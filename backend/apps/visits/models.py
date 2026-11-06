@@ -2,6 +2,7 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
+from django.db.models import Q
 
 from apps.authentication.models import ProfessionalProfile
 from apps.catalog.models import Specialty
@@ -23,11 +24,19 @@ class VisitRequest(models.Model):
 	specialty = models.ForeignKey(Specialty, on_delete=models.PROTECT, related_name='visit_requests')
 	problem_description = models.TextField()
 	tentative_schedule = models.CharField(max_length=255, blank=True)
+	visit_date = models.DateField(null=True, blank=True)
+	visit_time = models.CharField(max_length=40, blank=True)
+	commune = models.CharField(max_length=120, blank=True)
+	home_zone = models.ForeignKey('catalog.HomeZone', on_delete=models.PROTECT, null=True, blank=True, related_name='visit_requests')
 	visit_address = models.CharField(max_length=255)
 	status = models.CharField(max_length=30, choices=Status.choices, default=Status.PENDING)
 	rejection_reason = models.TextField(blank=True)
+	cancelled_by = models.CharField(max_length=20, blank=True)
+	cancel_reason = models.CharField(max_length=500, blank=True)
+	expires_at = models.DateTimeField(null=True, blank=True)
 	professional_confirmed_at = models.DateTimeField(null=True, blank=True)
 	client_confirmed_at = models.DateTimeField(null=True, blank=True)
+	completed_at = models.DateTimeField(null=True, blank=True)
 	created_at = models.DateTimeField(auto_now_add=True)
 	updated_at = models.DateTimeField(auto_now=True)
 
@@ -52,31 +61,50 @@ class VisitRequest(models.Model):
 		self.save(update_fields=['status', 'rejection_reason', 'updated_at'])
 
 	def cancel(self):
-		if self.status != self.Status.PENDING:
-			raise ValueError('Solo se pueden cancelar solicitudes pendientes.')
+		if self.status not in (self.Status.PENDING, self.Status.ACCEPTED):
+			raise ValueError('Solo se pueden cancelar solicitudes pendientes o aceptadas.')
 		self.status = self.Status.CANCELLED
 		self.save(update_fields=['status', 'updated_at'])
+
+	def cancel_by_professional(self, reason):
+		if self.status != self.Status.ACCEPTED:
+			raise ValueError('Solo se pueden cancelar solicitudes aceptadas.')
+		if not reason or len(reason) > 500:
+			raise ValueError('El motivo debe tener entre 1 y 500 caracteres.')
+		self.status = self.Status.CANCELLED
+		self.cancelled_by = 'PROFESSIONAL'
+		self.cancel_reason = reason
+		self.save(update_fields=['status', 'cancelled_by', 'cancel_reason', 'updated_at'])
 
 	def finish_by_professional(self):
 		if self.status != self.Status.ACCEPTED:
 			raise ValueError('Solo se pueden finalizar servicios aceptados.')
 		self.status = self.Status.PROFESSIONAL_FINISHED
 		self.professional_confirmed_at = timezone.now()
-		self.save(update_fields=['status', 'professional_confirmed_at', 'updated_at'])
+		update_fields = ['status', 'professional_confirmed_at', 'updated_at']
+		if self.client_confirmed_at:
+			self.status = self.Status.COMPLETED
+			self.completed_at = timezone.now()
+			update_fields.extend(['status', 'completed_at'])
+		self.save(update_fields=update_fields)
 
 	def confirm_by_client(self):
 		if self.status not in (self.Status.ACCEPTED, self.Status.PROFESSIONAL_FINISHED):
 			raise ValueError('El cliente solo puede confirmar un servicio activo.')
 		self.client_confirmed_at = timezone.now()
+		update_fields = ['status', 'client_confirmed_at', 'updated_at']
 		if self.professional_confirmed_at:
 			self.status = self.Status.COMPLETED
-		self.save(update_fields=['status', 'client_confirmed_at', 'updated_at'])
+			self.completed_at = timezone.now()
+			update_fields.append('completed_at')
+		self.save(update_fields=update_fields)
 
 
 class Rating(models.Model):
 	visit = models.ForeignKey(VisitRequest, on_delete=models.CASCADE, related_name='ratings')
 	author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='ratings_given')
 	target = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='ratings_received')
+	trade = models.ForeignKey('catalog.ProfessionalTrade', on_delete=models.SET_NULL, null=True, blank=True, related_name='ratings')
 	quality = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
 	punctuality = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
 	treatment = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
@@ -111,7 +139,7 @@ class SupportTicket(models.Model):
 		RESOLVED = 'RESOLVED', 'Resuelto'
 
 	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='support_tickets')
-	visit = models.ForeignKey(VisitRequest, on_delete=models.SET_NULL, null=True, blank=True, related_name='support_tickets')
+	visit = models.ForeignKey(VisitRequest, on_delete=models.PROTECT, null=True, blank=True, related_name='support_tickets')
 	subject = models.CharField(max_length=160)
 	description = models.TextField()
 	response = models.TextField(blank=True)

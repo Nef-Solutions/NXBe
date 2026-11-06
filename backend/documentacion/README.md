@@ -58,7 +58,7 @@ Por decisión del proyecto todavía no se implementan:
 4. Iniciar el servidor:
 
    ```powershell
-   python manage.py runserver
+   python manage.py runserver 127.0.0.1:8000
    ```
 
 La API queda disponible en `http://127.0.0.1:8000/`.
@@ -67,10 +67,11 @@ La API queda disponible en `http://127.0.0.1:8000/`.
 
 - [Resumen del estado frente al Definition of Done](estado-dod.md)
 - [Evaluación de la Definition of Done ajustada](evaluacion-dod-ajustada.md)
+- [Pedido de backend](../PEDIDO_BACKEND_PARA_NEFI.md)
 - [Arquitectura del backend](arquitectura.md)
 - [Operación de Docker](docker.md)
 - [Diagrama de base de datos](base-de-datos.md)
 - [Contrato de API](api.md)
-- [Acta de pruebas](pruebas.md)
+- [Reporte de pruebas del backend](reporte-pruebas-backend-overol.md)
 - [Instalación en otro computador](instalacion.md)
 - [Dependencias Python](requirements.txt)

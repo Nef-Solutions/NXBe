@@ -15,14 +15,21 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import include, path
+from django.views.generic import RedirectView
 from django.conf import settings
 from django.conf.urls.static import static
+from apps.authentication.views import VerificationDocumentView
+from apps.authentication.views import local_dashboard
 
 urlpatterns = [
+    path('', RedirectView.as_view(pattern_name='local-dashboard', permanent=False)),
     path('admin/', admin.site.urls),
+    path('local-dashboard/', local_dashboard, name='local-dashboard'),
     path('api/auth/', include('apps.authentication.urls')),
+    path('api/admin/verifications/<int:pk>/document/', VerificationDocumentView.as_view(), name='admin-verification-document'),
     path('api/catalog/', include('apps.catalog.urls')),
+    path('api/professionals/', include('apps.catalog.professional_urls')),
     path('api/', include('apps.visits.urls')),
 ]
 

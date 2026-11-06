@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 
-from .views import AccountStatusView, ChangePasswordView, LoginView, MeView, OverolPasswordResetView, OverolTokenObtainPairView, LogoutView, RegisterView, VerificationDecisionView, VerificationMessageListCreateView
+from .views import AccountStatusView, ChangePasswordView, LoginView, MeView, OverolPasswordResetView, OverolTokenObtainPairView, LogoutView, RegisterView, VerificationDecisionView, VerificationDocumentView, VerificationMessageListCreateView
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
@@ -16,4 +16,5 @@ urlpatterns = [
     path('verification/messages/', VerificationMessageListCreateView.as_view(), name='verification-messages'),
     path('verification/<int:pk>/<str:decision>/', VerificationDecisionView.as_view(), name='verification-decision'),
     path('admin/accounts/<int:pk>/status/', AccountStatusView.as_view(), name='account-status'),
+    path('admin/verifications/<int:pk>/document/', VerificationDocumentView.as_view(), name='verification-document'),
 ]

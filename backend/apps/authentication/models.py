@@ -1,7 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from .validators import sanitize_person_name, validate_rut_chileno
+from .storage import private_verification_storage
 
 class User(AbstractUser):
     class Role(models.TextChoices):
@@ -70,12 +72,14 @@ class ProfessionalProfile(models.Model):
     rut = models.CharField('RUT', max_length=12, unique=True)
     id_card_front = models.ImageField(
         'Foto frontal cédula', 
-        upload_to='verifications/id_front/', 
+        upload_to='verifications/id_front/',
+        storage=private_verification_storage,
         blank=True
     )
     id_card_back = models.ImageField(
         'Foto trasera cédula', 
-        upload_to='verifications/id_back/', 
+        upload_to='verifications/id_back/',
+        storage=private_verification_storage,
         blank=True
     )
     verification_status = models.CharField(
@@ -86,6 +90,17 @@ class ProfessionalProfile(models.Model):
     )
     visit_fee = models.DecimalField('Tarifa de visita ($CLP)', max_digits=10, decimal_places=0, default=0)
     rating_avg = models.DecimalField('Calificación promedio', max_digits=3, decimal_places=2, default=0.0)
+    bio = models.CharField(max_length=500, blank=True)
+    headline = models.CharField(max_length=160, blank=True)
+    contact_preference = models.CharField(max_length=30, blank=True)
+    certifications = models.FileField(upload_to='certifications/', blank=True)
+    work_days = models.JSONField(default=list, blank=True)
+    work_start = models.TimeField(null=True, blank=True)
+    work_end = models.TimeField(null=True, blank=True)
+    is_available = models.BooleanField(default=True)
+    coverage_communes = models.JSONField(default=list, blank=True)
+    service_latitude = models.DecimalField(max_digits=8, decimal_places=5, null=True, blank=True)
+    service_longitude = models.DecimalField(max_digits=8, decimal_places=5, null=True, blank=True)
 
     class Meta:
         verbose_name = 'Perfil Profesional'
@@ -95,6 +110,12 @@ class ProfessionalProfile(models.Model):
         super().clean()
         if self.rut:
             self.rut = validate_rut_chileno(self.rut)
+        if self.service_latitude is not None and not -90 <= self.service_latitude <= 90:
+            raise ValidationError({'service_latitude': 'La latitud debe estar entre -90 y 90.'})
+        if self.service_longitude is not None and not -180 <= self.service_longitude <= 180:
+            raise ValidationError({'service_longitude': 'La longitud debe estar entre -180 y 180.'})
+        if (self.service_latitude is None) != (self.service_longitude is None):
+            raise ValidationError('La latitud y la longitud deben enviarse juntas.')
 
     def save(self, *args, **kwargs):
         self.full_clean()

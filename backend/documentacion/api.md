@@ -6,7 +6,7 @@
 - Formato principal: `application/json`
 - Codificación: UTF-8.
 - Las rutas protegidas aceptan JWT mediante el encabezado `Authorization: Bearer <access_token>`.
-- Las sesiones Django se mantienen como compatibilidad para el panel y clientes existentes.
+- Las sesiones Django se mantienen como compatibilidad para clientes existentes.
 - Las peticiones con JWT no necesitan conservar cookies ni enviar CSRF.
 - Los identificadores son enteros.
 - Las fechas se entregan en formato ISO 8601.
@@ -89,7 +89,7 @@ Las credenciales incorrectas no indican qué dato falló. Después de tres inten
 
 ### `POST /api/auth/token/`
 
-Es el endpoint recomendado para el frontend. No requiere sesión y devuelve un token de acceso y uno de renovación:
+Es el endpoint recomendado para el consumidor de la API. No requiere sesión y devuelve un token de acceso y uno de renovación:
 
 ```json
 {
@@ -131,20 +131,20 @@ Comprueba que un token sea válido:
 
 ### Cómo consumir rutas protegidas
 
-El frontend debe enviar el token de acceso en cada petición protegida:
+El consumidor de la API debe enviar el token de acceso en cada petición protegida:
 
 ```http
-Authorization: Bearer eyJ...
+Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
 
 Cuando el access token expire, debe llamar a `/api/auth/token/refresh/`. Si el refresh token también expira, el usuario debe iniciar sesión nuevamente.
 
-El endpoint `/api/auth/login/` basado en sesión se conserva para compatibilidad, pero el frontend nuevo debe preferir `/api/auth/token/`.
+El endpoint `/api/auth/login/` basado en sesión se conserva para compatibilidad, pero los nuevos consumidores deben preferir `/api/auth/token/`.
 
 ### `POST /api/auth/logout/`
 
-Requiere sesión. No recibe cuerpo.
+Requiere sesión. Puede recibir `refresh` para invalidar el refresh token mediante la lista negra JWT.
 
 ### `GET /api/auth/me/`
 
@@ -201,7 +201,18 @@ Solo administradores. `decision` debe ser `approve` o `reject`. Para rechazar, `
 
 Solo administradores. `status` debe ser `ACTIVE`, `SUSPENDED`, `BLOCKED` o `DEACTIVATED`; `reason` siempre es obligatorio.
 
+### `GET /api/admin/verifications/{professional_id}/document/`
+
+Solo administradores autenticados con JWT. Devuelve el documento privado de verificación; usar `?side=front` o `?side=back`. Los archivos no se sirven desde `MEDIA_URL`.
+
 ## Catálogo
+
+### Endpoints de opciones
+
+- `GET /api/catalog/categories/`: oficios con palabras clave y zonas asociadas.
+- `GET /api/catalog/specialties/?category_id={id}`: especialidades, opcionalmente filtradas por oficio.
+- `GET /api/catalog/zones/`: zonas del hogar.
+- `GET /api/catalog/communes/`: comunas de cobertura disponibles.
 
 ### `GET /api/catalog/professionals/`
 
@@ -212,6 +223,10 @@ No requiere sesión. Parámetros opcionales:
 | `keyword` | string | Busca en nombre, especialidad, oficio y keywords. |
 | `zone_id` | integer | ID existente de `HomeZone`. |
 | `category_id` | integer | ID existente de `TradeCategory`. |
+| `specialty_id` | integer | ID existente de `Specialty`. |
+| `commune` | string | Comuna declarada en la cobertura del profesional. |
+| `latitude`, `longitude` | decimal | Punto de referencia del cliente; deben enviarse junto con `radius`. |
+| `radius` | integer | Solo `1000`, `5000` o `10000` metros; usa `ST_DWithin` en PostGIS. |
 | `page` | integer | Página, inicia en `1`. |
 | `page_size` | integer | Entre `1` y `50`; por defecto `20`. |
 
@@ -236,12 +251,15 @@ Todas las rutas siguientes requieren sesión.
   "professional": 12,
   "specialty": 4,
   "problem_description": "El enchufe de la cocina no funciona.",
-  "tentative_schedule": "Sábado por la mañana",
+  "visit_date": "2026-11-03",
+  "visit_time": "09:00 - 10:00",
   "visit_address": "Calle Ejemplo 123"
 }
 ```
 
 El profesional debe estar aprobado y la especialidad debe pertenecerle.
+
+La solicitud puede incluir `visit_date`, `visit_time`, `commune` y `home_zone`. El backend exige fecha y hora dentro de los días y horario configurados por el profesional. Las solicitudes pendientes vencen a los 30 días. Los datos de contacto de la contraparte solo se entregan en estado `ACCEPTED`, `PROFESSIONAL_FINISHED` o `COMPLETED` y únicamente a las partes de la solicitud.
 
 ### `POST /api/requests/{id}/{action}/`
 
@@ -252,14 +270,25 @@ Acciones válidas:
 | `accept` | Profesional de la solicitud | `{}` |
 | `reject` | Profesional de la solicitud | `{ "reason": "No tengo disponibilidad." }` |
 | `cancel` | Cliente de la solicitud | `{}` |
+| `cancel_professional` | Profesional de la solicitud | `{ "reason": "..." }` |
 | `finish` | Profesional de la solicitud | `{}` |
 | `confirm` | Cliente de la solicitud | `{}` |
 
 Estados principales: `PENDING`, `ACCEPTED`, `REJECTED`, `CANCELLED`, `EXPIRED`, `PROFESSIONAL_FINISHED` y `COMPLETED`.
 
+### Disponibilidad y oficios profesionales
+
+- `GET|PATCH /api/professionals/me/availability/`
+- `GET|POST /api/professionals/me/trades/`
+- `PATCH|DELETE /api/professionals/me/trades/{id}/`
+
+El borrado de un oficio es lógico: lo deja inactivo sin eliminar historial ni valoraciones.
+
 ## Calificaciones y posventa
 
 ### `POST /api/ratings/`
+
+Solo se acepta una valoración inmutable por usuario y servicio, durante los 30 días posteriores a `completed_at`. La puntuación se acumula en el promedio global del profesional, no por oficio.
 
 Solo después de completar la visita:
 
