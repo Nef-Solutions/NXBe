@@ -3,10 +3,11 @@
 from datetime import date, datetime
 from html import escape
 from math import ceil
+from pathlib import Path
 
 import streamlit as st
 
-from core.constants import ESTADOS_RECLAMO, MAX_TEXTO, ROLES, UPLOAD_DIR
+from core.constants import ESTADOS_RECLAMO, MAX_TEXTO, ROLES
 from core.database import (
     AUDIT_SYSTEM,
     add_support_message,
@@ -22,9 +23,11 @@ from core.database import (
     get_support_thread,
     get_verification_documents,
     get_verification_messages,
+    legacy_plain_documents,
     mark_support_thread_read,
     mark_verification_messages_read,
     now_str,
+    read_verification_document,
     set_support_ticket_status,
     set_user_active,
 )
@@ -183,6 +186,14 @@ def admin_verification(user):
     ).fetchall()
     conn.close()
 
+    legacy = legacy_plain_documents()
+    if legacy:
+        st.warning(
+            f"Hay {len(legacy)} archivo(s) antiguo(s) sin cifrar en documentos_verificacion/. "
+            "Ya tienen su copia cifrada, pero no se borraron automáticamente: "
+            "elimínalos cuando el equipo lo confirme."
+        )
+
     if not professionals:
         st.success("No existen solicitudes de verificación pendientes ni mensajes.")
         return
@@ -221,24 +232,11 @@ def admin_verification(user):
                 )
 
             for doc in documents:
-                file_path = UPLOAD_DIR / doc["stored_name"]
-                row = st.columns([4, 1])
-                row[0].caption(
-                    f"📄 {doc['document_type']} — {doc['original_name']} · {doc['uploaded_at']}"
-                )
-                if file_path.exists():
-                    row[1].download_button(
-                        "Descargar",
-                        data=file_path.read_bytes(),
-                        file_name=doc["original_name"],
-                        key=f"download_doc_{doc['id']}",
-                    )
-                else:
-                    row[1].caption("Archivo no disponible")
+                _document_row(user, doc)
 
             security_note(
-                "Los documentos solo son visibles para administradores. "
-                "En una implementación real deben almacenarse con control de acceso."
+                "Los documentos se guardan cifrados y solo los administradores pueden abrirlos. "
+                "Cada vez que se abre uno queda registrado en la bitácora."
             )
 
             _verification_thread_admin(user, professional)
@@ -285,6 +283,60 @@ def admin_verification(user):
                         "success" if approve else "warning",
                     )
                     st.rerun()
+
+
+def _open_document(admin_id, document_id):
+    # Callback: descifra y registra en la bitácora quién abrió el documento (una vez por apertura).
+    data, error = read_verification_document(document_id, admin_id, log=True)
+
+    if error:
+        flash(error, "error")
+    else:
+        st.session_state[f"_doc_open_{document_id}"] = True
+
+
+def _close_document(document_id):
+    st.session_state.pop(f"_doc_open_{document_id}", None)
+
+
+def _document_row(user, doc):
+    """Documento de verificación: se descifra solo cuando el administrador lo abre."""
+    row = st.columns([4, 1])
+    row[0].caption(
+        f"📄 {doc['document_type']} — {doc['original_name']} · {doc['uploaded_at']}"
+        + ("" if doc["encrypted"] else " · ⚠️ sin cifrar")
+    )
+
+    if not st.session_state.get(f"_doc_open_{doc['id']}"):
+        row[1].button(
+            "🔓 Ver documento",
+            key=f"view_doc_{doc['id']}",
+            on_click=_open_document,
+            args=(user["id"], doc["id"]),
+        )
+        return
+
+    data, error = read_verification_document(doc["id"], user["id"])
+
+    if error:
+        row[1].caption(error)
+        return
+
+    row[1].button("Ocultar", key=f"hide_doc_{doc['id']}", on_click=_close_document, args=(doc["id"],))
+
+    if Path(doc["original_name"]).suffix.lower() in (".png", ".jpg", ".jpeg"):
+        try:
+            st.image(data, caption=doc["original_name"])
+        except Exception:
+            # Un archivo con firma válida pero dañado no debe botar la pantalla
+            st.caption("No se puede mostrar la vista previa de esta imagen; descárgala para revisarla.")
+
+    st.download_button(
+        "Descargar",
+        data=data,
+        file_name=doc["original_name"],
+        key=f"download_doc_{doc['id']}",
+    )
 
 
 def _verification_thread_admin(user, professional):

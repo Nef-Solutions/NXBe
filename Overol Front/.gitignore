@@ -7,6 +7,9 @@ RESUMEN_PROYECTO_OVEROL.md
 overol.db
 *.db
 documentos_verificacion/
+# Claves de cifrado de documentos (la clave real vive fuera del repositorio)
+*.key
+overol_clave_documentos*
 
 # Backend (vive en su propio repositorio/carpeta)
 backend/

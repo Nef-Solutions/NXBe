@@ -18,6 +18,7 @@ from core.constants import (
     OFICIOS,
     UPLOAD_DIR,
 )
+from core.security import encrypt_document
 from core.database import (
     add_trade,
     audit,
@@ -597,10 +598,9 @@ def professional_verification_upload(user):
 
     section("🪪 Documentos para verificación")
 
-    st.warning(
-        "DEMO: los archivos se guardan localmente. "
-        "En producción deben almacenarse en un servicio seguro "
-        "con control de acceso."
+    st.info(
+        "🔐 Tus documentos se guardan cifrados. Solo el equipo de administración "
+        "de Overol puede abrirlos y cada acceso queda registrado."
     )
 
     docs = get_verification_documents(professional["id"])
@@ -648,16 +648,22 @@ def professional_verification_upload(user):
             )
             return
 
-        safe_name = f"{user['id']}_{secrets.token_hex(8)}{extension}"
-        (UPLOAD_DIR / safe_name).write_bytes(content)
+        try:
+            encrypted = encrypt_document(content)
+        except ImportError:
+            st.error("No se pudo guardar el documento: falta instalar el paquete cryptography.")
+            return
+
+        safe_name = f"{user['id']}_{secrets.token_hex(8)}{extension}.enc"
+        (UPLOAD_DIR / safe_name).write_bytes(encrypted)
 
         conn = get_connection()
 
         conn.execute(
             """
             INSERT INTO verification_documents
-            (professional_id, document_type, original_name, stored_name, uploaded_at)
-            VALUES (?, ?, ?, ?, ?)
+            (professional_id, document_type, original_name, stored_name, uploaded_at, encrypted)
+            VALUES (?, ?, ?, ?, ?, 1)
             """,
             (
                 professional["id"],

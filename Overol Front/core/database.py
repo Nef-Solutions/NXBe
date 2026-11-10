@@ -243,6 +243,7 @@ def init_db():
     )
 
     run_migrations(conn)
+    encrypt_legacy_documents(conn)
     seed_data(conn)
     normalize_existing_ruts(conn)
     migrate_trades(conn)
@@ -939,6 +940,101 @@ def get_verification_documents(professional_id):
     return rows
 
 
+def encrypt_legacy_documents(conn):
+    """
+    La primera vez cifra los documentos guardados sin cifrar: escribe «<archivo>.enc» y apunta
+    el registro a la copia cifrada. El original NO se borra (ver legacy_plain_documents).
+    Devuelve cuántos cifró.
+    """
+    rows = conn.execute(
+        "SELECT id, stored_name FROM verification_documents WHERE encrypted = 0"
+    ).fetchall()
+
+    if not rows:
+        return 0
+
+    try:
+        from core.security import encrypt_document
+    except ImportError:
+        print("[Overol] Falta el paquete cryptography: los documentos antiguos siguen sin cifrar.")
+        return 0
+
+    done = 0
+    for row in rows:
+        source = UPLOAD_DIR / row["stored_name"]
+
+        if not source.exists():
+            continue
+
+        target = f"{row['stored_name']}.enc"
+        (UPLOAD_DIR / target).write_bytes(encrypt_document(source.read_bytes()))
+        conn.execute(
+            "UPDATE verification_documents SET stored_name = ?, encrypted = 1 WHERE id = ?",
+            (target, row["id"]),
+        )
+        conn.execute(
+            "INSERT INTO audit_log (user_id, action, entity, entity_id, details, created_at) "
+            "VALUES (NULL, 'DOC_ENCRYPT', 'verification_documents', ?, ?, ?)",
+            (row["id"], f"Documento antiguo cifrado; el original {row['stored_name']} se conserva", now_str()),
+        )
+        done += 1
+
+    if done:
+        print(
+            f"[Overol] Se cifraron {done} documentos de verificación antiguos. "
+            f"Los originales sin cifrar se conservan en {UPLOAD_DIR} hasta que se decida borrarlos."
+        )
+
+    return done
+
+
+def legacy_plain_documents():
+    """Archivos sin cifrar que quedan en documentos_verificacion (originales ya migrados)."""
+    if not UPLOAD_DIR.exists():
+        return []
+    return sorted(p.name for p in UPLOAD_DIR.iterdir() if p.is_file() and p.suffix != ".enc")
+
+
+def read_verification_document(document_id, viewer_id, log=False):
+    """
+    Descifra un documento de verificación. Solo para administradores con la cuenta activa.
+    Con log=True deja en la bitácora quién lo vio. Devuelve (datos, "") o (None, mensaje).
+    """
+    conn = get_connection()
+    viewer = conn.execute("SELECT role, active FROM users WHERE id = ?", (viewer_id,)).fetchone()
+    doc = conn.execute("SELECT * FROM verification_documents WHERE id = ?", (document_id,)).fetchone()
+    conn.close()
+
+    if not viewer or viewer["role"] != "admin" or not viewer["active"]:
+        return None, "Solo el equipo de administración puede ver los documentos."
+
+    if not doc:
+        return None, "El documento no existe."
+
+    path = UPLOAD_DIR / doc["stored_name"]
+
+    if not path.exists():
+        return None, "Archivo no disponible."
+
+    data = path.read_bytes()
+
+    if doc["encrypted"]:
+        try:
+            from core.security import decrypt_document
+
+            data = decrypt_document(data)
+        except ImportError:
+            return None, "Falta instalar el paquete cryptography para abrir los documentos."
+        except Exception:
+            return None, "No se pudo descifrar el documento: la clave no coincide con la usada al guardarlo."
+
+    if log:
+        audit(viewer_id, "DOC_VIEW", "verification_documents", document_id,
+              f"Vio «{doc['document_type']}» ({doc['original_name']}) del profesional #{doc['professional_id']}")
+
+    return data, ""
+
+
 def get_verification_messages(professional_id):
     conn = get_connection()
     rows = conn.execute(
@@ -1145,6 +1241,8 @@ def run_migrations(conn):
     add_column_if_missing(conn, "user_sessions", "api_refresh", "TEXT DEFAULT ''")
     # Motivo de la última aprobación o rechazo de la verificación
     add_column_if_missing(conn, "professionals", "verification_reason", "TEXT DEFAULT ''")
+    # Documentos de verificación cifrados con Fernet (los antiguos se cifran al arrancar)
+    add_column_if_missing(conn, "verification_documents", "encrypted", "INTEGER NOT NULL DEFAULT 0")
 
     # Los hilos de soporte anteriores a los tickets pasan a ser tickets abiertos
     conn.execute(
