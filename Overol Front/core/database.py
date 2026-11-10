@@ -228,6 +228,17 @@ def init_db():
             FOREIGN KEY(request_id) REFERENCES requests(id),
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
+        CREATE TABLE IF NOT EXISTS verification_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            professional_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            from_admin INTEGER NOT NULL DEFAULT 0,
+            body TEXT NOT NULL,
+            read_by_admin INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(professional_id) REFERENCES professionals(id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
         """
     )
 
@@ -928,6 +939,141 @@ def get_verification_documents(professional_id):
     return rows
 
 
+def get_verification_messages(professional_id):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM verification_messages WHERE professional_id = ? ORDER BY id",
+        (professional_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def count_unread_verification_messages():
+    """Mensajes de profesionales sobre su verificación que el administrador no ha leído."""
+    conn = get_connection()
+    total = conn.execute(
+        "SELECT COUNT(*) AS n FROM verification_messages WHERE from_admin = 0 AND read_by_admin = 0"
+    ).fetchone()["n"]
+    conn.close()
+    return total
+
+
+def mark_verification_messages_read(professional_id):
+    conn = get_connection()
+    conn.execute(
+        "UPDATE verification_messages SET read_by_admin = 1 WHERE professional_id = ? AND from_admin = 0",
+        (professional_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _insert_verification_message(conn, professional_id, user_id, body, from_admin):
+    conn.execute(
+        """
+        INSERT INTO verification_messages
+        (professional_id, user_id, from_admin, body, read_by_admin, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (professional_id, user_id, 1 if from_admin else 0, body, 1 if from_admin else 0, now_str()),
+    )
+
+
+def add_verification_message(professional_id, user_id, body, from_admin=False):
+    """
+    Mensaje del hilo de verificación entre el profesional y el administrador (1 a 500 caracteres).
+    El profesional solo escribe en su propio hilo; si escribe el administrador, se notifica al
+    profesional. Devuelve (True, "") o (False, mensaje).
+    """
+    from core.constants import MAX_TEXTO
+
+    body = (body or "").strip()
+
+    if not body:
+        return False, "Escribe un mensaje."
+
+    if len(body) > MAX_TEXTO:
+        return False, f"El mensaje no puede superar los {MAX_TEXTO} caracteres."
+
+    conn = get_connection()
+    owner = conn.execute("SELECT user_id FROM professionals WHERE id = ?", (professional_id,)).fetchone()
+
+    if not owner or (not from_admin and owner["user_id"] != user_id):
+        conn.close()
+        return False, "No puedes escribir en esta verificación."
+
+    _insert_verification_message(conn, professional_id, user_id, body, from_admin)
+
+    if from_admin:
+        conn.execute(
+            "UPDATE verification_messages SET read_by_admin = 1 WHERE professional_id = ? AND from_admin = 0",
+            (professional_id,),
+        )
+        notify(conn, owner["user_id"], "Mensaje sobre tu verificación",
+               "El equipo de Overol te escribió sobre tu verificación de identidad. "
+               "Revísalo en «Mi perfil → Verificación».")
+
+    conn.commit()
+    conn.close()
+    return True, ""
+
+
+def decide_verification(admin_id, professional_id, approved, reason):
+    """
+    El administrador aprueba o rechaza una verificación «Pendiente» con un motivo (1 a 500
+    caracteres). El motivo queda en el hilo, en la bitácora y en la notificación al profesional.
+    Devuelve (True, "") o (False, mensaje).
+    """
+    from core.constants import MAX_TEXTO
+
+    reason = (reason or "").strip()
+
+    if not reason:
+        return False, "Escribe el motivo de la decisión."
+
+    if len(reason) > MAX_TEXTO:
+        return False, f"El motivo no puede superar los {MAX_TEXTO} caracteres."
+
+    status = "Aprobado" if approved else "Rechazado"
+
+    conn = get_connection()
+    cur = conn.execute(
+        """
+        UPDATE professionals
+        SET verified = ?, verification_status = ?, verification_reason = ?
+        WHERE id = ? AND verification_status = 'Pendiente'
+        """,
+        (1 if approved else 0, status, reason, professional_id),
+    )
+
+    if cur.rowcount != 1:
+        conn.close()
+        return False, "La verificación ya fue resuelta."
+
+    owner = conn.execute("SELECT user_id FROM professionals WHERE id = ?", (professional_id,)).fetchone()
+    label = "✓ Verificación aprobada" if approved else "✕ Verificación rechazada"
+    _insert_verification_message(conn, professional_id, admin_id, f"{label}. Motivo: {reason}", True)
+    conn.execute(
+        "UPDATE verification_messages SET read_by_admin = 1 WHERE professional_id = ? AND from_admin = 0",
+        (professional_id,),
+    )
+
+    if approved:
+        message = "Tu identidad fue verificada; ya apareces en las búsquedas."
+    else:
+        message = "Tu verificación fue rechazada. Puedes subir documentos actualizados para revisarla de nuevo."
+    notify(conn, owner["user_id"], "Verificación aprobada" if approved else "Verificación rechazada",
+           f"{message} Motivo: {reason}")
+
+    conn.commit()
+    conn.close()
+
+    audit(admin_id, "VERIFY_APPROVE" if approved else "VERIFY_REJECT", "professionals", professional_id,
+          f"Motivo: {reason}")
+    return True, ""
+
+
 def change_request_status(
     request_id,
     new_status,
@@ -997,6 +1143,8 @@ def run_migrations(conn):
     add_column_if_missing(conn, "requests", "cancel_reason", "TEXT DEFAULT ''")
     # Modo api: token de renovación del backend asociado a la sesión persistente
     add_column_if_missing(conn, "user_sessions", "api_refresh", "TEXT DEFAULT ''")
+    # Motivo de la última aprobación o rechazo de la verificación
+    add_column_if_missing(conn, "professionals", "verification_reason", "TEXT DEFAULT ''")
 
     # Los hilos de soporte anteriores a los tickets pasan a ser tickets abiertos
     conn.execute(

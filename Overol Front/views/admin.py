@@ -10,7 +10,10 @@ from core.constants import ESTADOS_RECLAMO, MAX_TEXTO, ROLES, UPLOAD_DIR
 from core.database import (
     AUDIT_SYSTEM,
     add_support_message,
+    add_verification_message,
     audit,
+    count_unread_verification_messages,
+    decide_verification,
     get_all_claims,
     get_audit_filters,
     get_audit_log,
@@ -18,7 +21,9 @@ from core.database import (
     get_support_inbox,
     get_support_thread,
     get_verification_documents,
+    get_verification_messages,
     mark_support_thread_read,
+    mark_verification_messages_read,
     now_str,
     set_support_ticket_status,
     set_user_active,
@@ -35,6 +40,7 @@ from ui.components import (
     section,
     security_note,
     status_badge,
+    thread_message,
 )
 
 
@@ -52,6 +58,7 @@ def admin_dashboard(user):
             "💬 Soporte",
             "ℹ️ Quiénes somos",
         ],
+        badges={"🪪 Verificación": count_unread_verification_messages()},
     )
 
     hero(
@@ -157,28 +164,37 @@ def admin_verification(user):
     section("🪪 Verificación de identidad y certificaciones")
 
     conn = get_connection()
-    pending = conn.execute(
+    professionals = conn.execute(
         """
         SELECT
             p.*,
             u.name,
             u.rut,
-            u.email
+            u.email,
+            (SELECT COUNT(*) FROM verification_messages m WHERE m.professional_id = p.id) AS messages,
+            (SELECT COUNT(*) FROM verification_messages m
+             WHERE m.professional_id = p.id AND m.from_admin = 0 AND m.read_by_admin = 0) AS unread
         FROM professionals p
         JOIN users u ON u.id = p.user_id
         WHERE p.verification_status = 'Pendiente'
-        ORDER BY p.id
+           OR EXISTS (SELECT 1 FROM verification_messages m WHERE m.professional_id = p.id)
+        ORDER BY p.verification_status != 'Pendiente', unread DESC, p.id
         """
     ).fetchall()
     conn.close()
 
-    if not pending:
-        st.success("No existen solicitudes de verificación pendientes.")
+    if not professionals:
+        st.success("No existen solicitudes de verificación pendientes ni mensajes.")
         return
 
-    for professional in pending:
+    pending_total = sum(1 for p in professionals if p["verification_status"] == "Pendiente")
+    unread_total = sum(p["unread"] for p in professionals)
+    st.caption(f"{pending_total} pendientes de revisión · {unread_total} mensajes sin leer")
+
+    for professional in professionals:
         pid = professional["id"]
         documents = get_verification_documents(pid)
+        pending = professional["verification_status"] == "Pendiente"
 
         with st.container(border=True):
             top = st.columns([4, 1])
@@ -225,52 +241,99 @@ def admin_verification(user):
                 "En una implementación real deben almacenarse con control de acceso."
             )
 
-            c1, c2 = st.columns(2)
+            _verification_thread_admin(user, professional)
 
-            with c1:
-                if st.button(
-                    "✓ Aprobar verificación",
-                    type="primary",
-                    use_container_width=True,
-                    key=f"admin_approve_{pid}",
-                ):
-                    _set_verification(user, pid, True)
+            if not pending:
+                st.caption(
+                    f"Decisión: {professional['verification_status']}"
+                    + (f" · Motivo: {professional['verification_reason']}"
+                       if professional["verification_reason"] else "")
+                )
+                continue
 
-            with c2:
-                if st.button(
-                    "✕ Rechazar verificación",
-                    use_container_width=True,
-                    key=f"admin_reject_{pid}",
-                ):
-                    _set_verification(user, pid, False)
+            # Aprobar o rechazar con motivo: va al hilo, a la bitácora y a la notificación
+            with st.form(f"verif_decision_form_{pid}", clear_on_submit=True):
+                reason = st.text_area(
+                    "Motivo de la decisión",
+                    max_chars=MAX_TEXTO,
+                    placeholder="Se le informa al profesional y queda en la bitácora.",
+                    key=f"verif_reason_{pid}",
+                )
+                c1, c2 = st.columns(2)
+                with c1:
+                    approve = st.form_submit_button(
+                        "✓ Aprobar verificación",
+                        type="primary",
+                        use_container_width=True,
+                        key=f"admin_approve_{pid}",
+                    )
+                with c2:
+                    reject = st.form_submit_button(
+                        "✕ Rechazar verificación",
+                        use_container_width=True,
+                        key=f"admin_reject_{pid}",
+                    )
+
+            if approve or reject:
+                ok, error = decide_verification(user["id"], pid, bool(approve), reason)
+
+                if not ok:
+                    st.error(error)
+                else:
+                    flash(
+                        "Profesional aprobado." if approve else "Profesional rechazado.",
+                        "success" if approve else "warning",
+                    )
+                    st.rerun()
 
 
-def _set_verification(user, professional_id, approved):
-    conn = get_connection()
-    conn.execute(
-        """
-        UPDATE professionals
-        SET verified = ?, verification_status = ?
-        WHERE id = ? AND verification_status = 'Pendiente'
-        """,
-        (1 if approved else 0, "Aprobado" if approved else "Rechazado", professional_id),
+def _verification_thread_admin(user, professional):
+    """Hilo de mensajes con el profesional sobre su verificación."""
+    pid = professional["id"]
+    unread = professional["unread"]
+    label = f"💬 Mensajes de verificación ({professional['messages']})" + (
+        f" · 🔴 {unread} sin leer" if unread else ""
     )
-    conn.commit()
-    conn.close()
 
-    audit(
-        user["id"],
-        "VERIFY",
-        "professionals",
-        professional_id,
-        "Verificación aprobada" if approved else "Verificación rechazada",
-    )
+    with st.expander(label, expanded=bool(unread)):
+        messages = get_verification_messages(pid)
 
-    flash(
-        "Profesional aprobado." if approved else "Profesional rechazado.",
-        "success" if approved else "warning",
-    )
-    st.rerun()
+        if not messages:
+            st.caption("Todavía no hay mensajes con este profesional.")
+
+        for message in messages:
+            thread_message(
+                "Equipo Overol" if message["from_admin"] else professional["name"],
+                message["created_at"],
+                message["body"],
+                message["from_admin"],
+            )
+
+        with st.form(f"verif_reply_form_{pid}", clear_on_submit=True):
+            body = st.text_area(
+                "Escribir al profesional",
+                max_chars=MAX_TEXTO,
+                key=f"verif_reply_text_{pid}",
+            )
+            sent = st.form_submit_button("Enviar mensaje", key=f"verif_reply_send_{pid}")
+
+        if sent:
+            ok, error = add_verification_message(pid, user["id"], body, from_admin=True)
+
+            if not ok:
+                st.error(error)
+            else:
+                audit(user["id"], "VERIFY_MESSAGE", "professionals", pid, "Mensaje al profesional")
+                flash("Mensaje enviado al profesional.")
+                st.rerun()
+
+        if unread:
+            st.button(
+                "Marcar como leído",
+                key=f"verif_read_{pid}",
+                on_click=mark_verification_messages_read,
+                args=(pid,),
+            )
 
 
 def admin_users(user):

@@ -411,6 +411,22 @@ def notifications_page(user):
                 )
 
 
+def thread_message(who, created_at, body, from_admin):
+    """Un mensaje de un hilo con soporte o con el equipo de verificación."""
+    css = "support-admin" if from_admin else "support-user"
+    st.markdown(
+        _html(
+            f"""
+            <div class="support-msg {css}">
+                <div class="who">{escape(who)} · {escape(created_at)}</div>
+                <div>{escape(body)}</div>
+            </div>
+            """
+        ),
+        unsafe_allow_html=True,
+    )
+
+
 def support_box(user, request_id, role_label):
     """
     Conversación con soporte (administrador) sobre una solicitud.

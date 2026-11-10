@@ -35,7 +35,9 @@ from core.database import (
     get_requests_for_professional,
     get_trade_ratings,
     get_trades,
+    add_verification_message,
     get_verification_documents,
+    get_verification_messages,
     now_str,
     reject_request,
     request_expires_at,
@@ -53,6 +55,7 @@ from ui.components import (
     stars,
     status_badge,
     support_box,
+    thread_message,
 )
 from views.about import about_page
 from ui.profile import profile_header, profile_reviews, profile_sections
@@ -181,9 +184,11 @@ def professional_profile(user, professional):
     if status == "Aprobado":
         st.success("✓ Tu identidad está verificada. Apareces en las búsquedas de los clientes.")
     elif status == "Rechazado":
+        reason = professional["verification_reason"]
         st.error(
             "Tu verificación fue rechazada. Sube documentos actualizados "
             "para enviarla nuevamente a revisión."
+            + (f" Motivo: {reason}" if reason else "")
         )
     elif docs:
         st.info("⏳ Tus documentos están en revisión por el equipo de Overol.")
@@ -213,6 +218,7 @@ def professional_profile(user, professional):
 
     with tab_verification:
         professional_verification_upload(user)
+        _verification_messages(user, professional)
 
     security_note(
         "El RUT, el domicilio y los documentos de identidad son información sensible. "
@@ -687,6 +693,48 @@ def professional_verification_upload(user):
         st.session_state["_upload_round"] = upload_round + 1
         flash("Documento enviado para revisión administrativa.")
         st.rerun()
+
+
+def _verification_messages(user, professional):
+    """Hilo con el equipo de Overol sobre la verificación (máx. 500 caracteres por mensaje)."""
+    pid = professional["id"]
+
+    section("💬 Mensajes con el equipo de Overol")
+
+    messages = get_verification_messages(pid)
+
+    if not messages:
+        st.caption(
+            "¿Tienes dudas sobre tu verificación? Escríbenos aquí; "
+            "te responderemos en este mismo lugar."
+        )
+
+    for message in messages:
+        thread_message(
+            "Equipo Overol" if message["from_admin"] else "Tú",
+            message["created_at"],
+            message["body"],
+            message["from_admin"],
+        )
+
+    with st.form(f"verif_msg_form_{pid}", clear_on_submit=True):
+        body = st.text_area(
+            "Tu mensaje",
+            max_chars=MAX_TEXTO,
+            placeholder="Ej.: Subí mi cédula por ambos lados, ¿falta algo?",
+            key=f"verif_msg_text_{pid}",
+        )
+        sent = st.form_submit_button("Enviar mensaje", key=f"verif_msg_send_{pid}")
+
+    if sent:
+        ok, error = add_verification_message(pid, user["id"], body)
+
+        if not ok:
+            st.error(error)
+        else:
+            audit(user["id"], "VERIFY_MESSAGE", "professionals", pid, "Mensaje al administrador")
+            flash("Mensaje enviado al equipo de Overol.")
+            st.rerun()
 
 
 def _request_card(user, professional, request):
