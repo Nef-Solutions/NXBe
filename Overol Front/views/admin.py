@@ -1,14 +1,19 @@
 """Vistas del rol Administrador (RF 001, 008, 009)."""
 
+from datetime import date, datetime
 from html import escape
+from math import ceil
 
 import streamlit as st
 
 from core.constants import ESTADOS_RECLAMO, MAX_TEXTO, ROLES, UPLOAD_DIR
 from core.database import (
+    AUDIT_SYSTEM,
     add_support_message,
     audit,
     get_all_claims,
+    get_audit_filters,
+    get_audit_log,
     get_connection,
     get_support_inbox,
     get_support_thread,
@@ -16,7 +21,10 @@ from core.database import (
     mark_support_thread_read,
     now_str,
     set_support_ticket_status,
+    set_user_active,
 )
+
+AUDIT_PAGE_SIZE = 20
 from views.about import about_page
 from ui.components import (
     empty_state,
@@ -325,45 +333,29 @@ def admin_users(user):
                 else "Reactivar"
             )
 
-            if st.button(
-                action_label,
-                key=f"toggle_user_{account['id']}",
-            ):
-                new_status = 0 if account["active"] else 1
+            # Motivo obligatorio: queda en la bitácora y se informa al usuario
+            with st.expander(f"{action_label} cuenta"):
+                with st.form(f"user_status_form_{account['id']}", clear_on_submit=True):
+                    reason = st.text_area(
+                        f"Motivo para {action_label.lower()} la cuenta",
+                        max_chars=MAX_TEXTO,
+                        placeholder="Se registra en la bitácora y se le muestra al usuario.",
+                        key=f"user_reason_{account['id']}",
+                    )
+                    sent = st.form_submit_button(
+                        action_label,
+                        type="primary",
+                        key=f"toggle_user_{account['id']}",
+                    )
 
-                conn = get_connection()
+                if sent:
+                    ok, error = set_user_active(user["id"], account["id"], not account["active"], reason)
 
-                conn.execute(
-                    """
-                    UPDATE users
-                    SET active = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        new_status,
-                        account["id"],
-                    ),
-                )
-
-                conn.commit()
-                conn.close()
-
-                audit(
-                    user["id"],
-                    "UPDATE",
-                    "users",
-                    account["id"],
-                    (
-                        "Usuario suspendido"
-                        if new_status == 0
-                        else "Usuario reactivado"
-                    ),
-                )
-
-                flash(
-                    "Estado de usuario actualizado."
-                )
-                st.rerun()
+                    if not ok:
+                        st.error(error)
+                    else:
+                        flash("Cuenta suspendida." if account["active"] else "Cuenta reactivada.")
+                        st.rerun()
 
 
 def admin_moderation(user):
@@ -801,58 +793,120 @@ def admin_training(user):
             st.rerun()
 
 
+def _audit_reset_page():
+    # Callback: al cambiar un filtro se vuelve a la primera página.
+    st.session_state["audit_page"] = 1
+
+
+def _audit_go(delta):
+    st.session_state["audit_page"] = max(1, st.session_state.get("audit_page", 1) + delta)
+
+
 def admin_audit(user):
-    section("📜 Trazabilidad de información")
+    section("📜 Bitácora de auditoría")
 
     st.write(
-        "Registro de acciones relevantes realizadas dentro del prototipo."
+        "Registro de las acciones relevantes realizadas dentro de la plataforma."
     )
 
-    conn = get_connection()
+    users, actions, first, last = get_audit_filters()
 
-    logs = conn.execute(
-        """
-        SELECT
-            a.*,
-            u.name AS user_name,
-            u.role AS user_role
-        FROM audit_log a
-        LEFT JOIN users u ON u.id = a.user_id
-        ORDER BY a.id DESC
-        LIMIT 200
-        """
-    ).fetchall()
-
-    conn.close()
-
-    if not logs:
+    if not first:
         st.info(
             "Todavía no existen registros de trazabilidad."
         )
         return
 
+    user_options = {"Todos": None, "Sistema (acciones automáticas)": AUDIT_SYSTEM}
+    for account in users:
+        label = f"{account['name']} · {ROLES.get(account['role'], account['role'])} · #{account['id']}"
+        user_options[label] = account["id"]
+
+    first_day = datetime.strptime(first[:10], "%Y-%m-%d").date()
+    last_day = max(datetime.strptime(last[:10], "%Y-%m-%d").date(), date.today())
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        who = st.selectbox("Usuario", list(user_options), key="audit_user", on_change=_audit_reset_page)
+
+    with c2:
+        action = st.selectbox(
+            "Tipo de acción", ["Todas", *actions], key="audit_action", on_change=_audit_reset_page
+        )
+
+    with c3:
+        dates = st.date_input(
+            "Rango de fechas",
+            value=(first_day, last_day),
+            min_value=first_day,
+            max_value=last_day,
+            format="DD/MM/YYYY",
+            key="audit_dates",
+            on_change=_audit_reset_page,
+        )
+
+    # Mientras se elige el rango, el calendario entrega solo la fecha inicial
+    date_from = dates[0] if len(dates) > 0 else None
+    date_to = dates[1] if len(dates) > 1 else None
+    filters = (user_options[who], None if action == "Todas" else action, date_from, date_to)
+
+    page = st.session_state.get("audit_page", 1)
+    logs, total = get_audit_log(*filters, limit=AUDIT_PAGE_SIZE, offset=(page - 1) * AUDIT_PAGE_SIZE)
+    pages = max(1, ceil(total / AUDIT_PAGE_SIZE))
+
+    if page > pages:
+        page = st.session_state["audit_page"] = pages
+        logs, total = get_audit_log(*filters, limit=AUDIT_PAGE_SIZE, offset=(page - 1) * AUDIT_PAGE_SIZE)
+
+    st.caption(f"{total} registros · página {page} de {pages}")
+
+    if not logs:
+        st.info("No hay registros con esos filtros.")
+        return
+
     for log in logs:
+        target = f" #{log['entity_id']}" if log["entity_id"] else ""
+        who_name = log["user_name"] or "Sistema"
+        role = ROLES.get(log["user_role"], log["user_role"]) if log["user_role"] else "Automático"
+        detail = f'<div class="audit-detail">{escape(log["details"])}</div>' if log["details"] else ""
+
         with st.container(border=True):
-            st.write(
-                f"**{log['created_at']}** · "
-                f"{log['action']} · "
-                f"{log['entity']}"
+            st.markdown(
+                "".join(
+                    line.strip()
+                    for line in f"""
+                    <div class="audit-entry">
+                        <div><b>{escape(log["created_at"])}</b> · {escape(log["action"])} · {escape(log["entity"])}{target}</div>
+                        <div class="who">Usuario: {escape(who_name)} · Rol: {escape(role)}</div>
+                        {detail}
+                    </div>
+                    """.splitlines()
+                ),
+                unsafe_allow_html=True,
             )
 
-            st.caption(
-                f"Usuario: {log['user_name'] or 'Sistema'} "
-                f"· Rol: {log['user_role'] or 'N/A'}"
-            )
+    p1, _, p3 = st.columns([1, 2, 1])
 
-            if log["entity_id"]:
-                st.write(
-                    f"ID de entidad: {log['entity_id']}"
-                )
+    with p1:
+        st.button(
+            "← Más recientes",
+            key="audit_prev",
+            disabled=page <= 1,
+            on_click=_audit_go,
+            args=(-1,),
+            use_container_width=True,
+        )
 
-            if log["details"]:
-                st.write(
-                    f"Detalle: {log['details']}"
-                )
+    with p3:
+        st.button(
+            "Más antiguos →",
+            key="audit_next",
+            disabled=page >= pages,
+            on_click=_audit_go,
+            args=(1,),
+            use_container_width=True,
+        )
 
 
 def _set_ticket_status(admin_id, request_id, user_id, status):

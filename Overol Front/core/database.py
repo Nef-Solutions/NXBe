@@ -1996,6 +1996,119 @@ def mark_support_thread_read(request_id, user_id):
 
 
 # ============================================================
+# ADMINISTRACIÓN: BITÁCORA Y ESTADO DE CUENTAS
+# ============================================================
+
+AUDIT_SYSTEM = "sistema"  # filtro de la bitácora: acciones sin usuario (p. ej. vencimientos)
+
+
+def _audit_where(user_id=None, action=None, date_from=None, date_to=None):
+    clauses, params = [], []
+
+    if user_id == AUDIT_SYSTEM:
+        clauses.append("a.user_id IS NULL")
+    elif user_id is not None:
+        clauses.append("a.user_id = ?")
+        params.append(user_id)
+
+    if action:
+        clauses.append("a.action = ?")
+        params.append(action)
+
+    if date_from:
+        clauses.append("a.created_at >= ?")
+        params.append(f"{date_from:%Y-%m-%d} 00:00:00")
+
+    if date_to:
+        clauses.append("a.created_at <= ?")
+        params.append(f"{date_to:%Y-%m-%d} 23:59:59")
+
+    return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
+
+
+def get_audit_log(user_id=None, action=None, date_from=None, date_to=None, limit=20, offset=0):
+    """
+    Bitácora filtrada y paginada, de la más reciente a la más antigua.
+    `user_id` puede ser un id, AUDIT_SYSTEM o None (todos). Devuelve (filas, total).
+    """
+    where, params = _audit_where(user_id, action, date_from, date_to)
+
+    conn = get_connection()
+    total = conn.execute(f"SELECT COUNT(*) AS n FROM audit_log a{where}", params).fetchone()["n"]
+    rows = conn.execute(
+        f"""
+        SELECT a.*, u.name AS user_name, u.role AS user_role
+        FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+        {where}
+        ORDER BY a.id DESC
+        LIMIT ? OFFSET ?
+        """,
+        [*params, limit, offset],
+    ).fetchall()
+    conn.close()
+    return rows, total
+
+
+def get_audit_filters():
+    """Opciones de los filtros: usuarios con registros, acciones y rango de fechas existentes."""
+    conn = get_connection()
+    users = conn.execute(
+        """
+        SELECT DISTINCT u.id, u.name, u.role
+        FROM audit_log a JOIN users u ON u.id = a.user_id
+        ORDER BY u.name
+        """
+    ).fetchall()
+    actions = [r["action"] for r in conn.execute("SELECT DISTINCT action FROM audit_log ORDER BY action")]
+    span = conn.execute("SELECT MIN(created_at) AS first, MAX(created_at) AS last FROM audit_log").fetchone()
+    conn.close()
+    return users, actions, span["first"], span["last"]
+
+
+def set_user_active(admin_id, target_id, active, reason):
+    """
+    El administrador suspende (active=False) o reactiva (active=True) una cuenta con un motivo
+    obligatorio (1 a 500 caracteres). Registra la acción en la bitácora y notifica al usuario.
+    Devuelve (True, "") o (False, mensaje).
+    """
+    from core.constants import MAX_TEXTO
+
+    reason = (reason or "").strip()
+
+    if not reason:
+        return False, "Escribe el motivo."
+
+    if len(reason) > MAX_TEXTO:
+        return False, f"El motivo no puede superar los {MAX_TEXTO} caracteres."
+
+    if admin_id == target_id:
+        return False, "No puedes cambiar el estado de tu propia cuenta."
+
+    conn = get_connection()
+    cur = conn.execute(
+        "UPDATE users SET active = ? WHERE id = ? AND active = ?",
+        (1 if active else 0, target_id, 0 if active else 1),
+    )
+
+    if cur.rowcount != 1:
+        conn.close()
+        return False, "La cuenta ya tenía ese estado."
+
+    if active:
+        title, verb = "Cuenta reactivada", "reactivó"
+    else:
+        title, verb = "Cuenta suspendida", "suspendió"
+
+    notify(conn, target_id, title, f"El equipo de Overol {verb} tu cuenta. Motivo: {reason}")
+    conn.commit()
+    conn.close()
+
+    audit(admin_id, "USER_REACTIVATE" if active else "USER_SUSPEND", "users", target_id,
+          f"Motivo: {reason}")
+    return True, ""
+
+
+# ============================================================
 # NOTIFICACIONES DENTRO DE LA PLATAFORMA
 # ============================================================
 

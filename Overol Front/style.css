@@ -554,6 +554,11 @@ button[data-baseweb="tab"][aria-selected="true"] { font-weight: 800; }
 .notif .when { color: var(--muted); font-size: 12px; margin-top: 4px; }
 .notif-read { opacity: 0.75; }
 
+/* ---------- Bitácora de auditoría ---------- */
+.audit-entry { font-size: 14px; line-height: 1.5; color: var(--slate); }
+.audit-entry .who { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.audit-detail { margin-top: 4px; }
+
 /* ---------- Contacto habilitado ---------- */
 .contact-box {
     background: #F0FDF4;
