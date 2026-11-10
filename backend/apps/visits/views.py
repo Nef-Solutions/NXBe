@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from apps.authentication.models import ProfessionalProfile
 
 from .models import AdminAuditLog, AfterSalesClaim, ContentProgress, Notification, ProfessionalContent, SupportTicket, VisitRequest
+from .services import expire_pending_requests
 from .serializers import ClaimSerializer, ContentProgressSerializer, ContentSerializer, NotificationSerializer, RatingSerializer, RejectSerializer, TicketSerializer, VisitRequestSerializer
 
 
@@ -22,6 +23,7 @@ class VisitListCreateView(ListCreateAPIView):
 	serializer_class = VisitRequestSerializer
 
 	def get_queryset(self):
+		expire_pending_requests()
 		user = self.request.user
 		if user.role == user.Role.PROFESSIONAL:
 			return VisitRequest.objects.filter(professional__user=user).select_related('client', 'professional', 'specialty')
@@ -46,8 +48,17 @@ class VisitActionView(APIView):
 				notify(visit.client, 'Solicitud rechazada', data.validated_data['reason'], visit)
 			elif action == 'cancel':
 				self._client_only(request, visit)
+				if visit.status not in (VisitRequest.Status.PENDING, VisitRequest.Status.ACCEPTED):
+					raise ValueError('Solo se pueden cancelar solicitudes pendientes o aceptadas.')
 				visit.cancel()
+				visit.cancelled_by = 'CLIENT'
+				visit.cancel_reason = request.data.get('reason', '').strip()[:500]
+				visit.save(update_fields=['cancelled_by', 'cancel_reason', 'updated_at'])
 				notify(visit.professional.user, 'Solicitud cancelada', 'El cliente canceló la solicitud.', visit)
+			elif action == 'cancel_professional':
+				self._professional_only(request, visit)
+				visit.cancel_by_professional(request.data.get('reason', '').strip())
+				notify(visit.client, 'Solicitud cancelada por el profesional', visit.cancel_reason, visit)
 			elif action == 'finish':
 				self._professional_only(request, visit)
 				visit.finish_by_professional()
@@ -64,7 +75,7 @@ class VisitActionView(APIView):
 			if 'permisos' in str(error):
 				raise PermissionDenied(str(error))
 			return Response({'detail': str(error)}, status=status.HTTP_409_CONFLICT)
-		return Response(VisitRequestSerializer(visit).data)
+		return Response(VisitRequestSerializer(visit, context={'request': request}).data)
 
 	@staticmethod
 	def _professional_only(request, visit):
@@ -88,6 +99,8 @@ class ClaimListCreateView(ListCreateAPIView):
 
 	def get_queryset(self):
 		user = self.request.user
+		if user.role == user.Role.ADMIN:
+			return AfterSalesClaim.objects.all()
 		return AfterSalesClaim.objects.filter(visit__client=user) | AfterSalesClaim.objects.filter(visit__professional__user=user)
 
 
@@ -133,7 +146,9 @@ class TicketListCreateView(ListCreateAPIView):
 	serializer_class = TicketSerializer
 
 	def get_queryset(self):
-		return SupportTicket.objects.filter(user=self.request.user)
+		queryset = SupportTicket.objects.all() if self.request.user.role == self.request.user.Role.ADMIN else SupportTicket.objects.filter(user=self.request.user)
+		status_filter = self.request.query_params.get('status')
+		return queryset.filter(status=status_filter) if status_filter else queryset
 
 
 class TicketResolveView(APIView):

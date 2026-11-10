@@ -1,6 +1,11 @@
 # Diagrama de base de datos
 
-Este diagrama representa el modelo implementado en las migraciones actuales. Las áreas de pago, chatbot y geolocalización real no aparecen porque están fuera del alcance solicitado.
+Este diagrama representa los modelos implementados en las migraciones actuales.
+Puedes visualizarlo directamente en VS Code con la vista previa de Markdown
+(`Ctrl+Shift+V`) o pegar el bloque Mermaid en un visor compatible.
+Las áreas de pago y chatbot no aparecen porque están fuera del alcance actual.
+La geolocalización sí está implementada mediante las coordenadas de servicio
+del perfil profesional y la búsqueda por radio.
 
 ```mermaid
 erDiagram
@@ -12,9 +17,11 @@ erDiagram
     SPECIALTY }o--o{ PROFESSIONAL_PROFILE : habilita
     PROFESSIONAL_PROFILE ||--o{ PROFESSIONAL_TRADE : declara
     TRADE_CATEGORY ||--o{ PROFESSIONAL_TRADE : clasifica
+    PROFESSIONAL_TRADE ||--o{ RATING : corresponde
     USER ||--o{ VISIT_REQUEST : solicita
     PROFESSIONAL_PROFILE ||--o{ VISIT_REQUEST : recibe
     SPECIALTY ||--o{ VISIT_REQUEST : utiliza
+    HOME_ZONE ||--o{ VISIT_REQUEST : ubica
     VISIT_REQUEST ||--o{ RATING : recibe
     USER ||--o{ RATING : escribe
     USER ||--o{ RATING : recibe
@@ -37,6 +44,14 @@ erDiagram
         datetime locked_until
         datetime privacy_policy_accepted_at
     }
+    VERIFICATION_CASE_MESSAGE {
+        bigint id PK
+        bigint professional_id FK
+        text message
+        text admin_response
+        datetime resolved_at
+        datetime created_at
+    }
     PROFESSIONAL_PROFILE {
         bigint id PK
         bigint user_id FK
@@ -44,6 +59,9 @@ erDiagram
         string verification_status
         decimal visit_fee
         decimal rating_avg
+        boolean is_available
+        decimal service_latitude
+        decimal service_longitude
     }
     HOME_ZONE {
         bigint id PK
@@ -72,6 +90,7 @@ erDiagram
         bigint client_id FK
         bigint professional_id FK
         bigint specialty_id FK
+        bigint home_zone_id FK
         string status
         text problem_description
         string tentative_schedule
@@ -82,13 +101,14 @@ erDiagram
         bigint visit_id FK
         bigint author_id FK
         bigint target_id FK
+        bigint trade_id FK
         smallint quality
         smallint punctuality
         smallint treatment
     }
     AFTER_SALES_CLAIM {
         bigint id PK
-        bigint visit_id FK UK
+        bigint visit_id FK, UK
         bigint client_id FK
         string status
     }

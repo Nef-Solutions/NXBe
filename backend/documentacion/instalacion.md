@@ -79,7 +79,7 @@ En Linux o macOS se puede usar el mismo comando con `python3` si `python` no apu
 
 ## 6. Levantar servicios de infraestructura
 
-Desde la raíz del proyecto:
+Desde la carpeta `backend/` (la misma que contiene `manage.py` y `docker-compose.yml`):
 
 ```powershell
 docker compose up -d
@@ -97,6 +97,23 @@ docker compose ps
 ```
 
 Los servicios deben aparecer en estado `running` o `healthy` según la versión de Docker.
+
+Si aparece `Conflict. The container name "/overol_db" is already in use`, Docker ya
+tiene un contenedor de PostgreSQL creado con ese nombre. Comprueba si está funcionando:
+
+```powershell
+docker ps --filter name=overol_db
+docker exec overol_db pg_isready -U overol_user -d overol_db
+```
+
+Si el contenedor está detenido y corresponde a este proyecto, se puede iniciar con:
+
+```powershell
+docker start overol_db
+```
+
+No uses `docker compose down -v` para resolver el conflicto: la opción `-v` elimina
+el volumen y los datos de la base de datos.
 
 ## 7. Aplicar la base de datos
 

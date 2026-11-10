@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     # Librerías de terceros
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
 
     # Módulos del Monolito Modular de Overol
@@ -76,16 +77,19 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 
 # Database (PostgreSQL en Docker)
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB', 'overol_db'),
-        'USER': os.getenv('POSTGRES_USER', 'overol_user'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'overol_password'),
-        'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
-        'PORT': os.getenv('POSTGRES_PORT', '5432'),
+if os.getenv('DATABASE_ENGINE') == 'sqlite3':
+    DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': os.getenv('SQLITE_NAME', ':memory:')}}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('POSTGRES_DB', 'overol_db'),
+            'USER': os.getenv('POSTGRES_USER', 'overol_user'),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'overol_password'),
+            'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
+            'PORT': os.getenv('POSTGRES_PORT', '5432'),
+        }
     }
-}
 
 
 # Password validation
@@ -111,6 +115,7 @@ STATIC_URL = 'static/'
 # Configuración de archivos subidos por usuarios (Media - Cédulas y perfiles)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+PRIVATE_MEDIA_ROOT = os.getenv('PRIVATE_MEDIA_ROOT', os.path.join(BASE_DIR, 'private_media'))
 
 
 # Modelo de usuario personalizado
@@ -129,7 +134,11 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
+
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
 
 
 # Configuración CORS para desarrollo con Frontend

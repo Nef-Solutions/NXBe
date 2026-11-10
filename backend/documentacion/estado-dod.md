@@ -47,8 +47,8 @@ Este documento es un resumen ejecutivo. La evaluación completa está en [evalua
 
 - `python manage.py check` aprobado.
 - Migraciones aplicadas correctamente.
-- 13 pruebas unitarias aprobadas.
+- 33 pruebas backend aprobadas.
 - Comando `python manage.py expire_visit_requests` ejecutado correctamente.
 - Compilación sintáctica aprobada.
 
-El detalle de las pruebas está en [pruebas.md](pruebas.md).
+El detalle de las pruebas está en [reporte-pruebas-backend-overol.md](reporte-pruebas-backend-overol.md).

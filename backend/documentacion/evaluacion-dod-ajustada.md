@@ -7,7 +7,7 @@
 
 ### Parcial
 
-Hay código relacionado y alguna parte funciona, pero todavía falta completar uno o más puntos de la historia. Por ejemplo, puede faltar el frontend, una validación, una prueba, una regla de seguridad o una integración.
+Hay código relacionado y alguna parte funciona, pero todavía falta completar uno o más puntos de la historia. Por ejemplo, puede faltar una validación, una prueba, una regla de seguridad o una integración.
 
 ### Pendiente
 
@@ -38,11 +38,11 @@ Hay 38 historias dentro del alcance actual. De ellas, 35 tienen una base impleme
 
 | ID | Historia | Estado | Explicación |
 | :--- | :--- | :---: | :--- |
-| 4.1 | Registrar clientes | Parcial | El registro funciona con correo, contraseña, RUT, datos personales y privacidad. Faltan pruebas completas y frontend. |
+| 4.1 | Registrar clientes | Parcial | El registro funciona con correo, contraseña, RUT, datos personales y privacidad. Faltan pruebas completas e integración. |
 | 4.2 | Registrar profesionales | Parcial | Se crea un profesional pendiente de verificación. Falta completar oficios, certificaciones y sus validaciones. |
 | 4.3 | Aceptar privacidad | Parcial | Se guarda la versión y fecha aceptadas. Falta publicar los textos legales desde la API. |
-| 4.4 | Iniciar sesión | Parcial | Funciona con correo y contraseña y hay bloqueo después de tres fallos. Falta la redirección del frontend. |
-| 4.5 | Cerrar sesión | Parcial | Existe el cierre mediante Django. Falta la interfaz y la comprobación desde navegador. |
+| 4.4 | Iniciar sesión | Parcial | Funciona con correo y contraseña y hay bloqueo después de tres fallos. Falta completar la integración del flujo. |
+| 4.5 | Cerrar sesión | Parcial | Existe el cierre mediante Django. Falta completar la validación de integración. |
 | 4.6 | Recuperar contraseña | Parcial | Existe la solicitud sin revelar si el correo está registrado. Falta configurar el envío real de correos. |
 | 4.7 | Ver perfil cliente | Parcial | Se puede consultar el perfil propio. Falta incluir historial, solicitudes, puntuación y foto. |
 | 4.8 | Editar perfil cliente | Parcial | Se cambian teléfono, dirección y comuna; los datos sensibles quedan protegidos. Falta la foto y más pruebas. |
@@ -56,7 +56,7 @@ Hay 38 historias dentro del alcance actual. De ellas, 35 tienen una base impleme
 | 4.11 | Resolver verificaciones | Parcial | El administrador puede aprobar o rechazar con motivo, notificar y auditar. Falta recuperar perfiles eliminados. |
 | 4.12 | Ver perfil profesional | Parcial | Existe perfil público con oficios, experiencia, tarifa y opiniones. La suscripción es Fase 2; faltan disponibilidad y cobertura. |
 | 4.13 | Editar perfil profesional | Parcial | Existe el modelo de oficios con experiencia, certificación declarada y baja lógica. Falta el endpoint de edición y validar archivos. |
-| 4.14 | Navegar como cliente | Parcial | Se puede buscar y abrir perfiles sin datos privados. Falta frontend, menú y diseño responsive. El chatbot es Fase 2. |
+| 4.14 | Navegar como cliente | Parcial | Se puede buscar y abrir perfiles sin datos privados. Falta completar reglas de navegación e integración. El chatbot es Fase 2. |
 
 ### 3.3 Catálogo y búsqueda
 
@@ -85,7 +85,7 @@ Hay 38 historias dentro del alcance actual. De ellas, 35 tienen una base impleme
 | 4.25 | Aceptar solicitud | Parcial | El profesional puede aceptar solicitudes pendientes y se avisa al cliente. Falta liberar contactos de forma controlada. |
 | 4.26 | Rechazar solicitud | Parcial | El profesional rechaza indicando un motivo y se notifica al cliente. |
 | 4.27 | Vencer solicitudes | Parcial | Un comando marca como vencidas las solicitudes de más de 30 días. Falta programar su ejecución automática. |
-| 4.28 | Finalizar servicio | Parcial | El profesional puede indicar que terminó el servicio. Falta completar interfaz y notificaciones. |
+| 4.28 | Finalizar servicio | Parcial | El profesional puede indicar que terminó el servicio. Falta completar notificaciones y validaciones de integración. |
 | 4.29 | Confirmar servicio | Parcial | El servicio se completa después de ambas confirmaciones. Faltan recordatorios y revisión posterior. |
 
 ### 3.6 Calificaciones, capacitación y soporte
@@ -137,12 +137,12 @@ Se revisaron los modelos, migraciones, serializers, vistas y URLs de `authentica
 
 - [Contrato de API](api.md).
 - [Diagrama de base de datos](base-de-datos.md).
-- [Acta de pruebas](pruebas.md).
+- [Reporte de pruebas del backend](reporte-pruebas-backend-overol.md).
 
-Las pruebas registradas incluyen `python manage.py check`, migraciones, 13 pruebas unitarias, compilación Python y el comando de vencimiento.
+Las pruebas registradas incluyen `python manage.py check`, migraciones, 33 pruebas backend, compilación Python y el comando de vencimiento.
 
 ## 6. Conclusión
 
 El backend tiene una base funcional para cuentas, catálogo, solicitudes, servicios, calificaciones, posventa, soporte, contenidos y administración básica.
 
-Todavía no se puede declarar completamente terminado porque faltan partes funcionales, pruebas API, frontend, controles de seguridad, despliegue y evidencias que pertenecen al DoD técnico.
+Todavía no se puede declarar completamente terminado porque faltan partes funcionales, pruebas API, controles de seguridad, despliegue y evidencias que pertenecen al DoD técnico.
