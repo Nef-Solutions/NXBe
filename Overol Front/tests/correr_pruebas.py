@@ -1,14 +1,13 @@
-"""Corre las pruebas AppTest del front en modo local y api, cada una sobre una copia temporal.
+"""Corre las pruebas AppTest del front, cada una sobre una copia temporal y contra la
+imitación del backend (backend_simulado.py).
 
 Uso (desde «Overol Front»):
-    python tests/correr_pruebas.py                     # todas, en local y api
-    python tests/correr_pruebas.py busqueda tickets    # solo esas (prueba_<nombre>.py)
-    python tests/correr_pruebas.py --modo local        # un solo modo
-    python tests/correr_pruebas.py --base-nueva        # sin copiar overol.db (base demo desde cero)
-    python tests/correr_pruebas.py -v                  # muestra cada verificación
+    python tests/correr_pruebas.py                    # todas
+    python tests/correr_pruebas.py busqueda login     # solo esas (prueba_<nombre>.py)
+    python tests/correr_pruebas.py -v                 # muestra cada verificación
 
-Nunca usa el overol.db real (trabaja sobre una copia) ni la clave real de los documentos
-(cada copia tiene su propia clave de prueba). Las copias se borran al terminar.
+La copia no lleva overol.db, claves, .env ni documentos: si una pantalla visible tocara
+SQLite, la prueba lo detecta. Las copias se borran al terminar.
 """
 
 import argparse
@@ -22,26 +21,23 @@ from pathlib import Path
 TESTS = Path(__file__).resolve().parent
 FRONT = TESTS.parent
 NO_COPIAR = shutil.ignore_patterns(
-    "tests", "__pycache__", "documentos_verificacion", "*.key", ".env", ".env.*", "*.bak"
+    "tests", "__pycache__", "documentos_verificacion", "overol.db*", "*.key", ".env", ".env.*", "*.bak"
 )
 
 
-def correr(suite, mode, base_nueva, verbose):
+def correr(suite, verbose):
     tmp = Path(tempfile.mkdtemp(prefix="overol_pruebas_"))
     copy = tmp / "front"
 
     try:
         shutil.copytree(FRONT, copy, ignore=NO_COPIAR)
-        if base_nueva:
-            for db_file in copy.glob("overol.db*"):
-                db_file.unlink()
 
         env = dict(os.environ)
-        env.pop("OVEROL_CLAVE_DOCUMENTOS", None)
+        for key in ("OVEROL_CLAVE_DOCUMENTOS", "OVEROL_CLAVE_DOCUMENTOS_ARCHIVO", "OVEROL_BACKEND"):
+            env.pop(key, None)
         env.update(
-            OVEROL_BACKEND=mode,
             OVEROL_STREAMLIT_STARTED="1",
-            OVEROL_CLAVE_DOCUMENTOS_ARCHIVO=str(tmp / "clave_pruebas.key"),
+            OVEROL_API_URL="http://backend-simulado.invalid/api/",
             PYTHONIOENCODING="utf-8",
             PYTHONDONTWRITEBYTECODE="1",
         )
@@ -76,8 +72,6 @@ def main():
     sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("pruebas", nargs="*", help="nombres sin «prueba_» ni «.py» (por defecto, todas)")
-    parser.add_argument("--modo", choices=["local", "api", "ambos"], default="ambos")
-    parser.add_argument("--base-nueva", action="store_true", help="no copia overol.db: parte de la base demo")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -90,18 +84,15 @@ def main():
     if missing:
         sys.exit(f"No existen: {', '.join(missing)}")
 
-    modes = ["local", "api"] if args.modo == "ambos" else [args.modo]
-    origin = "base demo nueva" if args.base_nueva or not (FRONT / "overol.db").exists() else "copia de overol.db"
-    print(f"Pruebas sobre una {origin} - modos: {', '.join(modes)}\n")
+    print("Pruebas contra el backend simulado\n")
 
     all_ok = True
-    for mode in modes:
-        for suite in suites:
-            ok, oks, fails = correr(suite, mode, args.base_nueva, args.verbose)
-            all_ok = all_ok and ok
-            mark = "[OK]" if ok else "[X] "
-            detail = f"{oks} OK" + (f", {fails} FALLO(S)" if fails else "") + ("" if ok or fails else " - se cayó")
-            print(f"{mark} {suite.stem.removeprefix('prueba_'):<22} {mode:<6} {detail}")
+    for suite in suites:
+        ok, oks, fails = correr(suite, args.verbose)
+        all_ok = all_ok and ok
+        mark = "[OK]" if ok else "[X] "
+        detail = f"{oks} OK" + (f", {fails} FALLO(S)" if fails else "") + ("" if ok or fails else " - se cayó")
+        print(f"{mark} {suite.stem.removeprefix('prueba_'):<22} {detail}")
 
     print("\nTODO OK" if all_ok else "\nHAY FALLOS")
     sys.exit(0 if all_ok else 1)

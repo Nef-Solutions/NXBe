@@ -1,31 +1,26 @@
-"""Navegación de los 4 roles: opciones y orden de la barra, todas las secciones abren y
-cada rol solo ve lo suyo."""
+"""Navegación de los 4 roles con las pantallas pendientes de la API ocultas
+(PANTALLAS_PENDIENTES_API), perfil abierto que se cierra al cambiar de sección y cerrar sesión."""
 
-from comun import check, keys, md, new_app, plain, preparar, terminar, usuarios
+from comun import backend, calls, check, keys, md, nav_labels, new_app, preparar, terminar, texts
 
 front = preparar()
-U = usuarios(front)
 
+from core.constants import PANTALLAS_PENDIENTES_API  # noqa: E402
+
+CLIENTE, PRO, ADMIN = "cliente1@demo.overol.cl", "profesional1@demo.overol.cl", "admin@demo.overol.cl"
 ROLES = {
-    "visitante": (None, "visitor_navigation",
-                  ["🏠 Inicio", "🔎 Profesionales", "ℹ️ Quiénes somos"]),
-    "cliente": (U["cliente"], "client_navigation",
-                ["🏠 Inicio", "🔎 Buscar profesionales", "📋 Mis solicitudes", "🛠️ Mis reclamos",
-                 "🔔 Notificaciones", "👤 Mi perfil", "ℹ️ Quiénes somos"]),
-    "profesional": (U["carlos"], "professional_navigation",
-                    ["📋 Solicitudes", "🔔 Notificaciones", "👤 Mi perfil", "📍 Cobertura", "🛠️ Reclamos",
-                     "🎓 Desarrollo profesional", "ℹ️ Quiénes somos"]),
-    "admin": (U["admin"], "admin_navigation",
-              ["📊 Indicadores", "🪪 Verificación", "👥 Usuarios", "⭐ Moderación", "🛠️ Reclamos",
-               "🎓 Contenidos", "📜 Trazabilidad", "💬 Soporte", "ℹ️ Quiénes somos"]),
+    "visitante": (None, "visitor_navigation", ["🏠 Inicio", "🔎 Profesionales", "ℹ️ Quiénes somos"]),
+    "cliente": (CLIENTE, "client_navigation",
+                ["🏠 Inicio", "🔎 Buscar profesionales", "👤 Mi perfil", "ℹ️ Quiénes somos"]),
+    "profesional": (PRO, "professional_navigation", ["👤 Mi perfil", "ℹ️ Quiénes somos"]),
+    "admin": (ADMIN, "admin_navigation", ["ℹ️ Quiénes somos"]),
 }
-PRIVATE = ("Mis solicitudes", "Verificación", "Usuarios", "Trazabilidad", "Mis reclamos")
 
-for role, (uid, nav, options) in ROLES.items():
-    at = new_app(front, uid)
-    labels = [plain(at.button(key=f"{nav}_btn_{i}").label) for i in range(len(options))]
-    check(not at.exception and labels == options and f"{nav}_btn_{len(options)}" not in keys(at, nav),
-          f"[{role}] {len(options)} opciones en el orden esperado")
+for role, (email, nav, options) in ROLES.items():
+    at = new_app(front, email)
+    check(not at.exception and nav_labels(at, nav) == options, f"[{role}] barra: {', '.join(options)}")
+    hidden = PANTALLAS_PENDIENTES_API.get(role, {})
+    check(not any(h in nav_labels(at, nav) for h in hidden), f"[{role}] oculta las {len(hidden)} pantallas pendientes")
 
     others = [n for r, (_, n, _) in ROLES.items() if r != role]
     check(not any(keys(at, n + "_btn_") for n in others), f"[{role}] no aparece la barra de otro rol")
@@ -37,18 +32,14 @@ for role, (uid, nav, options) in ROLES.items():
     check(ok, f"[{role}] todas las secciones abren sin excepción")
     check(not any("Asistente" in (b.label or "") for b in at.button), f"[{role}] sin «Asistente»")
 
-# ---------- Visitante: solo secciones públicas y botón para ingresar ----------
+# ---------- Visitante ----------
 at = new_app(front)
 check("go_login_top" in keys(at, "go_login"), "[visitante] botón «Ingresar o registrarme» en la barra")
-check(not any(any(p in (b.label or "") for p in PRIVATE) for b in at.button),
-      "[visitante] no ve secciones privadas")
 check(not any(b.key == "logout_button" for b in at.button), "[visitante] sin «Cerrar sesión»")
 
 # ---------- Cliente: perfil abierto se cierra al cambiar de sección ----------
-from core import database as db  # noqa: E402
-
-PID = db.get_professional_by_user(U["carlos"])["id"]
-at = new_app(front, U["cliente"])
+PID = backend.professional(PRO)["id"]
+at = new_app(front, CLIENTE)
 at.button(key="client_navigation_btn_1").click().run()
 at.button(key=f"client_view_prof_{PID}").click().run()
 check(any(b.key == "back_from_profile" for b in at.button), "[cliente] abre el perfil de un profesional")
@@ -57,17 +48,27 @@ at.button(key="client_navigation_btn_1").click().run()
 check(not any(b.key == "back_from_profile" for b in at.button), "[cliente] al cambiar de sección el perfil se cierra")
 at.button(key=f"client_view_prof_{PID}").click().run()
 at.button(key="back_from_profile").click().run()
-check(not at.exception and any(k.startswith("client_view_prof_") for k in keys(at, "client_view_prof_")),
-      "[cliente] «← Volver» regresa a la lista")
+check(not at.exception and keys(at, "client_view_prof_"), "[cliente] «← Volver» regresa a la lista")
 
-# ---------- Cerrar sesión: vuelve a la barra del visitante ----------
-at = new_app(front, U["cliente"])
+# ---------- Profesional: estado de verificación desde /auth/me/ ----------
+at = new_app(front, PRO)
+check("Tu identidad está verificada" in texts(at), "[profesional] aprobado: lo dice su perfil")
+at = new_app(front, "pendiente@demo.overol.cl")
+check("pendiente de verificación" in texts(at), "[profesional] pendiente: aviso de revisión")
+
+# ---------- Admin: mientras el panel se conecta, se usa /admin/ de Django ----------
+at = new_app(front, ADMIN)
+check("/admin/" in texts(at) and not keys(at, "admin_approve_"), "[admin] aviso del administrador de Django")
+
+# ---------- Cerrar sesión ----------
+at = new_app(front, CLIENTE)
+refresh = at.session_state["api_refresh"]
 at.button(key="logout_button").click().run()
 check(not at.exception and keys(at, "visitor_navigation_btn_") and not keys(at, "client_navigation_btn_"),
       "[cliente] «Cerrar sesión» vuelve a la vista de visitante")
-
-# ---------- Admin: Indicadores es la sección inicial ----------
-at = new_app(front, U["admin"])
-check("Indicadores de la plataforma" in md(at), "[admin] parte en Indicadores")
+check(any(b == {"refresh": refresh} for _, _, b in calls("POST", "/auth/logout/"))
+      and refresh in backend.blacklist, "[cliente] cerrar sesión anula el token en el backend (POST /auth/logout/)")
+check("api_access" not in at.session_state and "me" not in at.session_state, "[cliente] no quedan tokens ni datos en la sesión")
+check("Clara Pérez" not in md(at), "[cliente] tras cerrar sesión no se muestran datos de la cuenta")
 
 terminar()

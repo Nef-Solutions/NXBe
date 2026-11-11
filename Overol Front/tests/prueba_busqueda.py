@@ -1,28 +1,23 @@
 """Búsqueda por palabra clave (historia 4.16): mayúsculas y tildes, varias palabras,
 filtros, «Limpiar búsqueda» y visitante sin nombres."""
 
-from comun import check, md, new_app, preparar, terminar, usuarios
+from comun import backend, card_ids as ids, check, md, new_app, preparar, terminar
 
 front = preparar()
-U = usuarios(front)
 
-from core import database as db  # noqa: E402
-
-CARLOS = db.get_professional_by_user(U["carlos"])["id"]  # Gasfitería
-DANIEL = db.get_professional_by_user(U["daniel"])["id"]  # Electricidad
-MARCELO = db.get_professional_by_user(U["marcelo"])["id"]  # Carpintería y pintura
+CLIENTE = "cliente1@demo.overol.cl"
+CARLOS = backend.professional("profesional1@demo.overol.cl")["id"]  # Gasfitería
+DANIEL = backend.professional("profesional2@demo.overol.cl")["id"]  # Electricidad
+MARCELO = backend.professional("profesional3@demo.overol.cl")["id"]  # Carpintería y pintura
 NAMES = ["Carlos Muñoz", "Daniel Soto", "Marcelo Rojas"]
+U = {"cliente": CLIENTE}
 
 
-def open_search(user_id):
-    at = new_app(front, user_id)
-    nav = "client_navigation" if user_id else "visitor_navigation"
+def open_search(email):
+    at = new_app(front, email)
+    nav = "client_navigation" if email else "visitor_navigation"
     at.button(key=f"{nav}_btn_1").click().run()
     return at
-
-
-def ids(at):
-    return {int(b.key.rsplit("_", 1)[1]) for b in at.button if b.key and b.key.startswith("client_view_prof_")}
 
 
 def search(user_id, text):
@@ -95,7 +90,7 @@ at, found = search(None, "cañería")
 check(found == {CARLOS} and "Carlos" not in md(at), "[visitante] busca por oficio y la tarjeta sigue anónima")
 at.button(key=f"client_view_prof_{CARLOS}").click().run()
 page = md(at)
-check(not at.exception and not any(n in page for n in NAMES) and "carlos@overol.cl" not in page
+check(not at.exception and not any(n in page for n in NAMES) and "profesional1@demo.overol.cl" not in page
       and not any(b.key == f"send_request_{CARLOS}" for b in at.button)
       and any(b.key == f"go_login_profile_{CARLOS}" for b in at.button),
       "[visitante] el perfil público no muestra nombre ni contacto y pide ingresar para solicitar")
