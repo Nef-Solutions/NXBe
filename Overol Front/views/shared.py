@@ -1,10 +1,14 @@
 """Pantallas compartidas entre roles: perfil personal, perfil público del profesional y barra lateral."""
 
+from datetime import date
+
 import streamlit as st
 
-from core import api_client, catalog_api
+from core import api_client, catalog_api, requests_api
 from core.constants import (
     COMUNAS,
+    FRANJAS_HORARIAS,
+    MAX_TEXTO,
     OFICIOS_INFO,
     PREFERENCIAS_CONTACTO,
     ROLES,
@@ -358,17 +362,104 @@ def professional_profile_client(viewer, professional_id):
     with right:
         st.markdown("### 📅 Solicitar visita")
 
-        # Etapa C: aquí vuelve el formulario, enviando la solicitud a POST /api/requests/
-        st.info(
-            "**Disponible pronto.** Muy luego podrás solicitar una visita a este "
-            "profesional directamente desde su perfil."
-        )
+        _request_form(viewer, professional)
 
         security_note(
             "Los datos de contacto del profesional se habilitan cuando "
             "acepta tu solicitud. El RUT, el domicilio y los documentos de "
             "verificación nunca se muestran."
         )
+
+
+def _request_form(viewer, professional):
+    """Historia 010: solicitud de visita (POST /api/requests/). El backend valida días,
+    horario, cobertura y duplicados; aquí se ofrecen solo opciones válidas."""
+    pid = professional["id"]
+
+    if professional["work_days"]:
+        st.caption(
+            f"📅 Trabaja: {professional['work_days'].replace(',', ', ')}"
+            + (f" · 🕘 {professional['work_start']}–{professional['work_end']}" if professional["work_start"] else "")
+        )
+
+    if not professional["work_start"] or not professional["work_end"]:
+        st.warning("Este profesional todavía no configuró su horario de atención, así que aún no recibe solicitudes.")
+        return
+
+    trades = catalog_api.trades(professional)
+    trade = st.selectbox("Oficio requerido", [t["trade"] for t in trades], key=f"request_trade_{pid}")
+    specialties = next((t["specialty_list"] for t in trades if t["trade"] == trade), [])
+
+    if not specialties:
+        st.warning(f"Este profesional aún no registra especialidades de {trade}, así que no se puede solicitar ese oficio.")
+        return
+
+    names = [s["name"] for s in specialties]
+    specialty = st.selectbox("Especialidad", names, key=f"request_specialty_{trade}_{pid}")
+
+    coverage = [c for c in professional["coverage"].split(",") if c]
+    commune = st.selectbox("Comuna del servicio", coverage or COMUNAS, key=f"request_commune_{pid}")
+
+    work_days = [d for d in professional["work_days"].split(",") if d]
+    visit_date = st.date_input(
+        "Fecha tentativa",
+        value=requests_api.next_work_date(work_days),
+        min_value=date.today(),
+        format="DD-MM-YYYY",
+        key=f"request_date_{pid}",
+    )
+
+    slots = [
+        s for s in FRANJAS_HORARIAS
+        if professional["work_start"] <= s.split(" - ")[0] and s.split(" - ")[1] <= professional["work_end"]
+    ]
+    if not slots:
+        st.warning("Ninguna franja horaria coincide con el horario de este profesional.")
+        return
+    visit_time = st.selectbox("Horario tentativo", slots, key=f"request_time_{pid}")
+
+    st.text_input(
+        "Dirección de la visita",
+        value=viewer["address"],
+        disabled=True,
+        key=f"request_address_{pid}",
+        help="Se usa la dirección de tu cuenta. Puedes cambiarla en «Mi perfil».",
+    )
+
+    description = st.text_area(
+        "Descripción del trabajo",
+        max_chars=MAX_TEXTO,
+        placeholder="Describe el problema o trabajo que necesitas realizar.",
+        key=f"request_description_{pid}",
+    )
+
+    if not st.button("Solicitar visita", type="primary", use_container_width=True, key=f"send_request_{pid}"):
+        return
+
+    if not description.strip():
+        st.warning("Describe el trabajo que necesitas.")
+        return
+    if not viewer["address"]:
+        st.warning("Agrega tu dirección en «Mi perfil» para solicitar una visita.")
+        return
+
+    try:
+        requests_api.create_request(
+            pid,
+            specialties[names.index(specialty)]["id"],
+            description,
+            visit_date,
+            visit_time,
+            commune,
+            viewer["address"],
+        )
+    except api_client.ApiError as error:
+        st.error(f"No se pudo enviar la solicitud. {error}")
+        return
+
+    flash("Solicitud enviada. Puedes revisarla en «Mis solicitudes».")
+    close_professional()
+    st.rerun()
 
 
 def sidebar(user):

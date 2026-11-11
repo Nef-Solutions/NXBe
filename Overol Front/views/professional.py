@@ -2,7 +2,6 @@
 
 import re
 import secrets
-import sqlite3
 from pathlib import Path
 
 import streamlit as st
@@ -12,31 +11,24 @@ from core.constants import (
     DIAS_SEMANA,
     ESPECIALIDADES_POR_OFICIO,
     HORAS,
-    HORAS_VENCIMIENTO,
     MAX_TEXTO,
     MOTIVOS_RECHAZO,
     OFICIOS,
     UPLOAD_DIR,
     pantallas_visibles,
-    use_api,
 )
-from core import api_client
+from core import api_client, requests_api
+from core.session import load_user
 from core.security import encrypt_document
 from core.database import (
     add_trade,
     audit,
-    cancel_request_by_professional,
-    change_request_status,
-    confirm_request_completion,
     count_unread_notifications,
     deactivate_trade,
     get_claims_for_professional,
-    get_client_rating_for_request,
     get_connection,
-    get_contact_info,
     get_professional_by_user,
     get_professional_rating,
-    get_requests_for_professional,
     get_trade_ratings,
     get_trades,
     add_verification_message,
@@ -44,8 +36,6 @@ from core.database import (
     get_verification_messages,
     notify,
     now_str,
-    reject_request,
-    request_expires_at,
     update_trade,
 )
 from ui.components import (
@@ -59,7 +49,6 @@ from ui.components import (
     security_note,
     stars,
     status_badge,
-    support_box,
     thread_message,
 )
 from views.about import about_page
@@ -88,10 +77,10 @@ def professional_dashboard(user):
         "ℹ️ Quiénes somos",
     ])
 
-    # Las pantallas que aún usan SQLite necesitan el perfil profesional local; mientras
+    # Reclamos y Desarrollo profesional aún usan el perfil profesional de SQLite; mientras
     # estén ocultas (PANTALLAS_PENDIENTES_API) no se consulta la base.
     professional = None
-    if any(o not in ("👤 Mi perfil", "ℹ️ Quiénes somos") for o in options):
+    if {"🛠️ Reclamos", "🎓 Desarrollo profesional"} & set(options):
         professional = get_professional_by_user(user["id"])
 
     badges = {}
@@ -112,7 +101,7 @@ def professional_dashboard(user):
     )
 
     if menu == "📋 Solicitudes":
-        professional_requests(user, professional)
+        professional_requests(user)
 
     elif menu == "🔔 Notificaciones":
         notifications_page(user)
@@ -124,7 +113,7 @@ def professional_dashboard(user):
         user_profile_page(user)
 
     elif menu == "📍 Cobertura":
-        professional_coverage(user, professional)
+        professional_coverage(user)
 
     elif menu == "🛠️ Reclamos":
         professional_claims(user, professional)
@@ -153,11 +142,15 @@ def _verification_banner(user):
         )
 
 
-def professional_requests(user, professional):
-    """Historias 020, 021, 022, 023 y 024."""
+def professional_requests(user):
+    """Historias 020 a 023: solicitudes recibidas (GET /api/requests/)."""
     section("📋 Solicitudes recibidas")
 
-    requests = get_requests_for_professional(professional["id"])
+    try:
+        requests = requests_api.list_requests()
+    except api_client.ApiError as error:
+        st.error(f"No se pudieron cargar tus solicitudes. {error}")
+        return
 
     if not requests:
         empty_state(
@@ -168,46 +161,156 @@ def professional_requests(user, professional):
         return
 
     groups = {
-        "Pendientes": ["Pendiente"],
-        "Aceptadas": ["Aceptada"],
-        "Finalizadas": ["Finalizada"],
-        "Rechazadas / Canceladas / Vencidas": ["Rechazada", "Cancelada", "Vencida"],
+        "Pendientes": ["PENDING"],
+        "Aceptadas": ["ACCEPTED", "PROFESSIONAL_FINISHED"],
+        "Finalizadas": ["COMPLETED"],
+        "Rechazadas / Canceladas / Vencidas": ["REJECTED", "CANCELLED", "EXPIRED", "FORCED_CLOSED"],
     }
 
     tabs = st.tabs(
         [
-            f"{name} ({sum(1 for r in requests if r['status'] in states)})"
+            f"{name} ({sum(1 for r in requests if r['raw_status'] in states)})"
             for name, states in groups.items()
         ]
     )
 
     for tab, (name, states) in zip(tabs, groups.items()):
         with tab:
-            rows = [r for r in requests if r["status"] in states]
+            rows = [r for r in requests if r["raw_status"] in states]
 
             if not rows:
                 st.caption("No hay solicitudes en esta categoría.")
 
             for request in rows:
-                _request_card(user, professional, request)
+                _request_card(request)
 
 
-def _transition(user, professional, request_id, new_status, allowed_from, detail, kind="success"):
-    """Aplica el cambio de estado verificando estado actual y pertenencia."""
-    if change_request_status(
-        request_id, new_status, allowed_from, professional_id=professional["id"]
-    ):
-        audit(user["id"], "UPDATE", "requests", request_id, detail)
-        flash(f"Solicitud #{request_id}: {new_status.lower()}.", kind)
+def _pro_action(rid, name, success, reason=None, kind="success"):
+    """Envía la acción al backend y recarga. Si la solicitud ya cambió (409), lo informa."""
+    try:
+        updated = requests_api.action(rid, name, reason)
+    except api_client.ApiError as error:
+        if error.status == 400:
+            st.error(str(error))  # motivo inválido: se queda en el formulario
+            return
+        flash(str(error), "warning")
     else:
-        flash("La solicitud ya había cambiado de estado.", "warning")
-
+        if updated["raw_status"] == "COMPLETED":
+            success = "Servicio finalizado por ambas partes."
+        flash(success, kind)
     st.rerun()
 
 
-def _fee_to_number(text):
-    digits = re.sub(r"\D", "", text or "")
-    return int(digits) if digits else 0
+def _request_card(request):
+    rid = request["id"]
+    raw = request["raw_status"]
+
+    with st.container(border=True):
+        top = st.columns([4, 1])
+
+        with top[0]:
+            st.markdown(f"### Solicitud #{rid} · {request['client_name']}")
+
+        with top[1]:
+            status_badge(request["status"])
+
+        d1, d2 = st.columns(2)
+
+        with d1:
+            st.write(f"**Oficio:** {request['trade']} · {request['specialty']}")
+            st.write(f"**Comuna:** {request['commune']}")
+
+        with d2:
+            st.write(f"**Fecha tentativa:** {request['date']} · {request['time']}")
+
+        st.write(f"**Descripción:** {request['description']}")
+
+        # ---------- Pendiente: aceptar o rechazar con motivo ----------
+        if raw == "PENDING":
+            st.caption(
+                (f"⏳ Responde antes del {request['expires_at']}; pasado ese plazo la solicitud vence. "
+                 if request["expires_at"] else "")
+                + "🔒 Los datos de contacto del cliente se habilitan al aceptar."
+            )
+
+            if st.button("✓ Aceptar solicitud", type="primary", use_container_width=True, key=f"pro_accept_{rid}"):
+                _pro_action(rid, "accept", f"Solicitud #{rid} aceptada.")
+
+            with st.expander("✕ Rechazar solicitud"):
+                reason = st.selectbox("Motivo del rechazo", MOTIVOS_RECHAZO, key=f"reject_reason_{rid}")
+
+                detail = st.text_input(
+                    "Explica el motivo" if reason == "Otro" else "Detalle (opcional)",
+                    max_chars=MAX_TEXTO - 60,
+                    key=f"reject_detail_{rid}",
+                )
+
+                if st.button("Confirmar rechazo", key=f"pro_reject_{rid}"):
+                    if reason == "Otro" and not detail.strip():
+                        st.warning("Cuando eliges «Otro» debes explicar el motivo.")
+                    else:
+                        text = reason if not detail.strip() else f"{reason} — {detail.strip()}"
+                        _pro_action(rid, "reject", f"Solicitud #{rid} rechazada.", text[:MAX_TEXTO], "warning")
+
+        if raw == "EXPIRED":
+            st.info("Esta solicitud venció: no se respondió dentro del plazo.")
+
+        if raw == "CANCELLED":
+            if request["cancelled_by"] == "PROFESSIONAL":
+                st.caption(f"Cancelaste esta solicitud. Motivo: {request['cancel_reason']}")
+            else:
+                st.warning("El cliente canceló esta solicitud.")
+
+        if raw == "REJECTED":
+            st.caption(f"Motivo registrado: {request['rejection_reason'] or 'Sin motivo informado'}")
+
+        if raw == "FORCED_CLOSED":
+            st.info("El equipo de Overol cerró esta solicitud.")
+
+        # ---------- Contacto del cliente: el backend lo entrega solo tras aceptar ----------
+        if request["contact"]:
+            contact_box({"name": request["client_name"], **request["contact"]}, "Datos de contacto del cliente")
+
+        # ---------- Confirmar finalización (ambas partes) ----------
+        if raw == "PROFESSIONAL_FINISHED":
+            st.info("✓ Ya confirmaste la finalización. Falta la confirmación del cliente.")
+
+        if raw == "ACCEPTED":
+            if request["client_confirmed"]:
+                st.info("El cliente ya confirmó que el servicio terminó. Falta tu confirmación.")
+
+            if st.button("Confirmar finalización del servicio", type="primary", key=f"pro_complete_{rid}"):
+                _pro_action(rid, "finish", "Confirmación registrada. Falta la del cliente.")
+
+            # ---------- Cancelar indicando el motivo ----------
+            with st.expander("✕ Cancelar solicitud"):
+                st.warning(
+                    "Al cancelar, el cliente verá el motivo que escribas. "
+                    "Esta acción no se puede deshacer."
+                )
+                reason = st.text_area(
+                    "Motivo de la cancelación",
+                    max_chars=MAX_TEXTO,
+                    placeholder="Explica por qué cancelas esta solicitud.",
+                    key=f"pro_cancel_reason_{rid}",
+                )
+
+                if st.button("Confirmar cancelación", key=f"pro_cancel_{rid}"):
+                    if not reason.strip():
+                        st.warning("Escribe el motivo de la cancelación.")
+                    else:
+                        _pro_action(rid, "cancel_professional", f"Solicitud #{rid} cancelada.", reason.strip(), "warning")
+
+        # Etapa D: calificar al cliente de un servicio finalizado · Etapa E: soporte
+
+
+def _fee_to_number(value):
+    """Tarifa como entero: acepta 15000, "15000", "15000.00" (backend) o "$15.000"."""
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        digits = re.sub(r"\D", "", str(value or ""))
+        return int(digits) if digits else 0
 
 
 def professional_profile(user, professional):
@@ -261,49 +364,50 @@ def professional_profile(user, professional):
     )
 
 
-def professional_coverage(user, professional):
-    """Historia 019: comunas, días disponibles, horas disponibles y tarifa de visita."""
+def professional_coverage(user):
+    """Historia 019: comunas, días y horas disponibles (GET/PATCH /api/professionals/me/
+    availability/) y tarifa de visita (PATCH /api/auth/me/)."""
     section("📍 Cobertura, días, horario y tarifa")
 
-    current_coverage = [
-        x.strip()
-        for x in professional["coverage"].split(",")
-        if x.strip()
-    ]
-    saved_days = [d for d in (professional["work_days"] or "").split(",") if d in DIAS_SEMANA]
-    saved_start = professional["work_start"] or "09:00"
-    saved_end = professional["work_end"] or "18:00"
+    try:
+        current = requests_api.get_availability()
+    except api_client.ApiError as error:
+        st.error(f"No se pudo cargar tu disponibilidad. {error}")
+        return
+
+    saved_start = current["work_start"] or "09:00"
+    saved_end = current["work_end"] or "18:00"
+
+    if not current["work_start"] or not current["work_days"]:
+        st.warning("Todavía no configuras tus días y horario: los clientes no pueden pedirte visitas hasta que lo hagas.")
 
     st.markdown("#### 📍 Comunas donde trabajas")
     coverage = st.multiselect(
         "Comunas donde realizas servicios",
-        COMUNAS,
-        default=current_coverage,
+        list(dict.fromkeys(COMUNAS + current["coverage_communes"])),
+        default=current["coverage_communes"],
+        key="cov_communes",
     )
 
     availability = st.toggle(
         "Disponible para recibir solicitudes",
-        value=bool(professional["availability"]),
+        value=current["is_available"],
+        key="cov_available",
     )
 
     st.markdown("#### 📅 Días disponibles para trabajar")
     days = st.multiselect(
         "Días de la semana en que trabajas",
         DIAS_SEMANA,
-        default=saved_days,
+        default=current["work_days"],
         help="Los clientes solo podrán pedirte visitas en estos días.",
+        key="cov_days",
     )
 
     st.markdown("#### 🕘 Horas disponibles")
     h1, h2 = st.columns(2)
-    start = h1.selectbox(
-        "Desde", HORAS,
-        index=HORAS.index(saved_start) if saved_start in HORAS else 3,
-    )
-    end = h2.selectbox(
-        "Hasta", HORAS,
-        index=HORAS.index(saved_end) if saved_end in HORAS else 12,
-    )
+    start = h1.selectbox("Desde", HORAS, index=HORAS.index(saved_start) if saved_start in HORAS else 3, key="cov_start")
+    end = h2.selectbox("Hasta", HORAS, index=HORAS.index(saved_end) if saved_end in HORAS else 12, key="cov_end")
 
     st.markdown("#### 💰 Tarifa")
     fee = st.number_input(
@@ -311,8 +415,9 @@ def professional_coverage(user, professional):
         min_value=0,
         max_value=500000,
         step=1000,
-        value=_fee_to_number(professional["visit_fee"]),
+        value=_fee_to_number(user.get("visit_fee")),
         help="Déjalo en 0 si prefieres informarlo directamente al cliente.",
+        key="cov_fee",
     )
 
     if st.button(
@@ -321,51 +426,23 @@ def professional_coverage(user, professional):
         type="primary",
         key="save_coverage",
     ):
-        if not days:
+        if not coverage:
+            st.error("Selecciona al menos una comuna donde trabajas.")
+        elif not days:
             st.error("Selecciona al menos un día en que trabajas.")
         elif end <= start:
             st.error("La hora de término debe ser posterior a la de inicio.")
         else:
             days = [d for d in DIAS_SEMANA if d in days]
-            schedule = f"{', '.join(days)} · {start}–{end}"
-            fee_text = f"${fee:,}".replace(",", ".") if fee else ""
+            try:
+                api_client.update_availability(days, start, end, availability, coverage)
+                if int(fee) != _fee_to_number(user.get("visit_fee")):
+                    api_client.update_me(visit_fee=int(fee))
+                    load_user()
+            except api_client.ApiError as error:
+                st.error(f"No se pudo guardar tu disponibilidad en el servidor. {error}")
+                return
 
-            if use_api():
-                try:
-                    api_client.update_availability(days, start, end, availability, coverage)
-                except api_client.ApiError as error:
-                    st.error(f"No se pudo guardar tu disponibilidad en el servidor. {error}")
-                    return
-
-            conn = get_connection()
-            conn.execute(
-                """
-                UPDATE professionals
-                SET coverage = ?, availability = ?, schedule = ?, visit_fee = ?,
-                    work_days = ?, work_start = ?, work_end = ?
-                WHERE id = ?
-                """,
-                (
-                    ",".join(coverage),
-                    1 if availability else 0,
-                    schedule,
-                    fee_text,
-                    ",".join(days),
-                    start,
-                    end,
-                    professional["id"],
-                ),
-            )
-            conn.commit()
-            conn.close()
-
-            audit(
-                user["id"],
-                "UPDATE",
-                "professionals",
-                professional["id"],
-                "Actualización de cobertura, días, horario y tarifa",
-            )
             flash("Cobertura, días, horario y tarifa actualizados. Ya se reflejan en tu perfil.")
             st.rerun()
 
@@ -797,213 +874,6 @@ def _verification_messages(user, professional):
             audit(user["id"], "VERIFY_MESSAGE", "professionals", pid, "Mensaje al administrador")
             flash("Mensaje enviado al equipo de Overol.")
             st.rerun()
-
-
-def _request_card(user, professional, request):
-    rid = request["id"]
-
-    with st.container(border=True):
-        top = st.columns([4, 1])
-
-        with top[0]:
-            st.markdown(f"### Solicitud #{rid} · {request['client_name']}")
-
-        with top[1]:
-            status_badge(request["status"])
-
-        d1, d2 = st.columns(2)
-
-        with d1:
-            st.write(f"**Oficio:** {request['trade'] or request['service']}")
-            st.write(f"**Comuna:** {request['commune']}")
-
-        with d2:
-            st.write(
-                f"**Fecha tentativa:** {request['tentative_date']} · "
-                f"{request['tentative_time']}"
-            )
-
-        st.write(f"**Descripción:** {request['description']}")
-
-        # ---------- Pendiente: aceptar o rechazar con motivo ----------
-        if request["status"] == "Pendiente":
-            expires = request_expires_at(request["created_at"])
-            st.caption(
-                f"⏳ Responde antes del {expires:%d-%m-%Y a las %H:%M}; "
-                f"pasado ese plazo la solicitud vence. "
-                "🔒 Los datos de contacto del cliente se habilitan al aceptar."
-            )
-
-            if st.button(
-                "✓ Aceptar solicitud",
-                type="primary",
-                use_container_width=True,
-                key=f"pro_accept_{rid}",
-            ):
-                _transition(user, professional, rid, "Aceptada",
-                            ["Pendiente"], "Solicitud aceptada por profesional")
-
-            with st.expander("✕ Rechazar solicitud"):
-                reason = st.selectbox(
-                    "Motivo del rechazo",
-                    MOTIVOS_RECHAZO,
-                    key=f"reject_reason_{rid}",
-                )
-
-                detail = ""
-                if reason == "Otro":
-                    detail = st.text_input(
-                        "Explica el motivo",
-                        key=f"reject_detail_{rid}",
-                    )
-
-                if st.button("Confirmar rechazo", key=f"pro_reject_{rid}"):
-                    if reason == "Otro" and not detail.strip():
-                        st.warning("Cuando eliges «Otro» debes explicar el motivo.")
-                    elif reject_request(rid, professional["id"], reason, detail):
-                        audit(user["id"], "UPDATE", "requests", rid,
-                              f"Solicitud rechazada: {reason}")
-                        flash(f"Solicitud #{rid} rechazada.", "warning")
-                        st.rerun()
-                    else:
-                        flash("La solicitud ya había cambiado de estado.", "warning")
-                        st.rerun()
-
-        # ---------- Vencida / Cancelada ----------
-        if request["status"] == "Vencida":
-            st.info(
-                f"Esta solicitud venció: no se respondió dentro de {HORAS_VENCIMIENTO} horas."
-            )
-
-        if request["status"] == "Cancelada":
-            if request["cancelled_by"] == "profesional":
-                st.caption(f"Cancelaste esta solicitud. Motivo: {request['cancel_reason']}")
-            else:
-                st.warning("El cliente canceló esta solicitud.")
-
-        # ---------- Rechazada: motivo registrado ----------
-        if request["status"] == "Rechazada":
-            reason = request["reject_reason"] or "Sin motivo informado"
-            detail = f" — {request['reject_detail']}" if request["reject_detail"] else ""
-            st.caption(f"Motivo registrado: {reason}{detail}")
-
-        # ---------- Contacto del cliente: solo tras aceptar ----------
-        if request["status"] in ("Aceptada", "Finalizada"):
-            contact_box(
-                get_contact_info(request["client_id"]),
-                "Datos de contacto del cliente",
-            )
-
-        # ---------- Aceptada: confirmar finalización (ambas partes) ----------
-        if request["status"] == "Aceptada":
-            if request["professional_confirmed"]:
-                st.info(
-                    "✓ Ya confirmaste la finalización. "
-                    "Falta la confirmación del cliente."
-                )
-            else:
-                if request["client_confirmed"]:
-                    st.info(
-                        "El cliente ya confirmó que el servicio terminó. "
-                        "Falta tu confirmación."
-                    )
-
-                if st.button(
-                    "Confirmar finalización del servicio",
-                    type="primary",
-                    key=f"pro_complete_{rid}",
-                ):
-                    outcome = confirm_request_completion(
-                        rid, "professional", professional_id=professional["id"]
-                    )
-
-                    if outcome == "Finalizada":
-                        audit(user["id"], "UPDATE", "requests", rid,
-                              "Servicio finalizado por confirmación de ambas partes")
-                        flash("Servicio finalizado. Ya puedes calificar al cliente.")
-                    elif outcome == "Esperando":
-                        audit(user["id"], "UPDATE", "requests", rid,
-                              "Profesional confirmó la finalización")
-                        flash("Confirmación registrada. Falta la del cliente.", "info")
-                    else:
-                        flash("La solicitud ya había cambiado de estado.", "warning")
-                    st.rerun()
-
-        # ---------- Aceptada: cancelar indicando el motivo ----------
-        if request["status"] == "Aceptada":
-            with st.expander("✕ Cancelar solicitud"):
-                st.warning(
-                    "Al cancelar, el cliente verá el motivo que escribas. "
-                    "Esta acción no se puede deshacer."
-                )
-                reason = st.text_area(
-                    "Motivo de la cancelación",
-                    max_chars=MAX_TEXTO,
-                    placeholder="Explica por qué cancelas esta solicitud.",
-                    key=f"pro_cancel_reason_{rid}",
-                )
-
-                if st.button("Confirmar cancelación", key=f"pro_cancel_{rid}"):
-                    ok, message = cancel_request_by_professional(
-                        rid, professional["id"], reason
-                    )
-
-                    if ok:
-                        audit(user["id"], "UPDATE", "requests", rid,
-                              "Solicitud cancelada por profesional")
-                        flash(f"Solicitud #{rid} cancelada.", "warning")
-                        st.rerun()
-                    else:
-                        st.error(message)
-
-        # ---------- Finalizada: calificar al cliente ----------
-        if request["status"] == "Finalizada":
-            _client_rating_block(user, professional, request)
-
-        # ---------- Mensajes a soporte sobre esta solicitud ----------
-        support_box(user, rid, "profesional")
-
-
-def _client_rating_block(user, professional, request):
-    """Historia 024: el profesional califica al cliente tras finalizar el servicio."""
-    rid = request["id"]
-    existing = get_client_rating_for_request(rid)
-
-    if existing:
-        st.success(f"✓ Calificaste a este cliente: {'★' * existing['score']}{'☆' * (5 - existing['score'])}")
-        return
-
-    st.markdown("#### ⭐ Calificar al cliente")
-
-    score = st.slider("Puntaje", 1, 5, 5, key=f"client_score_{rid}")
-    comment = st.text_input("Comentario (opcional)", key=f"client_comment_{rid}")
-
-    if st.button("Guardar calificación", type="primary", key=f"save_client_rating_{rid}"):
-        conn = get_connection()
-
-        try:
-            cur = conn.execute(
-                """
-                INSERT INTO client_ratings
-                (request_id, professional_id, client_id, score, comment, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (rid, professional["id"], request["client_id"], score,
-                 comment.strip(), now_str()),
-            )
-            rating_id = cur.lastrowid
-            conn.commit()
-        except sqlite3.IntegrityError:
-            conn.rollback()
-            flash("Este cliente ya fue calificado en este servicio.", "warning")
-            st.rerun()
-        finally:
-            conn.close()
-
-        audit(user["id"], "CREATE", "client_ratings", rating_id,
-              f"Calificación al cliente de la solicitud {rid}")
-        flash("Calificación al cliente registrada.")
-        st.rerun()
 
 
 def _years_or_none(value):

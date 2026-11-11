@@ -41,6 +41,14 @@ FIELD_LABELS = {
     "work_start": "Hora de inicio",
     "work_end": "Hora de término",
     "is_available": "Disponibilidad",
+    "professional": "Profesional",
+    "specialty": "Especialidad",
+    "problem_description": "Descripción",
+    "visit_date": "Fecha",
+    "visit_time": "Horario",
+    "visit_address": "Dirección de la visita",
+    "reason": "Motivo",
+    "visit_fee": "Tarifa",
 }
 
 # Claves de la respuesta de error que no son mensajes para el usuario

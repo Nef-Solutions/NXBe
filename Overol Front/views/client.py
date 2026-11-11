@@ -4,26 +4,19 @@ import sqlite3
 
 import streamlit as st
 
-from core import api_client, catalog_api
+from core import api_client, catalog_api, requests_api
 from core.constants import (
     COMUNAS,
-    ESTADOS_SOLICITUD,
-    HORAS_VENCIMIENTO,
     pantallas_visibles,
 )
 from core.database import (
     audit,
-    cancel_request_by_client,
-    confirm_request_completion,
     count_unread_notifications,
     search_professionals,
     get_claims_for_client,
     get_connection,
-    get_contact_info,
     get_rating_for_request,
-    get_requests_for_client,
     now_str,
-    request_expires_at,
 )
 from ui.components import (
     contact_box,
@@ -37,7 +30,6 @@ from ui.components import (
     section,
     stars,
     status_badge,
-    support_box,
 )
 from views.about import about_page
 from views.home import home_page
@@ -276,9 +268,14 @@ def client_search(user):
 
 
 def client_requests(user):
+    """Historias 010 a 013: solicitudes del cliente (GET /api/requests/)."""
     section("📋 Mis solicitudes")
 
-    requests = get_requests_for_client(user["id"])
+    try:
+        requests = requests_api.list_requests()
+    except api_client.ApiError as error:
+        st.error(f"No se pudieron cargar tus solicitudes. {error}")
+        return
 
     if not requests:
         empty_state(
@@ -288,137 +285,114 @@ def client_requests(user):
         )
         return
 
-    claimed_requests = {
-        claim["request_id"]: claim["id"]
-        for claim in get_claims_for_client(user["id"])
-    }
-
     status_filter = st.selectbox(
         "Filtrar por estado",
-        ["Todas"] + ESTADOS_SOLICITUD,
+        ["Todas"] + list(dict.fromkeys(requests_api.ESTADOS.values())),
         key="client_requests_filter",
     )
 
-    shown = [
-        r for r in requests
-        if status_filter == "Todas" or r["status"] == status_filter
-    ]
+    shown = [r for r in requests if status_filter == "Todas" or r["status"] == status_filter]
 
     if not shown:
         st.info("No hay solicitudes con ese estado.")
 
     for request in shown:
-        rid = request["id"]
+        _client_request_card(request)
 
-        with st.container(border=True):
-            top = st.columns([4, 1])
 
-            with top[0]:
-                st.markdown(f"### Solicitud #{rid} · {request['professional_name']}")
+def _client_request_card(request):
+    rid = request["id"]
+    raw = request["raw_status"]
 
-            with top[1]:
-                status_badge(request["status"])
+    with st.container(border=True):
+        top = st.columns([4, 1])
 
-            d1, d2 = st.columns(2)
+        with top[0]:
+            st.markdown(f"### Solicitud #{rid} · {request['professional_name']}")
 
-            with d1:
-                st.write(f"**Oficio:** {request['trade'] or request['service']}")
-                st.write(f"**Comuna:** {request['commune']}")
+        with top[1]:
+            status_badge(request["status"])
 
-            with d2:
-                st.write(
-                    f"**Fecha tentativa:** {request['tentative_date']} · "
-                    f"{request['tentative_time']}"
+        d1, d2 = st.columns(2)
+
+        with d1:
+            st.write(f"**Oficio:** {request['trade']} · {request['specialty']}")
+            st.write(f"**Comuna:** {request['commune']}")
+
+        with d2:
+            st.write(f"**Fecha tentativa:** {request['date']} · {request['time']}")
+            st.write(f"**Dirección:** {request['visit_address']}")
+
+        st.write(f"**Descripción:** {request['description']}")
+
+        if raw == "REJECTED":
+            st.warning(
+                "El profesional rechazó la solicitud. "
+                f"**Motivo:** {request['rejection_reason'] or 'Sin motivo informado'}"
+            )
+
+        # Contacto: el backend solo lo entrega con la solicitud aceptada o finalizada
+        if request["contact"]:
+            contact_box(
+                {"name": request["professional_name"], **request["contact"]},
+                "Datos de contacto del profesional",
+            )
+
+        if raw == "PENDING":
+            st.caption(
+                "⏳ Esperando la respuesta del profesional"
+                + (f" · vence el {request['expires_at']}" if request["expires_at"] else "")
+            )
+
+        if raw == "EXPIRED":
+            st.info(
+                "Esta solicitud venció porque el profesional no respondió a tiempo. "
+                "Puedes volver a solicitar desde «Buscar profesionales»."
+            )
+
+        if raw == "CANCELLED":
+            if request["cancelled_by"] == "PROFESSIONAL":
+                st.warning(
+                    "El profesional canceló esta solicitud. "
+                    f"**Motivo:** {request['cancel_reason'] or 'Sin motivo informado'}"
                 )
+            else:
+                st.caption("Cancelaste esta solicitud.")
 
-            st.write(f"**Descripción:** {request['description']}")
+        if raw == "FORCED_CLOSED":
+            st.info("El equipo de Overol cerró esta solicitud.")
 
-            # ---------- Rechazada: se muestra el motivo ----------
-            if request["status"] == "Rechazada":
-                reason = request["reject_reason"] or "Sin motivo informado"
-                detail = f" — {request['reject_detail']}" if request["reject_detail"] else ""
-                st.warning(f"El profesional rechazó la solicitud. **Motivo:** {reason}{detail}")
+        # ---------- Confirmar finalización (ambas partes) ----------
+        if raw in ("ACCEPTED", "PROFESSIONAL_FINISHED"):
+            if request["client_confirmed"]:
+                st.info("✓ Ya confirmaste la finalización. Falta la confirmación del profesional.")
+            else:
+                if request["professional_confirmed"]:
+                    st.info("El profesional informó que terminó el servicio. Falta tu confirmación.")
+                if st.button("Confirmar finalización del servicio", type="primary", key=f"complete_{rid}"):
+                    _client_action(rid, "confirm", "Confirmación registrada.")
 
-            # ---------- Contacto: solo con la solicitud aceptada / finalizada ----------
-            if request["status"] in ("Aceptada", "Finalizada"):
-                contact_box(
-                    get_contact_info(request["professional_user_id"]),
-                    "Datos de contacto del profesional",
-                )
+        # ---------- Cancelar (pendiente o aceptada) con confirmación ----------
+        if raw in ("PENDING", "ACCEPTED"):
+            _cancel_flow(request)
 
-            # ---------- Pendiente: espera y vencimiento ----------
-            if request["status"] == "Pendiente":
-                expires = request_expires_at(request["created_at"])
-                st.caption(
-                    "⏳ Esperando la respuesta del profesional · "
-                    f"vence el {expires:%d-%m-%Y a las %H:%M}"
-                )
-
-            # ---------- Vencida / Cancelada ----------
-            if request["status"] == "Vencida":
-                st.info(
-                    "Esta solicitud venció porque el profesional no respondió dentro de "
-                    f"{HORAS_VENCIMIENTO} horas. Puedes volver a solicitar desde «Buscar profesionales»."
-                )
-
-            if request["status"] == "Cancelada":
-                if request["cancelled_by"] == "profesional":
-                    st.warning(
-                        "El profesional canceló esta solicitud. "
-                        f"**Motivo:** {request['cancel_reason'] or 'Sin motivo informado'}"
-                    )
-                else:
-                    st.caption("Cancelaste esta solicitud.")
-
-            # ---------- Cancelar (pendiente o aceptada) con confirmación ----------
-            if request["status"] in ("Pendiente", "Aceptada"):
-                _cancel_flow(user, request)
-
-            # ---------- Aceptada: confirmar finalización (ambas partes) ----------
-            if request["status"] == "Aceptada":
-                if request["client_confirmed"]:
-                    st.info(
-                        "✓ Ya confirmaste la finalización. "
-                        "Falta la confirmación del profesional."
-                    )
-                else:
-                    if request["professional_confirmed"]:
-                        st.info(
-                            "El profesional ya confirmó que el servicio terminó. "
-                            "Falta tu confirmación."
-                        )
-
-                    if st.button(
-                        "Confirmar finalización del servicio",
-                        type="primary",
-                        key=f"complete_{rid}",
-                    ):
-                        outcome = confirm_request_completion(
-                            rid, "client", client_id=user["id"]
-                        )
-
-                        if outcome == "Finalizada":
-                            audit(user["id"], "UPDATE", "requests", rid,
-                                  "Servicio finalizado por confirmación de ambas partes")
-                            flash("Servicio finalizado. ¡Ya puedes evaluarlo!")
-                        elif outcome == "Esperando":
-                            audit(user["id"], "UPDATE", "requests", rid,
-                                  "Cliente confirmó la finalización")
-                            flash("Confirmación registrada. Falta la del profesional.", "info")
-                        else:
-                            flash("La solicitud ya cambió de estado.", "warning")
-                        st.rerun()
-
-            # ---------- Finalizada: evaluar y posventa ----------
-            if request["status"] == "Finalizada":
-                _rating_block(user, request)
-                _claim_block(user, request, claimed_requests.get(rid))
-
-            # ---------- Mensajes a soporte sobre esta solicitud ----------
-            support_box(user, rid, "cliente")
+        # Etapa D: valoración y reclamo de un servicio finalizado · Etapa E: soporte
 
 
-def _cancel_flow(user, request):
+def _client_action(rid, name, success, kind="success"):
+    """Envía la acción al backend y recarga. Si la solicitud ya cambió (409), lo informa."""
+    try:
+        updated = requests_api.action(rid, name)
+    except api_client.ApiError as error:
+        flash(str(error), "warning")
+    else:
+        if updated["raw_status"] == "COMPLETED":
+            success = "Servicio finalizado por ambas partes."
+        flash(success, kind)
+    st.rerun()
+
+
+def _cancel_flow(request):
     """Cancelación en dos pasos: advertencia + botón que hay que mantener presionado."""
     rid = request["id"]
     flag = f"cancel_confirm_{rid}"
@@ -440,14 +414,7 @@ def _cancel_flow(user, request):
         label="Mantén presionado para confirmar la cancelación",
     ):
         st.session_state.pop(flag, None)
-
-        if cancel_request_by_client(rid, user["id"]):
-            audit(user["id"], "UPDATE", "requests", rid, "Solicitud cancelada por cliente")
-            flash("Solicitud cancelada.")
-        else:
-            flash("La solicitud ya cambió de estado.", "warning")
-
-        st.rerun()
+        _client_action(rid, "cancel", "Solicitud cancelada.")
 
     if st.button("No, mantener mi solicitud", key=f"cancel_no_{rid}"):
         st.session_state.pop(flag, None)

@@ -52,6 +52,8 @@ def from_api(data, anonymous=False):
         {
             "trade": t.get("category") or "",
             "specialties": ",".join(s.get("name", "") for s in t.get("specialties") or []),
+            # Para solicitar una visita: el backend exige una especialidad del profesional
+            "specialty_list": [{"id": s["id"], "name": s.get("name", "")} for s in t.get("specialties") or []],
             "years_experience": t.get("years_experience"),
             "certifications": "",
         }

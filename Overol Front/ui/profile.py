@@ -18,7 +18,7 @@ from html import escape
 import streamlit as st
 
 from core.constants import DIAS_SEMANA, OFICIOS_INFO
-from core import catalog_api
+from core import api_client, catalog_api, requests_api
 from ui.components import _html, initials, stars
 
 TRADE_ICONS = {trade: icon for icon, trade, _ in OFICIOS_INFO}
@@ -267,13 +267,26 @@ def profile_reviews(professional):
 # ------------------------------------------------------------
 
 def profile_user_header(user):
-    """Cabecera del perfil personal con los datos de /auth/me/. Las cifras (solicitudes,
-    servicios, evaluaciones) vuelven cuando estén conectadas las solicitudes (etapa C)."""
+    """Cabecera del perfil personal con los datos de /auth/me/. Para el cliente, cifras
+    de sus solicitudes (las evaluaciones hechas vuelven en la etapa D)."""
     role = "Cliente" if user["role"] == "cliente" else "Profesional"
     place = f"📍 {escape(user['commune'])}" if user["commune"] else ""
 
     badges = f'<span class="pbadge">{role}</span>'
     stat_html = ""
+    if user["role"] == "cliente":
+        try:
+            requests = requests_api.list_requests()
+        except api_client.ApiError:
+            requests = None
+        if requests is not None:
+            finished = sum(1 for r in requests if r["raw_status"] == "COMPLETED")
+            stat_html = (
+                '<div class="profile-stats">'
+                f'<div class="pstat"><div class="pstat-n">{len(requests)}</div><div class="pstat-l">Solicitudes</div></div>'
+                f'<div class="pstat"><div class="pstat-n">{finished}</div><div class="pstat-l">Servicios finalizados</div></div>'
+                "</div>"
+            )
 
     st.markdown(
         _html(

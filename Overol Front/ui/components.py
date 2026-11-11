@@ -17,6 +17,7 @@ BADGE_CLASSES = {
     "Abierto": "badge-warn",
     "En mediación": "badge-info",
     "Aceptada": "badge-info",
+    "Esperando confirmación": "badge-info",
     "Aprobado": "badge-ok",
     "Finalizada": "badge-ok",
     "Resuelto": "badge-ok",
@@ -27,6 +28,7 @@ BADGE_CLASSES = {
     "Suspendido": "badge-bad",
     "Vencida": "badge-muted",
     "Cerrado": "badge-muted",
+    "Cerrada por Overol": "badge-muted",
 }
 
 
@@ -226,30 +228,32 @@ def format_professional_card(professional, anonymous=False):
 
 
 def contact_box(contact, title):
-    """Datos de contacto habilitados tras aceptar la solicitud (Historias 011 y 022)."""
+    """Datos de contacto habilitados tras aceptar la solicitud (Historias 011 y 022).
+    `contact`: name, phone, address y commune (el backend los entrega solo a las partes
+    de una solicitud aceptada o finalizada)."""
     if not contact:
         return
 
-    phone = contact["phone"] or ""
+    phone = contact.get("phone") or ""
     digits = re.sub(r"\D", "", phone)
 
     links = ""
     if digits:
-        links += (
+        links = (
             f' · <a href="https://wa.me/{digits}" target="_blank">WhatsApp</a>'
             f' · <a href="tel:+{digits}">Llamar</a>'
         )
-    links += f' · <a href="mailto:{escape(contact["email"])}">Escribir correo</a>'
+
+    place = ", ".join(x for x in (contact.get("address"), contact.get("commune")) if x)
 
     st.markdown(
         _html(
             f"""
             <div class="contact-box">
                 <b>📇 {escape(title)}</b><br>
-                👤 {escape(contact["name"])}<br>
+                👤 {escape(contact.get("name") or "")}<br>
                 📱 {escape(phone) or "Teléfono no informado"}<br>
-                ✉️ {escape(contact["email"])}<br>
-                💬 Prefiere contacto por: {escape(contact["contact_preference"] or "no indicado")}<br>
+                📍 {escape(place) or "Dirección no informada"}<br>
                 <span class="muted">Coordinen directamente el servicio{links}</span>
             </div>
             """
