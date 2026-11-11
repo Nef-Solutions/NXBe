@@ -151,8 +151,7 @@ ESPECIALIDADES_POR_OFICIO = {
     ],
 }
 
-# Palabras clave por oficio: las usan el asistente (sugerir_especialidad) y la
-# búsqueda por palabra clave (Historia 4.16). El orden importa para el asistente.
+# Palabras clave por oficio para la búsqueda por palabra clave (Historia 4.16).
 PALABRAS_CLAVE_OFICIO = {
     "Gasfitería": [
         "agua",

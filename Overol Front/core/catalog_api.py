@@ -1,12 +1,11 @@
 """
-Fase 3: catálogo y perfiles públicos (tarjetas, filtros, perfil y opiniones).
+Catálogo y perfiles públicos (tarjetas, filtros, perfil y opiniones) desde /api/catalog/.
 
-En modo api los datos salen de /api/catalog/ y se traducen a la forma que ya usan
-las tarjetas y los perfiles (las mismas claves que una fila de `professionals`).
-En modo local cada función delega en core.database, así que nada cambia.
+Traduce las respuestas del backend a la forma que usan las tarjetas y los perfiles
+(ui/components.format_professional_card, ui/profile, views/shared).
 
-Diferencias con la base local mientras el backend no las tenga (PEDIDO 5.3 a 5.5):
-no hay valoración por oficio, ni oficio en cada opinión, ni servicios finalizados.
+Mientras el backend no los tenga (PEDIDO 5.3 a 5.5): no hay valoración por oficio,
+ni oficio en cada opinión, ni cantidad de servicios finalizados.
 """
 
 from urllib.parse import urlencode
@@ -14,16 +13,11 @@ from urllib.parse import urlencode
 import streamlit as st
 
 from core import api_client
-from core import database as db
-from core.constants import DIAS_COMPLETOS, ESPECIALIDADES_POR_OFICIO, OFICIOS, use_api
+from core.constants import DIAS_COMPLETOS
 
 # «Lunes» → «Lun» (el backend guarda los días con nombre completo)
 DIAS_CORTOS = {full.lower(): short for short, full in DIAS_COMPLETOS.items()}
 MAX_PAGINAS = 10
-
-
-def is_api(professional):
-    return isinstance(professional, dict) and professional.get("source") == "api"
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -78,7 +72,6 @@ def from_api(data, anonymous=False):
         ]
 
     return {
-        "source": "api",
         "id": data["id"],
         "name": name,
         "about": data.get("bio") or "",
@@ -102,16 +95,12 @@ def from_api(data, anonymous=False):
 # ------------------------------------------------------------
 
 def trades(professional):
-    if is_api(professional):
-        return professional["trades"]
-    return db.get_trades(professional["id"])
+    return professional["trades"]
 
 
 def rating(professional, trade=None):
-    """(cantidad, promedio). En modo api la cantidad es None si no se conoce
-    y la valoración por oficio todavía no existe: devuelve (None, None)."""
-    if not is_api(professional):
-        return db.get_professional_rating(professional["id"], trade)
+    """(cantidad, promedio). La cantidad es None si no se conoce (el listado no la trae) y
+    la valoración por oficio todavía no existe en el backend: devuelve (None, None)."""
     if trade:
         return None, None
     opinions = professional["opinions"]
@@ -119,8 +108,6 @@ def rating(professional, trade=None):
 
 
 def stats(professional):
-    if not is_api(professional):
-        return db.get_professional_stats(professional["id"])
     years = [t["years_experience"] for t in professional["trades"] if t["years_experience"] is not None]
     total, average = rating(professional)
     return {
@@ -134,8 +121,6 @@ def stats(professional):
 
 def reviews(professional, limit=5):
     """Opiniones con comentario, sin datos del cliente."""
-    if not is_api(professional):
-        return db.get_public_reviews(professional["id"], limit)
     return [o for o in professional["opinions"] or [] if o["comment"]][:limit]
 
 
@@ -153,17 +138,10 @@ def _specialties(category_id=None):
 
 
 def trade_options():
-    if not use_api():
-        return OFICIOS
     return [c["name"] for c in _categories()]
 
 
 def specialty_options(trade):
-    if not use_api():
-        if trade == "Todas":
-            return [s for specs in ESPECIALIDADES_POR_OFICIO.values() for s in specs]
-        return ESPECIALIDADES_POR_OFICIO.get(trade, [])
-
     category_id = _category_id(trade) if trade != "Todas" else None
     if trade != "Todas" and category_id is None:
         return []
@@ -180,13 +158,10 @@ def _specialty_id(specialty, category_id=None):
 
 def list_professionals(trade="Todas", specialty="Todas", commune="Todas", anonymous=False):
     """
-    Profesionales disponibles con esos filtros. En modo api el oficio, la especialidad y
-    la comuna se piden al backend; la palabra clave se aplica después en el front
-    (search_professionals), porque la del backend distingue tildes y busca por nombre.
+    Profesionales disponibles con esos filtros. El oficio, la especialidad y la comuna se
+    piden al backend; la palabra clave se aplica después en el front (search_professionals),
+    porque la del backend distingue tildes y busca por nombre.
     """
-    if not use_api():
-        return db.get_all_professionals(specialty=specialty, commune=commune, trade=trade)
-
     params = {"page_size": 50}
 
     if trade != "Todas":
@@ -216,9 +191,6 @@ def list_professionals(trade="Todas", specialty="Todas", commune="Todas", anonym
 
 def get_professional(professional_id, anonymous=False):
     """Perfil completo (con opiniones). None si no existe o no está aprobado."""
-    if not use_api():
-        return db.get_professional_by_id(professional_id)
-
     try:
         data = _get(f"catalog/professionals/{int(professional_id)}/")
     except api_client.ApiError as error:

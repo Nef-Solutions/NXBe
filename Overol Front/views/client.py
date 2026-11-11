@@ -1,4 +1,4 @@
-"""Vistas del rol Cliente (RF 002, 003, 004, 006, 009) y clasificador del chatbot."""
+"""Vistas del rol Cliente (RF 002, 003, 004, 006, 009)."""
 
 import sqlite3
 
@@ -9,16 +9,13 @@ from core.constants import (
     COMUNAS,
     ESTADOS_SOLICITUD,
     HORAS_VENCIMIENTO,
-    PALABRAS_CLAVE_OFICIO,
     pantallas_visibles,
-    use_api,
 )
 from core.database import (
     audit,
     cancel_request_by_client,
     confirm_request_completion,
     count_unread_notifications,
-    get_all_professionals,
     search_professionals,
     get_claims_for_client,
     get_connection,
@@ -52,16 +49,6 @@ from views.shared import (
     professional_profile_public,
     user_profile_page,
 )
-
-
-def sugerir_especialidad(texto):
-    texto = texto.lower().strip()
-
-    for specialty, words in PALABRAS_CLAVE_OFICIO.items():
-        if any(word in texto for word in words):
-            return specialty
-
-    return "Maestro multipropósito"
 
 
 def client_dashboard(user):
@@ -262,8 +249,8 @@ def client_search(user):
             key=lambda p: catalog_api.rating(p)[1],
             reverse=True,
         )
-    elif use_api():
-        # La base local ya los entrega ordenados por nombre; el backend no
+    else:
+        # El backend no los entrega ordenados por nombre
         professionals = sorted(professionals, key=lambda p: (p["name"], p["id"]))
 
     st.write(f"**{len(professionals)} profesionales disponibles**")
@@ -286,74 +273,6 @@ def client_search(user):
         return
 
     _professional_grid(professionals, "client_view_prof", anonymous)
-
-
-def client_chatbot(user):
-    """Historia 004: asistente conversacional. `user` es None para visitantes."""
-    if _show_selected_profile(user):
-        return
-
-    anonymous = user is None
-    uid = None if anonymous else user["id"]
-
-    section("🤖 Asistente de Overol")
-
-    st.markdown(
-        """<div class="warning-box"><b>Diagnóstico inicial</b><br>Describe el problema de tu hogar. El asistente identificará un oficio sugerido y te permitirá revisar profesionales relacionados.</div>""",
-        unsafe_allow_html=True,
-    )
-
-    problem = st.text_area(
-        "¿Qué problema tienes?",
-        placeholder=(
-            "Ej: Tengo una fuga de agua debajo del lavaplatos "
-            "y necesito repararla."
-        ),
-        key="chat_problem",
-    )
-
-    if st.button(
-        "Analizar problema",
-        use_container_width=True,
-        type="primary",
-        key="chat_analyze",
-    ):
-        if not problem.strip():
-            st.warning("Describe el problema primero.")
-        else:
-            suggestion = sugerir_especialidad(problem)
-            # Se guarda el resultado para que sobreviva al pulsar «Ver perfil».
-            st.session_state.chat_suggestion = suggestion
-
-            audit(
-                uid,
-                "CHATBOT_DIAGNOSIS",
-                "chatbot",
-                None,
-                f"Sugerencia={suggestion}",
-            )
-
-    suggestion = st.session_state.get("chat_suggestion")
-
-    if suggestion:
-        st.success(f"Oficio sugerido: **{suggestion}**")
-
-        professionals = get_all_professionals(trade=suggestion)
-
-        if professionals:
-            st.markdown("### Profesionales relacionados")
-            _professional_grid(professionals, "chat_prof", anonymous)
-        else:
-            empty_state(
-                "🛠️",
-                "Sin profesionales disponibles",
-                "No hay profesionales para ese oficio en este momento.",
-            )
-
-    st.caption(
-        "Nota: el chatbot actual es una simulación basada en palabras clave. "
-        "La documentación contempla reemplazarlo posteriormente por una IA real."
-    )
 
 
 def client_requests(user):
