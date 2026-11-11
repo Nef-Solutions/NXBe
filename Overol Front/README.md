@@ -11,7 +11,8 @@ La conexión a la API avanza por etapas. Las pantallas que todavía no están co
 | Etapa | Estado |
 |---|---|
 | B · Cuentas, sesión, perfil, catálogo y perfiles públicos | ✅ conectada |
-| C · Solicitudes · D · Valoraciones y reclamos · E · Notificaciones y tickets · F · Panel del profesional · G · Panel del admin | ⏳ pendientes (ocultas) |
+| C · Solicitudes y cobertura del profesional (días, horario y tarifa) | ✅ conectada |
+| D · Valoraciones y reclamos · E · Notificaciones y tickets · F · Resto del panel del profesional · G · Panel del admin | ⏳ pendientes (ocultas) |
 
 ---
 
@@ -78,7 +79,8 @@ Por defecto usan `python` del PATH para el front y `py -3.12` para crear el ento
 - **Recuperar contraseña:** el backend envía el enlace por correo. En desarrollo, el correo se imprime en la consola de `runserver`.
 - **Registro de profesional:** el oficio debe existir en el catálogo del backend (hoy: Electricidad, Gasfitería y Cerrajería). Si no existe, el front lo avisa y no crea la cuenta.
 - **Nombres:** nombre y apellido solo admiten letras, espacios y apóstrofes («Ana María», no «Ana-María»).
-- **Solicitar visita:** muestra «Disponible pronto» hasta conectar las solicitudes (etapa C).
+- **Solicitudes:** para solicitar, el profesional debe tener horario (se configura en «📍 Cobertura») y al menos una especialidad en el oficio elegido. Hoy `seed_demo` no carga horario.
+- **Vencimiento:** el front muestra el plazo que entrega el backend (`expires_at`). Hoy son 30 días, no 72 horas (pedido a Nefi).
 - **Administración:** mientras se conecta el panel (etapa G), el admin aprueba verificaciones y gestiona cuentas en `/admin/` de Django.
 - **Pruebas:** automáticas en `tests/` (contra un backend simulado) y manuales en `tests/PRUEBAS_MANUALES.md`.
 
