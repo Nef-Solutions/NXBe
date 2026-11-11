@@ -342,9 +342,12 @@ class BackendSimulado:
             for i, item in enumerate(pro["categories"]):
                 cid = item.get("category") if isinstance(item, dict) else item
                 if cid in CATEGORIES:  # el backend real descarta sin error un oficio desconocido
+                    selected = item.get("specialties", []) if isinstance(item, dict) else pro.get("specialties", [])
+                    # Specialty.objects.filter(pk__in=selected, category=category): las de otro oficio se ignoran
+                    names = [self.specialties[s][0] for s in selected if s in self.specialties and self.specialties[s][1] == cid]
                     trades.append({"id": 1000 + uid * 10 + i, "category_id": cid,
                                    "years_experience": item.get("years_experience", 0) if isinstance(item, dict) else 0,
-                                   "specialties": []})
+                                   "specialties": names})
             self.users[uid]["professional"] = {
                 "id": 100 + uid, "verification_status": "PENDING", "visit_fee": pro.get("visit_fee", 0),
                 "rating_avg": 0, "bio": "", "headline": "", "contact_preference": "", "work_days": [],

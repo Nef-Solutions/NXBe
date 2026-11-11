@@ -85,7 +85,7 @@ def login_screen():
     # Limpia el formulario después de un registro exitoso.
     # Debe hacerse ANTES de crear los widgets.
     if st.session_state.pop("_clear_register", False):
-        for key in REGISTER_KEYS:
+        for key in REGISTER_KEYS + [k for k in st.session_state if str(k).startswith("register_specialties_")]:
             st.session_state.pop(key, None)
 
     login_tab, register_tab = st.tabs(
@@ -243,6 +243,8 @@ def _register_form():
     oficio = ""
     anios = None
     comunas_trabajo = []
+    especialidades = []
+    category_id = None
 
     if tipo == "Profesional":
         st.info(
@@ -259,6 +261,26 @@ def _register_form():
             step=1,
             key="register_years",
         )
+
+        # Especialidades del oficio según el catálogo del backend: sin al menos una,
+        # el profesional no puede recibir solicitudes (el backend exige una especialidad suya)
+        try:
+            category_id, opciones = _backend_specialties(oficio)
+        except api_client.ApiError as error:
+            category_id, opciones = None, []
+            st.warning(f"No se pudieron cargar las especialidades del servidor. {error}")
+        else:
+            if category_id is None:
+                st.warning(f"El oficio «{oficio}» todavía no está disponible en el servidor de Overol.")
+            else:
+                nombres = st.multiselect(
+                    "Especialidades",
+                    [s["name"] for s in opciones],
+                    key=f"register_specialties_{oficio}",
+                    help="Los clientes eligen una de tus especialidades al solicitarte una visita.",
+                )
+                especialidades = [s["id"] for s in opciones if s["name"] in nombres]
+
         comunas_trabajo = st.multiselect(
             "Comunas donde trabajas",
             COMUNAS,
@@ -317,6 +339,9 @@ def _register_form():
     if tipo == "Profesional" and not comunas_trabajo:
         errores.append("Selecciona al menos una comuna donde trabajas.")
 
+    if tipo == "Profesional" and category_id is not None and not especialidades:
+        errores.append("Elige al menos una especialidad: sin ella los clientes no podrán solicitarte visitas.")
+
     if not validate_phone(telefono):
         errores.append("Ingresa un teléfono válido (8 a 15 dígitos).")
 
@@ -343,7 +368,7 @@ def _register_form():
 
     if not _register_api(
         nombre, apellido, rut, email, telefono, direccion, comuna, role, password,
-        oficio, anios, comunas_trabajo,
+        oficio, anios, comunas_trabajo, especialidades,
     ):
         return
 
@@ -381,6 +406,16 @@ def _backend_category_id(oficio):
     return None
 
 
+def _backend_specialties(oficio):
+    """(id del oficio en el backend o None, [{id, name}] de sus especialidades)."""
+    category = next(
+        (c for c in api_client.get_categories() if _plain(c.get("name", "")) == _plain(oficio)), None
+    )
+    if category is None:
+        return None, []
+    return category["id"], api_client.get_specialties(category["id"])
+
+
 def _show_register_error(error):
     """Errores del registro; las reglas de contraseña del backend se muestran como lista."""
     password_messages = api_client.field_messages(error.data, "password")
@@ -398,7 +433,7 @@ def _show_register_error(error):
 
 
 def _register_api(nombre, apellido, rut, email, telefono, direccion, comuna, role, password,
-                  oficio="", anios=None, comunas_trabajo=()):
+                  oficio="", anios=None, comunas_trabajo=(), especialidades=()):
     """Crea la cuenta en el backend (POST /auth/register/). Devuelve True si se creó."""
     payload = {
         "email": email.strip().lower(),
@@ -422,7 +457,12 @@ def _register_api(nombre, apellido, rut, email, telefono, direccion, comuna, rol
         payload["professional_profile"] = {
             "visit_fee": 0,
             "coverage_communes": list(comunas_trabajo),
-            "categories": [{"category": category_id, "years_experience": int(anios or 0)}],
+            # El backend guarda las especialidades que pertenezcan a ese oficio
+            "categories": [{
+                "category": category_id,
+                "years_experience": int(anios or 0),
+                "specialties": list(especialidades),
+            }],
         }
 
     try:

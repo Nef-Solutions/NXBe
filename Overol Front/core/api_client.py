@@ -267,6 +267,11 @@ def get_categories():
     return request("GET", "catalog/categories/", auth=False) or []
 
 
+def get_specialties(category_id):
+    """Especialidades de un oficio del backend: [{id, name, category_id}]."""
+    return request("GET", f"catalog/specialties/?category_id={int(category_id)}", auth=False) or []
+
+
 def update_availability(work_days, work_start, work_end, is_available, coverage):
     """Disponibilidad del profesional. Los días van con nombre completo («Lun» → «Lunes»)."""
     return request(

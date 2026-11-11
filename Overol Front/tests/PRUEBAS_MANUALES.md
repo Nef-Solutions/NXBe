@@ -4,7 +4,7 @@ Las pruebas automáticas usan una imitación del backend. Estas se hacen a mano,
 Anota en cada caso ✅ o ❌ y lo que viste.
 
 **Etapa B:** login, bloqueo, registro, completar perfil, Mi perfil, contraseñas y sesión recordada (casos 1 a 24).
-**Etapa C:** Cobertura y solicitudes (casos C1 a C16, al final).
+**Etapa C:** Cobertura y solicitudes (casos C1 a C17, al final).
 
 ## Preparación (una vez)
 
@@ -85,4 +85,4 @@ cd "C:\Users\benja\Documents\NXBe_repo\Overol Front"
 | C14 | Cancelación del profesional | Solicitud aceptada → «Cancelar solicitud» sin motivo → con motivo | Primero pide el motivo. Después queda **Cancelada** y el cliente ve el motivo |
 | C15 | Cancelación del cliente | Solicitud pendiente → «Cancelar solicitud» → advertencia → **mantén presionado** el botón | Queda **Cancelada** y en `/admin/` `cancelled_by` = CLIENT. «No, mantener mi solicitud» no cancela |
 | C16 | Estado cerrado por Overol | En `/admin/` cambia una solicitud a FORCED_CLOSED | El cliente la ve como **Cerrada por Overol** y el profesional, en la pestaña de cerradas |
-
+| C17 | Profesional nuevo recibe solicitudes | Registra un profesional de **Gasfitería** marcando las especialidades «Fugas de agua» y «Destapes» (sin especialidades, el formulario no deja enviar) → en `/admin/` apruébalo (`verification_status` = APPROVED) → entra con él y configura «Cobertura» (C1) → `cliente1` abre su perfil | En `/admin/` → Professional profiles → Specialties: «Fugas de agua» y «Destapes». En el perfil, «Especialidad» ofrece esas dos y «Solicitar visita» crea la solicitud (PENDING) |

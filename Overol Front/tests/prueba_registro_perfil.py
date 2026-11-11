@@ -29,7 +29,7 @@ def free_rut():
             return f"{number}-{dv}"
 
 
-def fill(at, email, password, role="Cliente", trade=None):
+def fill(at, email, password, role="Cliente", trade=None, specialties=()):
     at.radio(key="register_role").set_value(role).run()
     at.text_input(key="register_name").input("Paula")
     at.text_input(key="register_lastname").input("Rojas")
@@ -38,7 +38,9 @@ def fill(at, email, password, role="Cliente", trade=None):
     at.text_input(key="register_phone").input("+56 9 8765 4321")
     at.text_input(key="register_address").input("Av. Siempre Viva 742")
     if role == "Profesional":
-        at.selectbox(key="register_trade").select(trade)
+        at.selectbox(key="register_trade").select(trade).run()
+        for name in specialties:
+            at.multiselect(key=f"register_specialties_{trade}").select(name)
         at.number_input(key="register_years").set_value(4)
         at.multiselect(key="register_coverage").select("Santiago").select("Ñuñoa")
     at.text_input(key="register_password").input(password)
@@ -72,18 +74,52 @@ check("register_certifications" not in [w.key for w in at.text_input], "el formu
 # ---------- Registro de profesional ----------
 backend.calls.clear()
 at = fill(register_page(), "paula.multi@prueba.cl", "Clave1234", "Profesional", "Maestro multipropósito")
-check(not calls("POST", "/auth/register/") and "«Maestro multipropósito» todavía no está disponible" in errors(at)
-      and "Gasfitería" in errors(at), "oficio que el backend no tiene: avisa y no envía el registro")
+check("«Maestro multipropósito» todavía no está disponible" in texts(at)
+      and not any((w.key or "").startswith("register_specialties_") for w in at.multiselect),
+      "oficio que el backend no tiene: el formulario lo avisa y no ofrece especialidades")
+check(not calls("POST", "/auth/register/") and "Gasfitería" in errors(at), "oficio que el backend no tiene: no envía el registro")
 
+at = register_page()
+at.radio(key="register_role").set_value("Profesional").run()
+at.selectbox(key="register_trade").select("Gasfitería").run()
+check(set(at.multiselect(key="register_specialties_Gasfitería").options) ==
+      {"Fugas de agua", "Destapes", "Grifería y artefactos sanitarios", "Calefont y termo"},
+      "especialidades del oficio elegido, tomadas de GET /catalog/specialties/?category_id=")
+at.selectbox(key="register_trade").select("Electricidad").run()
+check("Tableros eléctricos" in at.multiselect(key="register_specialties_Electricidad").options,
+      "al cambiar de oficio cambian las especialidades")
+
+backend.calls.clear()
 at = fill(register_page(), "paula.gasfiter@prueba.cl", "Clave1234", "Profesional", "Gasfitería")
+check("Elige al menos una especialidad" in errors(at) and not calls("POST", "/auth/register/"),
+      "sin especialidades: no envía el registro")
+
+at = fill(register_page(), "paula.gasfiter@prueba.cl", "Clave1234", "Profesional", "Gasfitería",
+          ["Fugas de agua", "Destapes"])
 body = last_body("POST", "/auth/register/") or {}
 profile = body.get("professional_profile", {})
+ids = sorted(s for s, (n, _) in backend.specialties.items() if n in ("Fugas de agua", "Destapes"))
 check(profile.get("coverage_communes") == ["Santiago", "Ñuñoa"]
-      and profile.get("categories") == [{"category": 1, "years_experience": 4}],
-      "profesional: envía coverage_communes y categories con el id del backend")
+      and profile.get("categories") == [{"category": 1, "years_experience": 4, "specialties": ids}],
+      "profesional: envía coverage_communes y categories con el oficio y los ids de sus especialidades")
 check("latitude" not in str(body) and "certifications" not in profile, "profesional: sin coordenadas ni certificaciones")
 new_pro = backend.by_email("paula.gasfiter@prueba.cl")
 check(new_pro and new_pro["professional"]["verification_status"] == "PENDING", "profesional: queda pendiente de verificación")
+check(new_pro["professional"]["trades"][0]["specialties"] == ["Fugas de agua", "Destapes"],
+      "el backend guardó las especialidades del oficio")
+
+# Una vez aprobado y con horario, un cliente ya puede solicitarle una visita
+new_pro["professional"].update(verification_status="APPROVED", work_days=["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"],
+                               work_start="09:00:00", work_end="18:00:00")
+pid = new_pro["professional"]["id"]
+at = new_app(front, "cliente1@demo.overol.cl", client_navigation="🔎 Buscar profesionales",
+             _client_prev_menu="🔎 Buscar profesionales", selected_professional=pid)
+check(set(at.selectbox(key=f"request_specialty_Gasfitería_{pid}").options) == {"Fugas de agua", "Destapes"},
+      "el cliente ve sus especialidades en «Solicitar visita»")
+at.text_area(key=f"request_description_{pid}").input("Fuga bajo el lavaplatos")
+at.button(key=f"send_request_{pid}").click().run()
+check(any(v["professional"] == pid and v["status"] == "PENDING" for v in backend.visits.values()),
+      "el profesional nuevo recibe la solicitud (POST /requests/ aceptado)")
 
 # ---------- Errores del backend legibles ----------
 at = fill(register_page(), "otra@prueba.cl", "Password123")
