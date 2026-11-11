@@ -41,6 +41,7 @@ from core.database import (
     add_verification_message,
     get_verification_documents,
     get_verification_messages,
+    notify,
     now_str,
     reject_request,
     request_expires_at,
@@ -90,10 +91,17 @@ def professional_dashboard(user):
             "🔔 Notificaciones",
             "👤 Mi perfil",
             "📍 Cobertura",
+            "🛠️ Reclamos",
             "🎓 Desarrollo profesional",
             "ℹ️ Quiénes somos",
         ],
-        badges={"🔔 Notificaciones": count_unread_notifications(user["id"])},
+        badges={
+            "🔔 Notificaciones": count_unread_notifications(user["id"]),
+            "🛠️ Reclamos": sum(
+                1 for c in get_claims_for_professional(professional["id"])
+                if c["status"] == "Abierto" and not c["professional_response"]
+            ),
+        },
     )
 
     hero(
@@ -113,6 +121,9 @@ def professional_dashboard(user):
 
     elif menu == "📍 Cobertura":
         professional_coverage(user, professional)
+
+    elif menu == "🛠️ Reclamos":
+        professional_claims(user, professional)
 
     elif menu == "🎓 Desarrollo profesional":
         professional_training(user, professional)
@@ -541,15 +552,21 @@ def professional_claims(user, professional):
                 f"**Motivo:** {claim['reason']}"
             )
 
-            if claim["response"]:
+            if claim["professional_response"]:
                 st.write(
-                    f"**Tu respuesta:** {claim['response']}"
+                    f"**Tu respuesta:** {claim['professional_response']}"
                 )
 
-            if claim["status"] == "Abierto":
+            if claim["response"]:
+                st.write(
+                    f"**Mediación de Overol:** {claim['response']}"
+                )
+
+            if claim["status"] == "Abierto" and not claim["professional_response"]:
                 response = st.text_area(
                     "Respuesta al cliente",
                     key=f"claim_response_{claim['id']}",
+                    max_chars=MAX_TEXTO,
                 )
 
                 if st.button(
@@ -563,21 +580,31 @@ def professional_claims(user, professional):
                     else:
                         conn = get_connection()
 
-                        conn.execute(
+                        cur = conn.execute(
                             """
                             UPDATE claims
-                            SET response = ?,
+                            SET professional_response = ?,
                                 status = 'En mediación',
                                 updated_at = ?
                             WHERE id = ? AND professional_id = ? AND status = 'Abierto'
                             """,
                             (
-                                response.strip(),
+                                response.strip()[:MAX_TEXTO],
                                 now_str(),
                                 claim["id"],
                                 professional["id"],
                             ),
                         )
+
+                        if cur.rowcount:
+                            notify(
+                                conn,
+                                claim["client_id"],
+                                "Respuesta a tu reclamo",
+                                f"El profesional respondió tu reclamo #{claim['id']}. "
+                                "Revísalo en «Mis reclamos».",
+                                claim["request_id"],
+                            )
 
                         conn.commit()
                         conn.close()
@@ -590,9 +617,7 @@ def professional_claims(user, professional):
                             "Respuesta de profesional",
                         )
 
-                        st.success(
-                            "Respuesta enviada al cliente."
-                        )
+                        flash("Respuesta enviada al cliente.")
                         st.rerun()
 
 

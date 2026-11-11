@@ -697,7 +697,12 @@ def client_claims(user):
                 f"**Motivo:** {claim['reason']}"
             )
 
+            if claim["professional_response"]:
+                st.write(
+                    f"**Respuesta del profesional:** {claim['professional_response']}"
+                )
+
             if claim["response"]:
                 st.write(
-                    f"**Respuesta del profesional:** {claim['response']}"
+                    f"**Mediación de Overol:** {claim['response']}"
                 )

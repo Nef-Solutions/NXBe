@@ -669,9 +669,14 @@ def admin_claims(user):
                 f"**Motivo:** {claim['reason']}"
             )
 
+            if claim["professional_response"]:
+                st.write(
+                    f"**Respuesta del profesional:** {claim['professional_response']}"
+                )
+
             if claim["response"]:
                 st.write(
-                    f"**Respuesta:** {claim['response']}"
+                    f"**Mediación registrada:** {claim['response']}"
                 )
 
             if claim["status"] != "Cerrado":

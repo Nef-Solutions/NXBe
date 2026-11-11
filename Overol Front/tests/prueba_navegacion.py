@@ -13,7 +13,7 @@ ROLES = {
                 ["🏠 Inicio", "🔎 Buscar profesionales", "📋 Mis solicitudes", "🛠️ Mis reclamos",
                  "🔔 Notificaciones", "👤 Mi perfil", "ℹ️ Quiénes somos"]),
     "profesional": (U["carlos"], "professional_navigation",
-                    ["📋 Solicitudes", "🔔 Notificaciones", "👤 Mi perfil", "📍 Cobertura",
+                    ["📋 Solicitudes", "🔔 Notificaciones", "👤 Mi perfil", "📍 Cobertura", "🛠️ Reclamos",
                      "🎓 Desarrollo profesional", "ℹ️ Quiénes somos"]),
     "admin": (U["admin"], "admin_navigation",
               ["📊 Indicadores", "🪪 Verificación", "👥 Usuarios", "⭐ Moderación", "🛠️ Reclamos",

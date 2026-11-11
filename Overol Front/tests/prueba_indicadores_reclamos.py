@@ -3,7 +3,7 @@ servicio finalizado, lo ve en «Mis reclamos» y el admin registra la mediación
 
 import re
 
-from comun import check, md, new_app, next_valid_slot, preparar, reset_pending, terminar, texts, usuarios
+from comun import check, md, new_app, next_valid_slot, plain, preparar, reset_pending, terminar, texts, usuarios
 
 front = preparar()
 U = usuarios(front)
@@ -67,6 +67,30 @@ check(not any(b.key == f"send_claim_{rid}" for b in at.button) and f"reclamo #{c
 at.button(key="client_navigation_btn_3").click().run()
 check(f"Reclamo #{claim['id']}" in md(at) and "Volvió a gotear" in texts(at), "[cliente] lo ve en «Mis reclamos»")
 
+# ---------- Profesional: responde el reclamo ----------
+at = new_app(front, PRO_USER)
+nav = next(b for b in at.button if (b.key or "").startswith("professional_navigation_btn_") and "Reclamos" in b.label)
+check(plain(nav.label) == "🛠️ Reclamos" and nav.label != plain(nav.label),
+      "[profesional] «Reclamos» está en su barra, con contador de reclamos por responder")
+nav.click().run()
+check(not at.exception and "Reclamos de posventa" in md(at) and f"Reclamo #{claim['id']}" in md(at)
+      and "Volvió a gotear" in texts(at), "[profesional] ve el reclamo de su cliente")
+at.button(key=f"respond_claim_{claim['id']}").click().run()
+check(any("Escribe una respuesta" in w.value for w in at.warning), "[profesional] la respuesta no puede ir vacía")
+check(at.text_area(key=f"claim_response_{claim['id']}").max_chars == 500, "[profesional] respuesta de máx. 500 caracteres")
+unread_before = db.count_unread_notifications(CLIENT)
+at.text_area(key=f"claim_response_{claim['id']}").input("Voy el lunes a revisar la unión sin costo")
+at.button(key=f"respond_claim_{claim['id']}").click().run()
+conn = db.get_connection()
+claim = conn.execute("SELECT * FROM claims WHERE id = ?", (claim["id"],)).fetchone()
+conn.close()
+check(not at.exception and claim["professional_response"] == "Voy el lunes a revisar la unión sin costo"
+      and claim["status"] == "En mediación" and claim["response"] == "",
+      "[profesional] responde: queda En mediación sin pisar la mediación del admin")
+check(db.count_unread_notifications(CLIENT) == unread_before + 1, "[profesional] el cliente recibe una notificación")
+check(not any(b.key == f"respond_claim_{claim['id']}" for b in at.button)
+      and "Voy el lunes" in texts(at), "[profesional] ya no puede responder dos veces y ve su respuesta")
+
 # ---------- Admin: Reclamos y mediación ----------
 at = new_app(front, ADMIN)
 at.button(key="admin_navigation_btn_4").click().run()
@@ -91,6 +115,9 @@ check(not any(b.key == f"save_claim_{claim['id']}" for b in at.button), "[admin]
 at = new_app(front, CLIENT)
 at.button(key="client_navigation_btn_3").click().run()
 check("Se coordina una segunda visita" in texts(at), "[cliente] ve la respuesta en «Mis reclamos»")
+check("Respuesta del profesional:** Voy el lunes" in texts(at) or
+      any("Respuesta del profesional" in m.value and "Voy el lunes" in m.value for m in at.markdown),
+      "[cliente] ve por separado la respuesta del profesional y la mediación")
 
 at = new_app(front, ADMIN)
 check(metric(at, "Reclamos") == count("SELECT COUNT(*) FROM claims"), "[admin] el indicador de reclamos se actualiza")

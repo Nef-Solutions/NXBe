@@ -1243,6 +1243,8 @@ def run_migrations(conn):
     add_column_if_missing(conn, "professionals", "verification_reason", "TEXT DEFAULT ''")
     # Documentos de verificación cifrados con Fernet (los antiguos se cifran al arrancar)
     add_column_if_missing(conn, "verification_documents", "encrypted", "INTEGER NOT NULL DEFAULT 0")
+    # Respuesta del profesional a un reclamo (claims.response queda para la mediación del admin)
+    add_column_if_missing(conn, "claims", "professional_response", "TEXT DEFAULT ''")
 
     # Los hilos de soporte anteriores a los tickets pasan a ser tickets abiertos
     conn.execute(
