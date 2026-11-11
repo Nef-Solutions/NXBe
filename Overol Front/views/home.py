@@ -2,7 +2,8 @@
 
 import streamlit as st
 
-from core.database import get_all_professionals, get_platform_stats, get_professional_rating
+from core import api_client, catalog_api
+from core.database import get_platform_stats
 from ui.components import format_professional_card, hero, metric_card, section
 from views.shared import (
     category_buttons,
@@ -68,11 +69,14 @@ def home_page(role, nav_key, prev_key, search_target, show_hero=True):
             )
 
     # ---------------- Destacados ----------------
-    featured = sorted(
-        get_all_professionals(),
-        key=lambda p: get_professional_rating(p["id"])[1],
-        reverse=True,
-    )[:3]
+    try:
+        featured = sorted(
+            catalog_api.list_professionals(anonymous=anonymous),
+            key=lambda p: catalog_api.rating(p)[1],
+            reverse=True,
+        )[:3]
+    except api_client.ApiError:
+        featured = []  # sin backend, la portada se muestra sin destacados
 
     if featured:
         section("⭐ Profesionales destacados")

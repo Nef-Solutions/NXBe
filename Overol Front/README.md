@@ -9,7 +9,7 @@ El front funciona de dos maneras:
 | Modo | Comportamiento |
 |---|---|
 | `local` (por defecto) | Todo funciona con una base SQLite propia (`overol.db`), sin depender de ningún servidor. Ideal para demostraciones. |
-| `api` | Inicio de sesión, registro y datos personales (teléfono, dirección y comuna) usan el backend Django del equipo. El resto de las funciones sigue en SQLite mientras se completa la integración. |
+| `api` | Inicio de sesión, registro, datos personales (teléfono, dirección y comuna), disponibilidad del profesional y el catálogo de profesionales (tarjetas, filtros y perfiles públicos) usan el backend Django del equipo. Solicitudes, valoraciones, reclamos y soporte siguen en SQLite mientras se completa la integración. |
 
 El modo se elige con la variable de entorno `OVEROL_BACKEND`.
 
@@ -83,7 +83,10 @@ Por defecto usan `python` del PATH para el front y `py -3.12` para crear el ento
 - Los usuarios de demostración locales solo sirven si también existen en el backend.
 - La recuperación de contraseña está oculta en este modo.
 - Nombre y apellido solo admiten letras, espacios y apóstrofes («Ana María», no «Ana-María»).
-- Tras 3 claves incorrectas el backend bloquea la cuenta por un tiempo, incluso con la clave correcta.
+- Tras 3 claves incorrectas el backend bloquea la cuenta por 5 minutos, incluso con la clave correcta. El front muestra cuántos minutos faltan.
+- Para registrarse como profesional, el oficio debe existir en el catálogo del backend (hoy: Electricidad, Gasfitería y Cerrajería). Si no existe, el front lo avisa y no crea la cuenta.
+- El catálogo y los perfiles públicos salen de `/api/catalog/`. La búsqueda por palabra clave se hace en el front sobre esos resultados. «Solicitar visita» muestra «Disponible pronto» hasta conectar las solicitudes.
+- Usuarios de demostración del backend: los crea `python manage.py seed_demo` (contraseña `OverolDemo123!`): `cliente1@demo.overol.cl`, `profesional1@demo.overol.cl` y `admin@demo.overol.cl`, entre otros.
 - Con «Mantener mi sesión iniciada», el token de renovación del backend se guarda en el SQLite local para recuperar la sesión al recargar la página. Es una limitación aceptada del prototipo: en producción debe cifrarse o reemplazarse por una cookie segura.
 
 ---
@@ -122,7 +125,8 @@ Overol Front/
 │   ├── security.py         Hash PBKDF2 y validación de RUT, correo, teléfono y contraseña
 │   ├── database.py         SQLite: tablas, migraciones automáticas, datos demo y consultas
 │   ├── session.py          Sesión persistente de 7 días (cookie con token con hash)
-│   └── api_client.py       Cliente HTTP del backend (JWT, renovación del token, errores)
+│   ├── api_client.py       Cliente HTTP del backend (JWT, renovación del token, errores)
+│   └── catalog_api.py      Catálogo y perfiles públicos desde la API (o desde SQLite en modo local)
 ├── ui/
 │   ├── components.py       Componentes visuales, carga del CSS y mensajes flash
 │   ├── profile.py          Perfiles con estructura tipo LinkedIn

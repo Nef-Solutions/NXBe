@@ -717,12 +717,13 @@ _STOPWORDS = {
 }
 
 
-def search_professionals(professionals, text, include_name=True):
+def search_professionals(professionals, text, include_name=True, trades_of=None):
     """
     Historia 4.16: filtra un listado por palabra clave, sin distinguir mayúsculas ni tildes.
     Busca en nombre (solo si include_name), oficios activos, especialidades, presentación
     y palabras clave de cada oficio. Con varias palabras deben coincidir TODAS.
     Nunca busca en datos de contacto ni personales (correo, teléfono, dirección, RUT).
+    `trades_of(row)` entrega los oficios (modo api); por defecto se leen de la base.
     """
     words = [w for w in re.findall(r"\w+", normalize_text(text)) if w not in _STOPWORDS]
 
@@ -732,7 +733,7 @@ def search_professionals(professionals, text, include_name=True):
     result = []
 
     for row in professionals:
-        trades = get_trades(row["id"])
+        trades = trades_of(row) if trades_of else get_trades(row["id"])
         parts = [row["about"]]
         parts += [t["trade"] for t in trades]
         parts += [t["specialties"] for t in trades]

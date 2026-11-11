@@ -8,7 +8,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from core.constants import APP_DIR
-from core.database import get_professional_rating, get_trades
+from core import catalog_api
 
 # Clase CSS del badge según el estado (ver style.css)
 BADGE_CLASSES = {
@@ -153,8 +153,8 @@ def format_professional_card(professional, anonymous=False):
     Tarjeta resumen del profesional (lista de resultados), con mini portada.
     anonymous=True (visitantes): no muestra nombre ni apellido (Historia 003).
     """
-    total, average = get_professional_rating(professional["id"])
-    trades = get_trades(professional["id"])
+    total, average = catalog_api.rating(professional)
+    trades = catalog_api.trades(professional)
 
     headline = " · ".join(t["trade"] for t in trades[:3])
     if len(trades) > 3:
@@ -180,6 +180,9 @@ def format_professional_card(professional, anonymous=False):
             f'<span class="stars">{stars(average)}</span> '
             f'<b>{average}</b> <span class="muted">· {total} opiniones</span>'
         )
+    elif total is None and average:
+        # Modo api: el listado trae el promedio, pero no la cantidad de opiniones
+        rating_html = f'<span class="stars">{stars(average)}</span> <b>{average}</b>'
     else:
         rating_html = '<span class="muted">Aún sin opiniones</span>'
 

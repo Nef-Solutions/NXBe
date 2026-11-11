@@ -4,13 +4,13 @@ import sqlite3
 
 import streamlit as st
 
+from core import api_client, catalog_api
 from core.constants import (
     COMUNAS,
-    ESPECIALIDADES_POR_OFICIO,
     ESTADOS_SOLICITUD,
     HORAS_VENCIMIENTO,
-    OFICIOS,
     PALABRAS_CLAVE_OFICIO,
+    use_api,
 )
 from core.database import (
     audit,
@@ -22,7 +22,6 @@ from core.database import (
     get_claims_for_client,
     get_connection,
     get_contact_info,
-    get_professional_rating,
     get_rating_for_request,
     get_requests_for_client,
     now_str,
@@ -191,21 +190,32 @@ def client_search(user):
         label_visibility="collapsed",
     ).strip()
 
+    try:
+        trade_options = catalog_api.trade_options()
+    except api_client.ApiError as error:
+        st.error(f"No se pudo cargar el catálogo de profesionales. {error}")
+        return
+
+    # Modo api: un oficio del front que el backend aún no tiene (p. ej. desde la portada)
+    missing_trade = st.session_state.get("search_trade", "Todas")
+    if missing_trade not in ["Todas"] + trade_options:
+        st.session_state["search_trade"] = "Todas"
+        st.info(f"El oficio «{missing_trade}» todavía no está disponible en el catálogo. Te mostramos todos los oficios.")
+
     c1, c2, c3, c4 = st.columns(4)
 
     with c1:
         trade = st.selectbox(
             "Oficio",
-            ["Todas"] + OFICIOS,
+            ["Todas"] + trade_options,
             key="search_trade",
         )
 
-    if trade == "Todas":
-        specialty_options = [
-            s for specs in ESPECIALIDADES_POR_OFICIO.values() for s in specs
-        ]
-    else:
-        specialty_options = ESPECIALIDADES_POR_OFICIO.get(trade, [])
+    try:
+        specialty_options = catalog_api.specialty_options(trade)
+    except api_client.ApiError as error:
+        st.error(f"No se pudo cargar el catálogo de profesionales. {error}")
+        return
 
     with c2:
         # La clave depende del oficio: al cambiarlo, la especialidad se reinicia.
@@ -229,21 +239,31 @@ def client_search(user):
             key="search_order",
         )
 
-    professionals = get_all_professionals(
-        specialty=specialty,
-        commune=commune,
-        trade=trade,
-    )
+    try:
+        professionals = catalog_api.list_professionals(
+            trade=trade,
+            specialty=specialty,
+            commune=commune,
+            anonymous=anonymous,
+        )
+    except api_client.ApiError as error:
+        st.error(f"No se pudo cargar el catálogo de profesionales. {error}")
+        return
 
     # El visitante ve tarjetas anónimas: buscar por nombre le revelaría quién es cada uno.
-    professionals = search_professionals(professionals, text, include_name=not anonymous)
+    professionals = search_professionals(
+        professionals, text, include_name=not anonymous, trades_of=catalog_api.trades
+    )
 
     if order == "Mejor evaluados":
         professionals = sorted(
             professionals,
-            key=lambda p: get_professional_rating(p["id"])[1],
+            key=lambda p: catalog_api.rating(p)[1],
             reverse=True,
         )
+    elif use_api():
+        # La base local ya los entrega ordenados por nombre; el backend no
+        professionals = sorted(professionals, key=lambda p: (p["name"], p["id"]))
 
     # Se registra la búsqueda solo cuando cambian los filtros (no en cada rerun).
     signature = (trade, specialty, commune, text)

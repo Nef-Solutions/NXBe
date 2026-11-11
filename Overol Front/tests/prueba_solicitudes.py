@@ -4,12 +4,13 @@ y vencimiento a las 72 horas."""
 
 from datetime import datetime, timedelta
 
-from comun import check, md, new_app, next_valid_slot, preparar, reset_pending, terminar, texts, usuarios
+from comun import check, md, new_app, next_valid_slot, peticiones, preparar, reset_pending, terminar, texts, usuarios
 
 front = preparar()
 U = usuarios(front)
 
 from core import database as db  # noqa: E402
+from core.constants import use_api  # noqa: E402
 
 CLIENT, PRO_USER = U["cliente"], U["carlos"]
 PID = db.get_professional_by_user(PRO_USER)["id"]
@@ -59,25 +60,41 @@ reset_pending(db, CLIENT, PID)
 at = new_app(front, CLIENT)
 at.button(key="client_navigation_btn_1").click().run()
 at.button(key=f"client_view_prof_{PID}").click().run()
-check(not any(s.key == f"request_zone_{PID}" for s in at.selectbox), "[cliente] el formulario no pide zona")
-check("Lun, Mar, Mié, Jue, Vie" in texts(at), "[cliente] el formulario muestra los días en que trabaja")
-check(all(s.split(" - ")[1] <= "18:00" for s in at.selectbox(key=f"request_time_{PID}").options),
-      "[cliente] solo ofrece franjas dentro de su horario")
-before = {r["id"] for r in db.get_requests_for_client(CLIENT)}
-at.text_area(key=f"request_description_{PID}").input("Gotea la llave del baño").run()
-at.button(key=f"send_request_{PID}").click().run()
+
+if use_api():
+    # Fase 3: el perfil sale del backend y las solicitudes siguen siendo locales (Fase 4)
+    check(not at.exception and any("Disponible pronto" in i.value for i in at.info)
+          and not any(b.key == f"send_request_{PID}" for b in at.button),
+          "[api] el perfil muestra «Disponible pronto» en vez del formulario")
+    check(not any(m == "POST" for m, _ in peticiones), "[api] no envía ninguna solicitud al backend")
+    before = {r["id"] for r in db.get_requests_for_client(CLIENT)}
+    db.create_request(CLIENT, PID, TRADE, "", "Santiago", *next_valid_slot(db, PID), "Gotea la llave del baño")
+else:
+    check(not any(s.key == f"request_zone_{PID}" for s in at.selectbox), "[cliente] el formulario no pide zona")
+    check("Lun, Mar, Mié, Jue, Vie" in texts(at), "[cliente] el formulario muestra los días en que trabaja")
+    check(all(s.split(" - ")[1] <= "18:00" for s in at.selectbox(key=f"request_time_{PID}").options),
+          "[cliente] solo ofrece franjas dentro de su horario")
+    before = {r["id"] for r in db.get_requests_for_client(CLIENT)}
+    at.text_area(key=f"request_description_{PID}").input("Gotea la llave del baño").run()
+    at.button(key=f"send_request_{PID}").click().run()
+
 new = [r for r in db.get_requests_for_client(CLIENT) if r["id"] not in before]
 rid = new[0]["id"] if new else None
 check(not at.exception and rid and status(rid)["status"] == "Pendiente", "[cliente] crea la solicitud Pendiente")
 check(last_title(PRO_USER) == "Nueva solicitud", "[profesional] recibe la notificación «Nueva solicitud»")
 
 # ---------- Duplicada ----------
-at.button(key="client_navigation_btn_1").click().run()
-at.button(key=f"client_view_prof_{PID}").click().run()
-at.text_area(key=f"request_description_{PID}").input("Otra vez").run()
-at.button(key=f"send_request_{PID}").click().run()
-check(any("pendiente con este profesional" in w.value for w in at.warning),
-      "[cliente] no puede tener dos pendientes con el mismo profesional")
+if use_api():
+    ok, message = db.create_request(CLIENT, PID, TRADE, "", "Santiago", *next_valid_slot(db, PID), "Otra vez")
+    check(not ok and "pendiente con este profesional" in message,
+          "[cliente] no puede tener dos pendientes con el mismo profesional")
+else:
+    at.button(key="client_navigation_btn_1").click().run()
+    at.button(key=f"client_view_prof_{PID}").click().run()
+    at.text_area(key=f"request_description_{PID}").input("Otra vez").run()
+    at.button(key=f"send_request_{PID}").click().run()
+    check(any("pendiente con este profesional" in w.value for w in at.warning),
+          "[cliente] no puede tener dos pendientes con el mismo profesional")
 
 # ---------- Reglas de negocio de create_request ----------
 date, slot = next_valid_slot(db, PID)

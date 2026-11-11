@@ -18,13 +18,8 @@ from html import escape
 import streamlit as st
 
 from core.constants import DIAS_SEMANA, OFICIOS_INFO
-from core.database import (
-    get_client_stats,
-    get_professional_rating,
-    get_professional_stats,
-    get_public_reviews,
-    get_trades,
-)
+from core import catalog_api
+from core.database import get_client_stats
 from ui.components import _html, initials, stars
 
 TRADE_ICONS = {trade: icon for icon, trade, _ in OFICIOS_INFO}
@@ -57,8 +52,8 @@ def _section(title, icon, body_html):
 # ------------------------------------------------------------
 
 def profile_header(professional, anonymous=False):
-    stats = get_professional_stats(professional["id"])
-    trades = get_trades(professional["id"])
+    stats = catalog_api.stats(professional)
+    trades = catalog_api.trades(professional)
     coverage = _split(professional["coverage"])
 
     name = f'Profesional #{professional["id"]}' if anonymous else professional["name"]
@@ -129,7 +124,7 @@ def profile_header(professional, anonymous=False):
 
 def profile_sections(professional, owner=False):
     """Secciones del perfil. `owner=True` muestra textos guía en lo que aún está vacío."""
-    trades = get_trades(professional["id"])
+    trades = catalog_api.trades(professional)
 
     # ---------- Acerca de ----------
     about = (professional["about"] or "").strip()
@@ -145,18 +140,21 @@ def profile_sections(professional, owner=False):
     # ---------- Experiencia (una entrada por oficio) ----------
     entries = ""
     for trade in trades:
-        total, average = get_professional_rating(professional["id"], trade["trade"])
+        total, average = catalog_api.rating(professional, trade["trade"])
         years = (
             f'{trade["years_experience"]} años de experiencia'
             if trade["years_experience"] is not None
             else "Experiencia no informada"
         )
-        rating = (
-            f'<span class="stars">{stars(average)}</span> <b>{average}</b> '
-            f'<span class="muted">· {total} evaluaciones</span>'
-            if total
-            else '<span class="muted">Aún sin evaluaciones</span>'
-        )
+        if total is None:
+            rating = ""  # modo api: el backend aún no valora por oficio
+        elif total:
+            rating = (
+                f'<span class="stars">{stars(average)}</span> <b>{average}</b> '
+                f'<span class="muted">· {total} evaluaciones</span>'
+            )
+        else:
+            rating = '<span class="muted">Aún sin evaluaciones</span>'
         specs = _chips(_split(trade["specialties"]))
         entries += (
             '<div class="exp-item">'
@@ -236,8 +234,9 @@ def profile_sections(professional, owner=False):
 # Opiniones (estilo «recomendaciones»)
 # ------------------------------------------------------------
 
-def profile_reviews(professional_id):
-    reviews = get_public_reviews(professional_id)
+def profile_reviews(professional_id, professional=None):
+    """Opiniones con comentario. En modo api se pasa `professional` (ya trae sus opiniones)."""
+    reviews = catalog_api.reviews(professional or {"id": professional_id})
 
     if not reviews:
         _section(

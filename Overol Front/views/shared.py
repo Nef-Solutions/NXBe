@@ -4,7 +4,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from core import api_client
+from core import api_client, catalog_api
 from core.constants import (
     COMUNAS,
     FRANJAS_HORARIAS,
@@ -16,7 +16,6 @@ from core.constants import (
 from core.database import (
     audit,
     create_request,
-    get_professional_by_id,
     get_trades,
     get_user,
     get_user_profile,
@@ -256,7 +255,12 @@ def apply_deeplink(nav_key, target, prev_key):
     except ValueError:
         return
 
-    if get_professional_by_id(professional_id):
+    try:
+        exists = catalog_api.get_professional(professional_id) is not None
+    except api_client.ApiError:
+        exists = False
+
+    if exists:
         st.session_state["selected_professional"] = professional_id
         st.session_state[nav_key] = target
         st.session_state[prev_key] = target
@@ -311,12 +315,24 @@ def render_reviews(professional_id):
     profile_reviews(professional_id)
 
 
-def professional_profile_public(professional_id):
-    """Historia 003: perfil público para visitantes (sin datos personales)."""
-    professional = get_professional_by_id(professional_id)
+def _load_professional(professional_id, anonymous=False):
+    """Profesional del catálogo (base local o backend). Muestra el error y devuelve None."""
+    try:
+        professional = catalog_api.get_professional(professional_id, anonymous=anonymous)
+    except api_client.ApiError as error:
+        st.error(f"No se pudo cargar el perfil del profesional. {error}")
+        return None
 
     if not professional:
         st.error("Profesional no encontrado.")
+    return professional
+
+
+def professional_profile_public(professional_id):
+    """Historia 003: perfil público para visitantes (sin datos personales)."""
+    professional = _load_professional(professional_id, anonymous=True)
+
+    if not professional:
         return
 
     profile_header(professional, anonymous=True)
@@ -325,7 +341,7 @@ def professional_profile_public(professional_id):
 
     with left:
         profile_sections(professional)
-        profile_reviews(professional_id)
+        profile_reviews(professional_id, professional)
 
     with right:
         st.markdown(
@@ -348,10 +364,9 @@ def professional_profile_client(user_id, professional_id):
         st.error("Solo los clientes pueden ver perfiles de profesionales y agendar visitas.")
         return
 
-    professional = get_professional_by_id(professional_id)
+    professional = _load_professional(professional_id)
 
     if not professional:
-        st.error("Profesional no encontrado.")
         return
 
     profile_header(professional, anonymous=False)
@@ -360,10 +375,19 @@ def professional_profile_client(user_id, professional_id):
 
     with left:
         profile_sections(professional)
-        profile_reviews(professional_id)
+        profile_reviews(professional_id, professional)
 
     with right:
         st.markdown("### 📅 Solicitar visita")
+
+        # Fase 3: en modo api las solicitudes todavía son locales y este profesional
+        # vive en el backend, así que no se puede agendar hasta la Fase 4.
+        if catalog_api.is_api(professional):
+            st.info(
+                "**Disponible pronto.** Muy luego podrás solicitar una visita a este "
+                "profesional directamente desde su perfil."
+            )
+            return
 
         work_days = [d for d in (professional["work_days"] or "").split(",") if d]
 
