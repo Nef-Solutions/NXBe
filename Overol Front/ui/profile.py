@@ -19,7 +19,6 @@ import streamlit as st
 
 from core.constants import DIAS_SEMANA, OFICIOS_INFO
 from core import catalog_api
-from core.database import get_client_stats
 from ui.components import _html, initials, stars
 
 TRADE_ICONS = {trade: icon for icon, trade, _ in OFICIOS_INFO}
@@ -234,9 +233,9 @@ def profile_sections(professional, owner=False):
 # Opiniones (estilo «recomendaciones»)
 # ------------------------------------------------------------
 
-def profile_reviews(professional_id, professional=None):
-    """Opiniones con comentario. En modo api se pasa `professional` (ya trae sus opiniones)."""
-    reviews = catalog_api.reviews(professional or {"id": professional_id})
+def profile_reviews(professional):
+    """Opiniones con comentario (el perfil del backend ya trae sus opiniones)."""
+    reviews = catalog_api.reviews(professional)
 
     if not reviews:
         _section(
@@ -267,25 +266,14 @@ def profile_reviews(professional_id, professional=None):
 # Cabecera del perfil personal (cliente / profesional)
 # ------------------------------------------------------------
 
-def profile_user_header(user, profile):
-    stats = get_client_stats(user["id"])
+def profile_user_header(user):
+    """Cabecera del perfil personal con los datos de /auth/me/. Las cifras (solicitudes,
+    servicios, evaluaciones) vuelven cuando estén conectadas las solicitudes (etapa C)."""
     role = "Cliente" if user["role"] == "cliente" else "Profesional"
-    commune = profile["commune"] if profile and profile["commune"] else ""
-    place = f"📍 {escape(commune)}" if commune else ""
+    place = f"📍 {escape(user['commune'])}" if user["commune"] else ""
 
     badges = f'<span class="pbadge">{role}</span>'
-    if stats["member_since"]:
-        badges += f'<span class="pbadge">Miembro desde {escape(stats["member_since"])}</span>'
-
     stat_html = ""
-    if user["role"] == "cliente":
-        stat_html = (
-            '<div class="profile-stats">'
-            f'<div class="pstat"><div class="pstat-n">{stats["requests"]}</div><div class="pstat-l">Solicitudes</div></div>'
-            f'<div class="pstat"><div class="pstat-n">{stats["finished"]}</div><div class="pstat-l">Servicios finalizados</div></div>'
-            f'<div class="pstat"><div class="pstat-n">{stats["rated"]}</div><div class="pstat-l">Evaluaciones realizadas</div></div>'
-            "</div>"
-        )
 
     st.markdown(
         _html(

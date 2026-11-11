@@ -1,7 +1,7 @@
 """
 Cliente HTTP para el backend Django de Overol (contrato: documentación de la API del backend).
 
-Solo se usa cuando OVEROL_BACKEND=api. Los tokens JWT viven en st.session_state:
+Los tokens JWT viven en st.session_state (nunca en el navegador):
   - api_access:  token de acceso (15 minutos).
   - api_refresh: token de renovación (7 días).
 Si una petición protegida responde 401, se renueva el acceso una vez y se reintenta.
@@ -27,6 +27,11 @@ FIELD_LABELS = {
     "commune": "Comuna",
     "role": "Rol",
     "password": "Contraseña",
+    "current_password": "Contraseña actual",
+    "new_password": "Nueva contraseña",
+    "bio": "Presentación",
+    "headline": "Titular",
+    "contact_preference": "Preferencia de contacto",
     "privacy_policy_accepted": "Política de privacidad",
     "privacy_policy_version": "Política de privacidad",
     "professional_profile": "Perfil profesional",
@@ -209,13 +214,44 @@ def get_me():
     return request("GET", "auth/me/")
 
 
-def update_me(phone, address, commune):
-    """El backend solo permite modificar teléfono, dirección y comuna."""
+def update_me(**fields):
+    """PATCH /auth/me/: phone, address, commune y, para profesionales, bio, headline,
+    contact_preference y visit_fee (el backend ignora estos últimos en un cliente)."""
     return request(
         "PATCH",
         "auth/me/",
-        {"phone": phone.strip(), "address": address.strip(), "commune": commune.strip()},
+        {k: v.strip() if isinstance(v, str) else v for k, v in fields.items()},
     )
+
+
+def logout():
+    """Anula en el backend el token de renovación de esta sesión (POST /auth/logout/)."""
+    if not st.session_state.get(REFRESH_KEY):
+        return
+
+    # El cuerpo se arma DESPUÉS de renovar: renovar rota el token de renovación
+    if not st.session_state.get(ACCESS_KEY) and not refresh():
+        return
+    try:
+        _send("POST", "auth/logout/", {"refresh": st.session_state[REFRESH_KEY]}, st.session_state[ACCESS_KEY])
+    except ApiError as error:
+        if error.status != 401 or not refresh():
+            raise
+        _send("POST", "auth/logout/", {"refresh": st.session_state[REFRESH_KEY]}, st.session_state[ACCESS_KEY])
+
+
+def change_password(current_password, new_password):
+    return request(
+        "POST",
+        "auth/password/change/",
+        {"current_password": current_password, "new_password": new_password},
+    )
+
+
+def reset_password(email):
+    """El backend responde 202 exista o no la cuenta (no revela qué correos están registrados)."""
+    data = request("POST", "auth/password/reset/", {"email": email.strip().lower()}, auth=False)
+    return (data or {}).get("detail", "")
 
 
 def get_categories():

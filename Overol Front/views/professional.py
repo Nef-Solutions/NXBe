@@ -17,6 +17,7 @@ from core.constants import (
     MOTIVOS_RECHAZO,
     OFICIOS,
     UPLOAD_DIR,
+    pantallas_visibles,
     use_api,
 )
 from core import api_client
@@ -62,6 +63,7 @@ from ui.components import (
     thread_message,
 )
 from views.about import about_page
+from views.shared import user_profile_page
 from ui.profile import profile_header, profile_reviews, profile_sections
 
 MAX_UPLOAD_MB = 5
@@ -76,33 +78,32 @@ SIGNATURES = {
 
 
 def professional_dashboard(user):
-    professional = get_professional_by_user(user["id"])
+    options = pantallas_visibles("profesional", [
+        "📋 Solicitudes",
+        "🔔 Notificaciones",
+        "👤 Mi perfil",
+        "📍 Cobertura",
+        "🛠️ Reclamos",
+        "🎓 Desarrollo profesional",
+        "ℹ️ Quiénes somos",
+    ])
 
-    if not professional:
-        st.error(
-            "No se encontró el perfil profesional asociado a esta cuenta."
+    # Las pantallas que aún usan SQLite necesitan el perfil profesional local; mientras
+    # estén ocultas (PANTALLAS_PENDIENTES_API) no se consulta la base.
+    professional = None
+    if any(o not in ("👤 Mi perfil", "ℹ️ Quiénes somos") for o in options):
+        professional = get_professional_by_user(user["id"])
+
+    badges = {}
+    if "🔔 Notificaciones" in options:
+        badges["🔔 Notificaciones"] = count_unread_notifications(user["id"])
+    if "🛠️ Reclamos" in options and professional:
+        badges["🛠️ Reclamos"] = sum(
+            1 for c in get_claims_for_professional(professional["id"])
+            if c["status"] == "Abierto" and not c["professional_response"]
         )
-        return
 
-    menu = nav_bar(
-        "professional_navigation",
-        [
-            "📋 Solicitudes",
-            "🔔 Notificaciones",
-            "👤 Mi perfil",
-            "📍 Cobertura",
-            "🛠️ Reclamos",
-            "🎓 Desarrollo profesional",
-            "ℹ️ Quiénes somos",
-        ],
-        badges={
-            "🔔 Notificaciones": count_unread_notifications(user["id"]),
-            "🛠️ Reclamos": sum(
-                1 for c in get_claims_for_professional(professional["id"])
-                if c["status"] == "Abierto" and not c["professional_response"]
-            ),
-        },
-    )
+    menu = nav_bar("professional_navigation", options, badges=badges)
 
     hero(
         "Panel del profesional",
@@ -117,7 +118,10 @@ def professional_dashboard(user):
         notifications_page(user)
 
     elif menu == "👤 Mi perfil":
-        professional_profile(user, professional)
+        # Etapa B: datos personales y presentación desde /auth/me/.
+        # Etapa F: vuelve professional_profile (vista pública, oficios y verificación).
+        _verification_banner(user)
+        user_profile_page(user)
 
     elif menu == "📍 Cobertura":
         professional_coverage(user, professional)
@@ -130,6 +134,23 @@ def professional_dashboard(user):
 
     elif menu == "ℹ️ Quiénes somos":
         about_page()
+
+
+def _verification_banner(user):
+    """Estado de verificación según /auth/me/ (verification_status)."""
+    status = user.get("verification_status")
+    if status == "APPROVED":
+        st.success("✓ Tu identidad está verificada. Apareces en las búsquedas de los clientes.")
+    elif status == "REJECTED":
+        st.error(
+            "Tu verificación fue rechazada. Escríbele a Overol para revisar tu caso "
+            "(el envío de documentos desde aquí estará disponible pronto)."
+        )
+    else:
+        st.info(
+            "⏳ Tu cuenta está pendiente de verificación. Un administrador de Overol "
+            "revisará tus datos; cuando te aprueben, aparecerás en las búsquedas."
+        )
 
 
 def professional_requests(user, professional):
@@ -222,7 +243,7 @@ def professional_profile(user, professional):
 
     with tab_view:
         profile_sections(professional, owner=True)
-        profile_reviews(professional["id"])
+        profile_reviews(professional)
 
     with tab_about:
         _about_form(user, professional)

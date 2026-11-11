@@ -8,18 +8,57 @@ APP_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = APP_DIR / "overol.db"
 UPLOAD_DIR = APP_DIR / "documentos_verificacion"
 
-# Origen de los datos de cuentas: "local" (SQLite) o "api" (backend Django).
-# Por defecto "local", para que la demo no dependa del backend.
-OVEROL_BACKEND = "api" if os.environ.get("OVEROL_BACKEND", "local").strip().lower() == "api" else "local"
+# Todo el front trabaja contra el backend Django (el modo local con SQLite se eliminó).
 API_BASE_URL = os.environ.get("OVEROL_API_URL", "http://127.0.0.1:8000/api/").rstrip("/") + "/"
 API_TIMEOUT = 10
 
 # Versión de la política de privacidad y términos de uso que acepta el usuario al registrarse
 PRIVACY_POLICY_VERSION = "2026-10"
 
+# Rol del backend → rol del front
+API_ROLES = {"CLIENT": "cliente", "PROFESSIONAL": "profesional", "ADMIN": "admin"}
+
 
 def use_api():
-    return OVEROL_BACKEND == "api"
+    # Etapa B: ya no existe el modo local. Las ramas que aún preguntan por él
+    # están en pantallas ocultas (PANTALLAS_PENDIENTES_API) y se borran en la etapa H.
+    return True
+
+
+# Pantallas que todavía leen o escriben en SQLite: se ocultan de la barra hasta
+# conectarlas a la API. Al terminar cada etapa se quitan de aquí las que ya migraron.
+# Valor: etapa que la conecta (C solicitudes · D valoraciones y reclamos ·
+# E notificaciones y tickets · F profesional · G admin).
+PANTALLAS_PENDIENTES_API = {
+    "cliente": {
+        "📋 Mis solicitudes": "C",
+        "🛠️ Mis reclamos": "D",
+        "🔔 Notificaciones": "E",
+    },
+    "profesional": {
+        "📋 Solicitudes": "C",
+        "🔔 Notificaciones": "E",
+        "📍 Cobertura": "F",
+        "🛠️ Reclamos": "D",
+        "🎓 Desarrollo profesional": "F",
+    },
+    "admin": {
+        "📊 Indicadores": "G",
+        "🪪 Verificación": "G",
+        "👥 Usuarios": "G",
+        "⭐ Moderación": "G",
+        "🛠️ Reclamos": "G",
+        "🎓 Contenidos": "G",
+        "📜 Trazabilidad": "G",
+        "💬 Soporte": "G",
+    },
+}
+
+
+def pantallas_visibles(role, options):
+    """Opciones de la barra sin las pantallas pendientes de conectar a la API."""
+    pending = PANTALLAS_PENDIENTES_API.get(role, {})
+    return [option for option in options if option not in pending]
 
 COMUNAS = [
     "Santiago",

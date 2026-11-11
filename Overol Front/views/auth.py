@@ -1,58 +1,39 @@
-"""Pantalla de inicio de sesión, registro y recuperación de contraseña."""
+"""Pantalla de inicio de sesión, registro y recuperación de contraseña (todo contra el backend)."""
 
 import re
-import sqlite3
 import unicodedata
 
 import streamlit as st
 
 from core import api_client
-from core.constants import (
-    COMUNAS,
-    MAX_INTENTOS_LOGIN,
-    MINUTOS_BLOQUEO,
-    OFICIOS,
-    PRIVACY_POLICY_VERSION,
-    use_api,
-)
-from core.database import (
-    insert_trade,
-    audit,
-    count_login_failures,
-    get_lock_remaining,
-    get_connection,
-    get_professional_by_user,
-    get_user_by_email,
-    get_user_profile,
-    now_str,
-    save_user_profile,
-    sync_professional_summary,
-    upsert_api_user,
-)
+from core.constants import COMUNAS, OFICIOS, PRIVACY_POLICY_VERSION
 from core.security import (
-    hash_password,
     normalize_rut,
     validate_email,
     validate_password_strength,
     validate_phone,
     validate_rut_dv,
     validate_rut_format,
-    verify_password,
 )
-from core.session import create_session
+from core.session import start_session
 from ui.components import flash
-
 
 
 # Mismos caracteres que acepta el backend en nombres y apellidos (sanitize_person_name)
 NOMBRE_VALIDO = re.compile(r"[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s']+")
 
+# El backend bloquea la cuenta 5 minutos tras 3 fallos y, mientras dure, responde 429
+# con retry_after (segundos). El front ya no cuenta intentos por su cuenta.
+BLOQUEO_AVISO = "Tras 3 intentos fallidos, la cuenta se bloquea por seguridad durante 5 minutos."
+MINUTOS_BLOQUEO = 5
 
-# Modo api: el backend también bloquea la cuenta 5 minutos tras 3 fallos y,
-# mientras dure, responde 429 con retry_after (segundos).
-API_BLOQUEO_AVISO = (
-    "Tras 3 intentos fallidos, la cuenta se bloquea por seguridad durante 5 minutos."
-)
+# Usuarios que crea `python manage.py seed_demo` en el backend
+DEMO_PASSWORD = "OverolDemo123!"
+DEMO_USERS = [
+    ("🏠 Cliente", "cliente1@demo.overol.cl", "demo_cliente"),
+    ("🛠️ Profesional", "profesional1@demo.overol.cl", "demo_profesional"),
+    ("🛡️ Administrador", "admin@demo.overol.cl", "demo_admin"),
+]
 
 
 def api_lock_message(retry_after):
@@ -64,13 +45,6 @@ def api_lock_message(retry_after):
     unit = "minuto" if minutes == 1 else "minutos"
     return f"Cuenta bloqueada por intentos fallidos. Intenta de nuevo en {minutes} {unit}."
 
-
-def lock_message(seconds):
-    minutes, secs = divmod(int(seconds), 60)
-    return (
-        f"Demasiados intentos fallidos: el ingreso está bloqueado por {MINUTOS_BLOQUEO} minutos. "
-        f"Podrás intentarlo de nuevo en {minutes} min {secs:02d} s."
-    )
 
 REGISTER_KEYS = [
     "register_name",
@@ -85,17 +59,8 @@ REGISTER_KEYS = [
     "register_role",
     "register_trade",
     "register_years",
-    "register_certifications",
     "register_coverage",
     "register_privacy",
-]
-
-RECOVERY_KEYS = [
-    "recovery_email",
-    "recovery_rut",
-    "recovery_phone",
-    "recovery_password",
-    "recovery_confirm",
 ]
 
 
@@ -117,14 +82,10 @@ def login_screen():
         unsafe_allow_html=True,
     )
 
-    # Limpia formularios después de un registro / recuperación exitosos.
+    # Limpia el formulario después de un registro exitoso.
     # Debe hacerse ANTES de crear los widgets.
     if st.session_state.pop("_clear_register", False):
         for key in REGISTER_KEYS:
-            st.session_state.pop(key, None)
-
-    if st.session_state.pop("_clear_recovery", False):
-        for key in RECOVERY_KEYS:
             st.session_state.pop(key, None)
 
     login_tab, register_tab = st.tabs(
@@ -165,106 +126,46 @@ def login_screen():
 
             if not email_clean or not password:
                 st.error("Ingresa tu correo y tu contraseña.")
-
-            elif get_lock_remaining(email_clean) > 0:
-                st.error(lock_message(get_lock_remaining(email_clean)))
-
-            elif use_api():
-                _login_api(email_clean, password, remember)
-
             else:
-                user = get_user_by_email(email_clean)
+                _login(email_clean, password, remember)
 
-                if user and not user["active"]:
-                    st.error("Esta cuenta se encuentra desactivada.")
-
-                elif not user or not verify_password(password, user["password_hash"]):
-                    _login_failed(user["id"] if user else None, email_clean)
-
-                else:
-                    _login_success(user["id"], email_clean, remember)
-
-        # Modo api: el backend aún no tiene correo configurado, así que se oculta la recuperación
-        if not use_api():
-            _password_recovery()
+        _password_recovery()
 
         st.markdown("---")
-        st.caption("Usuarios de demostración: elige uno y pulsa «Ingresar».")
+        st.caption(
+            "Usuarios de demostración del backend (`python manage.py seed_demo`): "
+            "elige uno y pulsa «Ingresar»."
+        )
 
-        d1, d2, d3 = st.columns(3)
-        for col, (label, email, pwd, key) in zip(
-            (d1, d2, d3),
-            [
-                ("🏠 Cliente", "cliente@overol.cl", "cliente123", "demo_cliente"),
-                ("🛠️ Profesional", "carlos@overol.cl", "profesional123", "demo_profesional"),
-                ("🛡️ Administrador", "admin@overol.cl", "admin123", "demo_admin"),
-            ],
-        ):
+        cols = st.columns(len(DEMO_USERS))
+        for col, (label, demo_email, key) in zip(cols, DEMO_USERS):
             with col:
                 st.button(
                     label,
                     key=key,
                     use_container_width=True,
                     on_click=_fill_demo,
-                    args=(email, pwd),
+                    args=(demo_email, DEMO_PASSWORD),
                 )
 
         st.code(
-            "Cliente        cliente@overol.cl / cliente123\n"
-            "Profesional    carlos@overol.cl / profesional123\n"
-            "Administrador  admin@overol.cl / admin123"
+            "\n".join(f"{label.split(' ', 1)[1]:<15}{demo_email}" for label, demo_email, _ in DEMO_USERS)
+            + f"\nContraseña     {DEMO_PASSWORD}"
         )
 
     with register_tab:
         _register_form()
 
 
-def _login_failed(user_id, email_clean):
-    """Registra el intento fallido y muestra cuántos quedan antes del bloqueo local."""
-    audit(user_id, "LOGIN_FAILED", "users", user_id, email_clean)
-
-    remaining_attempts = MAX_INTENTOS_LOGIN - count_login_failures(email_clean)
-
-    if remaining_attempts <= 0:
-        st.error(lock_message(get_lock_remaining(email_clean)))
-    elif use_api():
-        st.error("Correo o contraseña incorrectos. " + API_BLOQUEO_AVISO)
-    else:
-        st.error(
-            "Correo o contraseña incorrectos. "
-            f"Te quedan {remaining_attempts} intento(s) antes del bloqueo."
-        )
-
-
-def _login_success(user_id, email_clean, remember, api_refresh=""):
-    st.session_state.user_id = user_id
-    st.session_state.authenticated = True
-    st.session_state.pop("show_login", None)
-
-    # Un ingreso exitoso reinicia el contador de fallos
-    audit(user_id, "LOGIN_RESET", "users", user_id, email_clean)
-    audit(user_id, "LOGIN", "users", user_id, "Inicio de sesión exitoso")
-
-    if remember:
-        token = create_session(user_id, api_refresh=api_refresh)
-        st.session_state["session_token"] = token
-        st.session_state["_set_cookie"] = token
-    else:
-        st.session_state["_clear_cookie"] = True
-
-    st.rerun()
-
-
-def _login_api(email_clean, password, remember):
-    """Modo api: valida las credenciales en el backend y crea el usuario espejo local."""
+def _login(email_clean, password, remember):
+    """Valida las credenciales en el backend (POST /auth/token/) y abre la sesión."""
     try:
-        me = api_client.login(email_clean, password)
-        user_id = upsert_api_user(me)
+        api_client.login(email_clean, password)
+        start_session(remember)
     except api_client.ApiError as error:
         api_client.clear_tokens()
         if error.status in (400, 401):
-            local = get_user_by_email(email_clean)
-            _login_failed(local["id"] if local else None, email_clean)
+            st.error("Correo o contraseña incorrectos. " + BLOQUEO_AVISO)
         elif error.status == 429:
             data = error.data if isinstance(error.data, dict) else {}
             st.error(api_lock_message(data.get("retry_after")))
@@ -276,96 +177,33 @@ def _login_api(email_clean, password, remember):
         st.error(f"No se pudo iniciar sesión: {error}")
         return
 
-    _login_success(user_id, email_clean, remember, api_client.get_refresh_token())
+    st.rerun()
 
 
 def _password_recovery():
-    """Historia 007: recuperar la contraseña verificando la identidad del usuario."""
+    """Historia 007: el backend envía un enlace para restablecer la contraseña.
+    Por ahora el correo se imprime en la consola del backend (sin servidor de correo)."""
     with st.expander("¿Olvidaste tu contraseña?"):
-        st.caption(
-            "Para verificar tu identidad ingresa el correo, el RUT y el teléfono "
-            "con los que te registraste."
-        )
-
-        with st.form("recovery_form"):
-            r_email = st.text_input("Correo electrónico", key="recovery_email")
-            r_rut = st.text_input("RUT", placeholder="12345678-5", key="recovery_rut")
-            r_phone = st.text_input("Teléfono registrado", key="recovery_phone")
-            r_new = st.text_input(
-                "Nueva contraseña",
-                type="password",
-                help="Mínimo 8 caracteres, con al menos una letra y un número.",
-                key="recovery_password",
-            )
-            r_confirm = st.text_input(
-                "Confirmar nueva contraseña",
-                type="password",
-                key="recovery_confirm",
-            )
-            submitted = st.form_submit_button(
-                "Cambiar contraseña", use_container_width=True
-            )
+        with st.form("recovery_form", clear_on_submit=True):
+            r_email = st.text_input("Correo electrónico de tu cuenta", key="recovery_email")
+            submitted = st.form_submit_button("Enviar instrucciones", use_container_width=True)
 
         if not submitted:
             return
 
-        email_clean = r_email.strip().lower()
+        if not validate_email(r_email):
+            st.error("Ingresa un correo válido.")
+            return
 
-        locked = get_lock_remaining(
-            email_clean, action="RECOVERY_FAILED", reset_action="RECOVERY_RESET"
+        try:
+            detail = api_client.reset_password(r_email)
+        except api_client.ApiError as error:
+            st.error(f"No se pudo enviar la solicitud. {error}")
+            return
+
+        st.success(
+            detail or "Si el correo está registrado, recibirás instrucciones para recuperar tu contraseña."
         )
-        if locked > 0:
-            st.error(lock_message(locked))
-            return
-
-        user = get_user_by_email(email_clean) if email_clean else None
-        profile = get_user_profile(user["id"]) if user else None
-
-        phone_ok = True
-        if profile and profile["phone"]:
-            phone_ok = re.sub(r"\D", "", r_phone) == re.sub(r"\D", "", profile["phone"])
-
-        identity_ok = bool(
-            user
-            and user["active"]
-            and user["rut"] == normalize_rut(r_rut)
-            and phone_ok
-        )
-
-        if not identity_ok:
-            audit(
-                user["id"] if user else None,
-                "RECOVERY_FAILED",
-                "users",
-                user["id"] if user else None,
-                email_clean,
-            )
-            st.error("Los datos ingresados no coinciden con ninguna cuenta.")
-            return
-
-        problems = validate_password_strength(r_new)
-        if problems:
-            st.error("La contraseña necesita " + ", ".join(problems) + ".")
-            return
-
-        if r_new != r_confirm:
-            st.error("Las contraseñas no coinciden.")
-            return
-
-        conn = get_connection()
-        conn.execute(
-            "UPDATE users SET password_hash = ? WHERE id = ?",
-            (hash_password(r_new), user["id"]),
-        )
-        conn.commit()
-        conn.close()
-
-        audit(user["id"], "PASSWORD_RESET", "users", user["id"],
-              "Contraseña restablecida")
-        audit(user["id"], "RECOVERY_RESET", "users", user["id"], email_clean)
-        flash("Contraseña actualizada. Ya puedes iniciar sesión.")
-        st.session_state["_clear_recovery"] = True
-        st.rerun()
 
 
 def _register_form():
@@ -402,7 +240,7 @@ def _register_form():
         else None,
     )
 
-    oficio = certificaciones = ""
+    oficio = ""
     anios = None
     comunas_trabajo = []
 
@@ -420,11 +258,6 @@ def _register_form():
             max_value=60,
             step=1,
             key="register_years",
-        )
-        certificaciones = st.text_input(
-            "Certificaciones (opcional)",
-            placeholder="Ej: Certificación SEC clase D",
-            key="register_certifications",
         )
         comunas_trabajo = st.multiselect(
             "Comunas donde trabajas",
@@ -463,8 +296,8 @@ def _register_form():
     if not nombre.strip() or not apellido.strip():
         errores.append("Ingresa tu nombre y tu apellido.")
 
-    # Modo api: el backend Django responde 500 ante otros caracteres; se valida aquí mientras tanto
-    elif use_api():
+    # Misma regla del backend (sanitize_person_name), para avisar antes de enviar
+    else:
         for etiqueta, valor in (("nombre", nombre), ("apellido", apellido)):
             if not NOMBRE_VALIDO.fullmatch(valor.strip()):
                 errores.append(
@@ -500,126 +333,23 @@ def _register_form():
     if not acepta_privacidad:
         errores.append("Debes aceptar la política de privacidad y los términos de uso.")
 
-    # En modo api los duplicados los valida el backend
-    if not errores and not use_api():
-        if get_user_by_email(email):
-            errores.append("Ya existe una cuenta con ese correo.")
-
-        conn = get_connection()
-        existing_rut = conn.execute(
-            "SELECT id FROM users WHERE rut = ?",
-            (normalize_rut(rut),),
-        ).fetchone()
-        conn.close()
-
-        if existing_rut:
-            errores.append("Ya existe una cuenta asociada a ese RUT.")
-
+    # Correo o RUT repetidos los informa el backend (400 con el campo)
     if errores:
         for error in errores:
             st.error(error)
         return
 
     role = "cliente" if tipo == "Cliente" else "profesional"
-    full_name = f"{nombre.strip()} {apellido.strip()}"
 
-    if use_api():
-        user_id = _register_api(
-            nombre, apellido, rut, email, telefono, direccion, comuna, role, password,
-            oficio, anios, comunas_trabajo,
-        )
-        if user_id is None:
-            return
-
-        # Oficio, experiencia y cobertura también quedan en el espejo local
-        # para que el panel del profesional (aún no conectado) funcione.
-        if role == "profesional" and not get_professional_by_user(user_id):
-            conn = get_connection()
-            try:
-                _insert_local_professional(
-                    conn, user_id, oficio, anios, certificaciones, comunas_trabajo
-                )
-                conn.commit()
-            finally:
-                conn.close()
-
-    else:
-        conn = get_connection()
-
-        try:
-            cur = conn.execute(
-                """
-                INSERT INTO users
-                (name, rut, email, password_hash, role, active, created_at)
-                VALUES (?, ?, ?, ?, ?, 1, ?)
-                """,
-                (
-                    full_name,
-                    normalize_rut(rut),
-                    email.strip().lower(),
-                    hash_password(password),
-                    role,
-                    now_str(),
-                ),
-            )
-
-            user_id = cur.lastrowid
-
-            if role == "profesional":
-                _insert_local_professional(
-                    conn, user_id, oficio, anios, certificaciones, comunas_trabajo
-                )
-
-            conn.commit()
-
-        except sqlite3.IntegrityError:
-            conn.rollback()
-            st.error("El correo o el RUT ya están registrados.")
-            return
-
-        finally:
-            conn.close()
-
-    save_user_profile(
-        user_id,
-        telefono,
-        comuna,
-        "WhatsApp",
-        oficio if role == "profesional" else "",
-        "",
-        direccion,
-    )
-
-    audit(user_id, "REGISTER", "users", user_id, f"Registro como {role}")
-    audit(user_id, "PRIVACY_ACCEPTED", "users", user_id,
-          f"Política de privacidad versión {PRIVACY_POLICY_VERSION}")
+    if not _register_api(
+        nombre, apellido, rut, email, telefono, direccion, comuna, role, password,
+        oficio, anios, comunas_trabajo,
+    ):
+        return
 
     flash("Cuenta creada correctamente. Ya puedes iniciar sesión.")
     st.session_state["_clear_register"] = True
     st.rerun()
-
-
-def _insert_local_professional(conn, user_id, oficio, anios, certificaciones, comunas_trabajo):
-    cur = conn.execute(
-        """
-        INSERT INTO professionals
-        (user_id, trade, specialties, certifications,
-         experience, visit_fee, verified,
-         verification_status, availability, coverage)
-        VALUES (?, ?, ?, '', '', '', 0, 'Pendiente', 1, ?)
-        """,
-        (user_id, oficio, oficio, ",".join(comunas_trabajo)),
-    )
-    professional_id = cur.lastrowid
-    insert_trade(
-        conn,
-        professional_id,
-        oficio,
-        int(anios) if anios else None,
-        [],
-        certificaciones,
-    )
-    sync_professional_summary(conn, professional_id)
 
 
 def _plain(text):
@@ -669,7 +399,7 @@ def _show_register_error(error):
 
 def _register_api(nombre, apellido, rut, email, telefono, direccion, comuna, role, password,
                   oficio="", anios=None, comunas_trabajo=()):
-    """Modo api: crea la cuenta en el backend y su espejo local. Devuelve el id local o None."""
+    """Crea la cuenta en el backend (POST /auth/register/). Devuelve True si se creó."""
     payload = {
         "email": email.strip().lower(),
         "first_name": nombre.strip(),
@@ -687,7 +417,7 @@ def _register_api(nombre, apellido, rut, email, telefono, direccion, comuna, rol
         # El backend ignora sin avisar un oficio que no conoce: se valida antes de enviarlo
         category_id = _backend_category_id(oficio)
         if category_id is None:
-            return None
+            return False
         # La tarifa se completa después en el perfil
         payload["professional_profile"] = {
             "visit_fee": 0,
@@ -699,6 +429,6 @@ def _register_api(nombre, apellido, rut, email, telefono, direccion, comuna, rol
         api_client.register(payload)
     except api_client.ApiError as error:
         _show_register_error(error)
-        return None
+        return False
 
-    return upsert_api_user(payload)
+    return True

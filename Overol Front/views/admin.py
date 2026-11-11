@@ -7,7 +7,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from core.constants import ESTADOS_RECLAMO, MAX_TEXTO, ROLES
+from core.constants import ESTADOS_RECLAMO, MAX_TEXTO, PANTALLAS_PENDIENTES_API, ROLES, pantallas_visibles
 from core.database import (
     AUDIT_SYSTEM,
     add_support_message,
@@ -48,27 +48,37 @@ from ui.components import (
 
 
 def admin_dashboard(user):
-    menu = nav_bar(
-        "admin_navigation",
-        [
-            "📊 Indicadores",
-            "🪪 Verificación",
-            "👥 Usuarios",
-            "⭐ Moderación",
-            "🛠️ Reclamos",
-            "🎓 Contenidos",
-            "📜 Trazabilidad",
-            "💬 Soporte",
-            "ℹ️ Quiénes somos",
-        ],
-        badges={"🪪 Verificación": count_unread_verification_messages()},
-    )
+    options = pantallas_visibles("admin", [
+        "📊 Indicadores",
+        "🪪 Verificación",
+        "👥 Usuarios",
+        "⭐ Moderación",
+        "🛠️ Reclamos",
+        "🎓 Contenidos",
+        "📜 Trazabilidad",
+        "💬 Soporte",
+        "ℹ️ Quiénes somos",
+    ])
+    badges = {}
+    if "🪪 Verificación" in options:
+        badges["🪪 Verificación"] = count_unread_verification_messages()
+
+    menu = nav_bar("admin_navigation", options, badges=badges)
 
     hero(
         "Panel de administración",
         "Gestiona verificaciones, usuarios, reputación, reclamos, contenidos "
         "y trazabilidad de las acciones críticas.",
     )
+
+    if PANTALLAS_PENDIENTES_API.get("admin"):
+        # Mientras el panel se conecta a la API (etapa G), se administra desde Django
+        st.info(
+            "El panel de administración se está conectando al backend. Mientras tanto, "
+            "aprueba verificaciones y gestiona cuentas, reclamos y tickets en el "
+            "administrador de Django: **/admin/** del backend (por ejemplo "
+            "http://127.0.0.1:8000/admin/)."
+        )
 
     if menu == "📊 Indicadores":
         admin_summary()

@@ -13,8 +13,7 @@ Archivo principal. Se puede ejecutar de dos formas:
 004 Perfil profesional + solicitud        009 Posventa + reclamos
 005 Geolocalización + cobertura
 
-PROTOTIPO FUNCIONAL LOCAL: usa SQLite para persistencia durante las
-demostraciones. No reemplaza todavía un backend productivo.
+Todos los datos vienen del backend Django del equipo (API REST con JWT).
 """
 
 import importlib.util
@@ -67,9 +66,13 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
-from core.constants import use_api
-from core.database import expire_pending_requests, get_user, get_user_profile, init_db
-from core.session import delete_session, render_cookie_script, restore_session
+from core.session import (
+    current_user,
+    end_session,
+    is_profile_complete,
+    render_cookie_script,
+    restore_session,
+)
 from ui.components import flash, load_css, navbar, security_note, show_flash
 from views.admin import admin_dashboard
 from views.auth import login_screen
@@ -80,25 +83,13 @@ from views.visitor import visitor_dashboard
 
 
 # ============================================================
-# 2. ESTILOS Y BASE DE DATOS
+# 2. ESTILOS Y SESIÓN
 # ============================================================
 
 load_css()
 
-
-@st.cache_resource
-def bootstrap_database():
-    """Crea tablas y datos demo una sola vez por proceso (no en cada rerun)."""
-    init_db()
-    return True
-
-
-bootstrap_database()
-
-# Las solicitudes pendientes sin respuesta por más de 72 horas pasan a «Vencida»
-expire_pending_requests()
-
-# Si el navegador trae una sesión persistente válida, se restaura sin pedir la contraseña
+# Todos los datos vienen del backend Django; el front ya no crea ni usa overol.db.
+# Si el navegador trae una sesión persistente vigente, se restaura sin pedir la contraseña.
 restore_session()
 
 
@@ -115,11 +106,13 @@ def back_to_visitor():
 # 3. CABECERA
 # ============================================================
 
-_session_user = (
-    get_user(st.session_state.user_id)
-    if st.session_state.get("authenticated") and st.session_state.get("user_id")
-    else None
-)
+_session_user = current_user()
+
+# Sesión vencida o cuenta suspendida mientras la sesión seguía abierta: se cierra
+if st.session_state.get("authenticated") and not _session_user:
+    end_session()
+    flash("Tu sesión terminó. Vuelve a iniciar sesión.", "warning")
+    st.rerun()
 
 navbar(_session_user)
 
@@ -149,41 +142,22 @@ elif not st.session_state.authenticated:
 
     st.markdown("---")
 
-    if use_api():
-        security_note(
-            "Las cuentas se validan en el backend de Overol mediante tokens JWT. "
-            "Las demás funciones del prototipo todavía usan la base local."
-        )
-    else:
-        security_note(
-            "El prototipo utiliza autenticación local y contraseñas almacenadas "
-            "mediante PBKDF2 con salt aleatorio. Los controles de seguridad "
-            "definitivos deben reforzarse al implementar el backend productivo."
-        )
+    security_note(
+        "Las cuentas se validan en el backend de Overol mediante tokens JWT. "
+        "Los tokens nunca se guardan en el navegador."
+    )
 
 else:
-    user = get_user(st.session_state.user_id)
-
-    # Si la cuenta fue eliminada o suspendida mientras la sesión seguía abierta,
-    # se cierra la sesión de inmediato.
-    if not user or not user["active"]:
-        delete_session(st.session_state.get("session_token"))
-        st.session_state.clear()
-        st.session_state["_clear_cookie"] = True
-        flash("Tu sesión fue cerrada: la cuenta no está activa.", "warning")
-        st.rerun()
+    user = _session_user
 
     # Solo los clientes pueden ver perfiles individuales de profesionales y agendar:
     # a profesionales y administradores se les descarta cualquier enlace ?profesional=
     if user["role"] != "cliente" and "profesional" in st.query_params:
         del st.query_params["profesional"]
 
-    profile = get_user_profile(user["id"])
-
-    # Clientes y profesionales deben completar sus datos personales
-    # antes de acceder al resto de la plataforma. El administrador no necesita
-    # este paso para poder entrar al panel administrativo.
-    if user["role"] in ("cliente", "profesional") and not profile:
+    # Clientes y profesionales deben tener teléfono, dirección y comuna
+    # antes de acceder al resto de la plataforma. El administrador no necesita este paso.
+    if not is_profile_complete(user):
         personal_questions_screen(user)
     else:
         sidebar(user)

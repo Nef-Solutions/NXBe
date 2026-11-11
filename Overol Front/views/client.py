@@ -10,6 +10,7 @@ from core.constants import (
     ESTADOS_SOLICITUD,
     HORAS_VENCIMIENTO,
     PALABRAS_CLAVE_OFICIO,
+    pantallas_visibles,
     use_api,
 )
 from core.database import (
@@ -67,19 +68,20 @@ def client_dashboard(user):
     # ?profesional=ID abre directamente el perfil de ese profesional
     apply_deeplink("client_navigation", "🔎 Buscar profesionales", "_client_prev_menu")
 
-    menu = nav_bar(
-        "client_navigation",
-        [
-            "🏠 Inicio",
-            "🔎 Buscar profesionales",
-            "📋 Mis solicitudes",
-            "🛠️ Mis reclamos",
-            "🔔 Notificaciones",
-            "👤 Mi perfil",
-            "ℹ️ Quiénes somos",
-        ],
-        badges={"🔔 Notificaciones": count_unread_notifications(user["id"])},
-    )
+    options = pantallas_visibles("cliente", [
+        "🏠 Inicio",
+        "🔎 Buscar profesionales",
+        "📋 Mis solicitudes",
+        "🛠️ Mis reclamos",
+        "🔔 Notificaciones",
+        "👤 Mi perfil",
+        "ℹ️ Quiénes somos",
+    ])
+    badges = {}
+    if "🔔 Notificaciones" in options:
+        badges["🔔 Notificaciones"] = count_unread_notifications(user["id"])
+
+    menu = nav_bar("client_navigation", options, badges=badges)
 
     hero(
         "Encuentra al profesional que necesitas para tu hogar",
@@ -141,7 +143,7 @@ def _show_selected_profile(user):
     if user is None:
         professional_profile_public(selected)
     else:
-        professional_profile_client(user["id"], selected)
+        professional_profile_client(user, selected)
 
     return True
 
@@ -178,7 +180,6 @@ def client_search(user):
         return
 
     anonymous = user is None
-    uid = None if anonymous else user["id"]
 
     section("🔎 Buscar profesionales")
 
@@ -264,18 +265,6 @@ def client_search(user):
     elif use_api():
         # La base local ya los entrega ordenados por nombre; el backend no
         professionals = sorted(professionals, key=lambda p: (p["name"], p["id"]))
-
-    # Se registra la búsqueda solo cuando cambian los filtros (no en cada rerun).
-    signature = (trade, specialty, commune, text)
-    if st.session_state.get("_last_search_signature") != signature:
-        st.session_state["_last_search_signature"] = signature
-        audit(
-            uid,
-            "SEARCH",
-            "professionals",
-            None,
-            f"Oficio={trade}; Especialidad={specialty}; Comuna={commune}; Texto={text}",
-        )
 
     st.write(f"**{len(professionals)} profesionales disponibles**")
 
