@@ -175,6 +175,8 @@ MOTIVOS_RECHAZO = [
 
 # Historia 019: horario
 DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+# El backend espera los días con su nombre completo
+DIAS_COMPLETOS = dict(zip(DIAS_SEMANA, ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]))
 HORAS = [f"{h:02d}:00" for h in range(6, 24)]
 
 PREFERENCIAS_CONTACTO = ["WhatsApp", "Llamada telefónica", "Correo electrónico"]

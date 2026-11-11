@@ -25,6 +25,7 @@ Requisitos: `pip install -r requirements.txt` (incluye `cryptography`) y Pillow,
 - **Clave:** cada copia usa una **clave de prueba propia**. Nunca se lee ni se crea la clave real de los documentos (`OVEROL_CLAVE_DOCUMENTOS` se ignora durante las pruebas).
 - **Archivos que no se copian:** `documentos_verificacion/`, `*.key`, `.env` ni `__pycache__`.
 - **Backend:** el modo `api` no necesita el backend encendido, porque las pruebas entran con la sesión ya iniciada. Revisan que las pantallas no se rompan en ese modo, no la conexión con Django.
+  `prueba_modo_api.py` reemplaza `requests.request` por respuestas simuladas, armadas a partir del código del backend; no reemplaza una prueba contra el backend real.
 
 No corras un archivo `prueba_*.py` directo: se niega a correr sin una copia y sin la clave de prueba.
 
@@ -41,6 +42,7 @@ No corras un archivo `prueba_*.py` directo: se niega a correr sin una copia y si
 | `prueba_admin_panel.py` | Bitácora con filtros y paginación, suspender y reactivar con motivo |
 | `prueba_verificacion.py` | Mensajes profesional ↔ admin y decisión con motivo |
 | `prueba_cifrado.py` | Migración de documentos antiguos sin borrar originales, solo el admin descifra, registro de cada vista |
+| `prueba_modo_api.py` | Con un backend simulado: registro de profesional (comunas y oficio del backend, oficio inexistente), reglas de contraseña, bloqueo 429, días con nombre completo. En modo local, que nada salga a la red |
 
 `comun.py` reúne las utilidades: sesión simulada, búsqueda de los usuarios demo por correo y `check`.
 

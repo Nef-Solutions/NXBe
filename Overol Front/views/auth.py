@@ -2,6 +2,7 @@
 
 import re
 import sqlite3
+import unicodedata
 
 import streamlit as st
 
@@ -47,21 +48,25 @@ from ui.components import flash
 NOMBRE_VALIDO = re.compile(r"[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s']+")
 
 
-# Modo api: el backend bloquea la cuenta tras 3 fallos (hasta 6 horas) y responde 401
-# igual que ante una clave incorrecta, así que el front no puede saber si está bloqueada.
+# Modo api: el backend también bloquea la cuenta 5 minutos tras 3 fallos y,
+# mientras dure, responde 429 con retry_after (segundos).
 API_BLOQUEO_AVISO = (
-    "Si ya te equivocaste 3 veces, tu cuenta puede estar bloqueada por seguridad hasta 6 horas."
+    "Tras 3 intentos fallidos, la cuenta se bloquea por seguridad durante 5 minutos."
 )
+
+
+def api_lock_message(retry_after):
+    """Mensaje del 429 del backend, con los minutos que faltan (redondeados hacia arriba)."""
+    try:
+        minutes = max(1, -(-int(retry_after) // 60))
+    except (TypeError, ValueError):
+        minutes = MINUTOS_BLOQUEO
+    unit = "minuto" if minutes == 1 else "minutos"
+    return f"Cuenta bloqueada por intentos fallidos. Intenta de nuevo en {minutes} {unit}."
 
 
 def lock_message(seconds):
     minutes, secs = divmod(int(seconds), 60)
-    if use_api():
-        return (
-            f"Demasiados intentos fallidos: el ingreso desde este equipo está pausado por "
-            f"{MINUTOS_BLOQUEO} minutos ({minutes} min {secs:02d} s restantes). "
-            "Además, por seguridad tu cuenta puede estar bloqueada hasta 6 horas."
-        )
     return (
         f"Demasiados intentos fallidos: el ingreso está bloqueado por {MINUTOS_BLOQUEO} minutos. "
         f"Podrás intentarlo de nuevo en {minutes} min {secs:02d} s."
@@ -260,6 +265,9 @@ def _login_api(email_clean, password, remember):
         if error.status in (400, 401):
             local = get_user_by_email(email_clean)
             _login_failed(local["id"] if local else None, email_clean)
+        elif error.status == 429:
+            data = error.data if isinstance(error.data, dict) else {}
+            st.error(api_lock_message(data.get("retry_after")))
         else:
             st.error(str(error))
         return
@@ -517,13 +525,14 @@ def _register_form():
 
     if use_api():
         user_id = _register_api(
-            nombre, apellido, rut, email, telefono, direccion, comuna, role, password
+            nombre, apellido, rut, email, telefono, direccion, comuna, role, password,
+            oficio, anios, comunas_trabajo,
         )
         if user_id is None:
             return
 
-        # El backend todavía no guarda oficio, experiencia ni cobertura:
-        # quedan en el espejo local para que el panel del profesional funcione.
+        # Oficio, experiencia y cobertura también quedan en el espejo local
+        # para que el panel del profesional (aún no conectado) funcione.
         if role == "profesional" and not get_professional_by_user(user_id):
             conn = get_connection()
             try:
@@ -613,7 +622,53 @@ def _insert_local_professional(conn, user_id, oficio, anios, certificaciones, co
     sync_professional_summary(conn, professional_id)
 
 
-def _register_api(nombre, apellido, rut, email, telefono, direccion, comuna, role, password):
+def _plain(text):
+    """Minúsculas y sin tildes, para comparar nombres de oficios."""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", text.strip().lower())
+        if unicodedata.category(c) != "Mn"
+    )
+
+
+def _backend_category_id(oficio):
+    """Id del oficio en el catálogo del backend. Muestra el error y devuelve None si no existe."""
+    try:
+        categories = api_client.get_categories()
+    except api_client.ApiError as error:
+        st.error(f"No se pudo consultar la lista de oficios del servidor. {error}")
+        return None
+
+    for category in categories:
+        if _plain(category.get("name", "")) == _plain(oficio):
+            return category["id"]
+
+    available = ", ".join(sorted(c.get("name", "") for c in categories)) or "ninguno todavía"
+    st.error(
+        f"El oficio «{oficio}» todavía no está disponible en el servidor de Overol, "
+        "así que no se pudo crear la cuenta. "
+        f"Por ahora puedes registrarte con uno de estos oficios: {available}."
+    )
+    return None
+
+
+def _show_register_error(error):
+    """Errores del registro; las reglas de contraseña del backend se muestran como lista."""
+    password_messages = api_client.field_messages(error.data, "password")
+    if not password_messages:
+        st.error(str(error))
+        return
+
+    st.error(
+        "La contraseña no cumple las reglas de seguridad del servidor:\n\n"
+        + "\n".join(f"- {message}" for message in password_messages)
+    )
+    others = {k: v for k, v in error.data.items() if k != "password"}
+    if others:
+        st.error(api_client.error_text(error.status, others))
+
+
+def _register_api(nombre, apellido, rut, email, telefono, direccion, comuna, role, password,
+                  oficio="", anios=None, comunas_trabajo=()):
     """Modo api: crea la cuenta en el backend y su espejo local. Devuelve el id local o None."""
     payload = {
         "email": email.strip().lower(),
@@ -629,13 +684,21 @@ def _register_api(nombre, apellido, rut, email, telefono, direccion, comuna, rol
         "privacy_policy_version": PRIVACY_POLICY_VERSION,
     }
     if role == "profesional":
-        # El backend exige un objeto no vacío; la tarifa se completa después en el perfil
-        payload["professional_profile"] = {"visit_fee": 0}
+        # El backend ignora sin avisar un oficio que no conoce: se valida antes de enviarlo
+        category_id = _backend_category_id(oficio)
+        if category_id is None:
+            return None
+        # La tarifa se completa después en el perfil
+        payload["professional_profile"] = {
+            "visit_fee": 0,
+            "coverage_communes": list(comunas_trabajo),
+            "categories": [{"category": category_id, "years_experience": int(anios or 0)}],
+        }
 
     try:
         api_client.register(payload)
     except api_client.ApiError as error:
-        st.error(str(error))
+        _show_register_error(error)
         return None
 
     return upsert_api_user(payload)

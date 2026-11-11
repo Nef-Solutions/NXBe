@@ -17,7 +17,9 @@ from core.constants import (
     MOTIVOS_RECHAZO,
     OFICIOS,
     UPLOAD_DIR,
+    use_api,
 )
+from core import api_client
 from core.security import encrypt_document
 from core.database import (
     add_trade,
@@ -285,6 +287,7 @@ def professional_coverage(user, professional):
         "Guardar cobertura, horario y tarifa",
         use_container_width=True,
         type="primary",
+        key="save_coverage",
     ):
         if not days:
             st.error("Selecciona al menos un día en que trabajas.")
@@ -294,6 +297,13 @@ def professional_coverage(user, professional):
             days = [d for d in DIAS_SEMANA if d in days]
             schedule = f"{', '.join(days)} · {start}–{end}"
             fee_text = f"${fee:,}".replace(",", ".") if fee else ""
+
+            if use_api():
+                try:
+                    api_client.update_availability(days, start, end, availability, coverage)
+                except api_client.ApiError as error:
+                    st.error(f"No se pudo guardar tu disponibilidad en el servidor. {error}")
+                    return
 
             conn = get_connection()
             conn.execute(

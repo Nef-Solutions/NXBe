@@ -10,7 +10,7 @@ Si una petición protegida responde 401, se renueva el acceso una vez y se reint
 import requests
 import streamlit as st
 
-from core.constants import API_BASE_URL, API_TIMEOUT
+from core.constants import API_BASE_URL, API_TIMEOUT, DIAS_COMPLETOS
 
 ACCESS_KEY = "api_access"
 REFRESH_KEY = "api_refresh"
@@ -30,7 +30,16 @@ FIELD_LABELS = {
     "privacy_policy_accepted": "Política de privacidad",
     "privacy_policy_version": "Política de privacidad",
     "professional_profile": "Perfil profesional",
+    "coverage_communes": "Comunas de cobertura",
+    "categories": "Oficio",
+    "work_days": "Días de trabajo",
+    "work_start": "Hora de inicio",
+    "work_end": "Hora de término",
+    "is_available": "Disponibilidad",
 }
+
+# Claves de la respuesta de error que no son mensajes para el usuario
+HIDDEN_ERROR_KEYS = {"retry_after"}
 
 
 class ApiError(Exception):
@@ -50,6 +59,18 @@ def _flatten(value):
     return [str(value)]
 
 
+def error_text(status, data):
+    """Texto legible para una respuesta de error (o parte de ella)."""
+    return _error_message(status, data)
+
+
+def field_messages(data, field):
+    """Mensajes del backend para un campo del error (lista vacía si no hay)."""
+    if isinstance(data, dict) and data.get(field):
+        return _flatten(data[field])
+    return []
+
+
 def _error_message(status, data):
     """Convierte la respuesta de error de DRF en un texto en español."""
     if status >= 500:
@@ -58,12 +79,15 @@ def _error_message(status, data):
     if isinstance(data, dict) and data:
         messages = []
         for field, value in data.items():
+            if field in HIDDEN_ERROR_KEYS:
+                continue
             texts = " ".join(_flatten(value))
             if field in ("detail", "non_field_errors"):
                 messages.append(texts)
             else:
                 messages.append(f"{FIELD_LABELS.get(field, field)}: {texts}")
-        return " ".join(messages)
+        if messages:
+            return " ".join(messages)
 
     if isinstance(data, list) and data:
         return " ".join(_flatten(data))
@@ -191,4 +215,24 @@ def update_me(phone, address, commune):
         "PATCH",
         "auth/me/",
         {"phone": phone.strip(), "address": address.strip(), "commune": commune.strip()},
+    )
+
+
+def get_categories():
+    """Oficios del catálogo del backend: [{id, name, keywords, home_zones}]."""
+    return request("GET", "catalog/categories/", auth=False) or []
+
+
+def update_availability(work_days, work_start, work_end, is_available, coverage):
+    """Disponibilidad del profesional. Los días van con nombre completo («Lun» → «Lunes»)."""
+    return request(
+        "PATCH",
+        "professionals/me/availability/",
+        {
+            "work_days": [DIAS_COMPLETOS.get(day, day) for day in work_days],
+            "work_start": work_start,
+            "work_end": work_end,
+            "is_available": bool(is_available),
+            "coverage_communes": list(coverage),
+        },
     )
