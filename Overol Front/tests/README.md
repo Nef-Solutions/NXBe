@@ -28,11 +28,15 @@ Reemplaza `requests.request`, así que ninguna petición sale a la red.
   - 204 al cerrar sesión.
   - Tokens que rotan y quedan anulados.
   - Catálogo paginado.
+  - Disponibilidad del profesional.
+  - Solicitudes con la misma validación del backend: 400 por campo o `non_field_errors`, 403 sin permiso y 409 en una transición inválida.
 - **Datos de demostración:** los mismos correos de `seed_demo` (contraseña `OverolDemo123!`), más un profesional pendiente de verificación y un cliente sin teléfono ni dirección.
 - **Interruptores:**
   - `backend.caido = True` simula el backend apagado.
   - `backend.expire_access()` vence los tokens de acceso.
   - `backend.page_size_max` achica las páginas.
+  - `backend.add_visit(...)` y `backend.age_visit(...)` preparan solicitudes.
+  - `backend.before_action` cambia una solicitud justo antes de una acción, para simular una carrera (409).
 - **Registro:** `backend.calls` guarda cada petición (método, ruta y cuerpo) para revisar qué envió el front.
 
 Es una imitación: **no reemplaza las pruebas contra el backend real** (ver `PRUEBAS_MANUALES.md`).
@@ -51,7 +55,9 @@ Es una imitación: **no reemplaza las pruebas contra el backend real** (ver `PRU
 | `prueba_registro_perfil.py` | Registro de cliente y profesional (oficio inexistente, contraseña débil, correo repetido), completar perfil, Mi perfil por `PATCH /auth/me/`, cambio y recuperación de contraseña |
 | `prueba_navegacion.py` | Barra de los 4 roles con las pantallas pendientes ocultas, estado de verificación, aviso del admin de Django, cerrar sesión |
 | `prueba_busqueda.py` | Palabra clave sin distinguir mayúsculas ni tildes, varias palabras, filtros, «Limpiar búsqueda», visitante sin nombres |
-| `prueba_catalogo.py` | Filtros enviados al backend, paginación, perfil público, «Disponible pronto», enlace directo, portada, backend caído |
+| `prueba_catalogo.py` | Filtros enviados al backend, paginación, perfil público, formulario de solicitud, enlace directo, portada, backend caído |
+| `prueba_solicitudes.py` | Formulario (especialidad, dirección de `/me`, errores 400 legibles), Mis solicitudes y Solicitudes con pestañas, aceptar, rechazar con motivo, cancelar de ambos lados, finalizar y confirmar en los dos órdenes, contacto, 409, vencida y «Cerrada por Overol» |
+| `prueba_cobertura.py` | Disponibilidad con días en nombre completo, horario, comunas y tarifa; validaciones; el cliente ve el horario nuevo |
 
 `comun.py` reúne las utilidades: entrar con una cuenta del backend simulado, `check`, búsqueda de textos y peticiones.
 
@@ -64,3 +70,4 @@ No se corren. Cada etapa reescribe las suyas contra el backend simulado y las de
 
 - **No es un navegador.** AppTest no muestra el diseño: los estilos, el CSS y la barra fija hay que mirarlos a mano.
 - **Cookies:** AppTest no maneja cookies. Las pruebas reemplazan `read_session_cookie` y capturan el script que escribe la cookie.
+- **Botón de mantener presionado:** es un componente propio que AppTest no puede pulsar. `prueba_solicitudes.py` lo reemplaza por uno que confirma, para probar el resto de la cancelación del cliente.

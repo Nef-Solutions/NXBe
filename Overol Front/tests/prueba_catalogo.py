@@ -86,14 +86,13 @@ at = new_app(front, CLIENTE, client_navigation="🔎 Buscar profesionales", sear
 check(not at.exception and any("«Maestro multipropósito» todavía no está disponible" in i.value for i in at.info),
       "oficio que no está en el catálogo: aviso y muestra todos")
 
-# ---------- Cliente: perfil con «Disponible pronto» ----------
+# ---------- Cliente: perfil con el formulario de solicitud ----------
 at = search_page(CLIENTE)
 backend.calls.clear()
 at.button(key=f"client_view_prof_{PID}").click().run()
 check(not at.exception and "Carlos Muñoz" in md(at), "cliente: el perfil muestra el nombre")
-check(any("Disponible pronto" in i.value for i in at.info)
-      and not any((b.key or "").startswith("send_request_") for b in at.button)
-      and not [c for c in backend.calls if c[0] != "GET"], "«Solicitar visita» muestra «Disponible pronto» y no envía nada")
+check(any(b.key == f"send_request_{PID}" for b in at.button) and not [c for c in backend.calls if c[0] != "GET"],
+      "cliente: el perfil trae «Solicitar visita» (sin enviar nada todavía)")
 
 # ---------- Enlace directo ?profesional=ID ----------
 at = AppTest.from_file(os.path.join(front, "app.py"), default_timeout=60)

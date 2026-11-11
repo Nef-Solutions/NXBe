@@ -5,7 +5,6 @@ Se guardan como referencia de lo que cada pantalla debe cumplir. **No se corren*
 
 | Suite | Etapa que la reescribe |
 |---|---|
-| `prueba_solicitudes.py` | C · solicitudes |
 | `prueba_indicadores_reclamos.py` | D · valoraciones y reclamos (reclamos), G (indicadores) |
 | `prueba_notificaciones.py`, `prueba_tickets.py` | E · notificaciones y tickets |
 | `prueba_verificacion.py`, `prueba_cifrado.py`, `prueba_admin_panel.py` | F y G · profesional y admin |

@@ -11,8 +11,9 @@ CLIENTE, PRO, ADMIN = "cliente1@demo.overol.cl", "profesional1@demo.overol.cl", 
 ROLES = {
     "visitante": (None, "visitor_navigation", ["🏠 Inicio", "🔎 Profesionales", "ℹ️ Quiénes somos"]),
     "cliente": (CLIENTE, "client_navigation",
-                ["🏠 Inicio", "🔎 Buscar profesionales", "👤 Mi perfil", "ℹ️ Quiénes somos"]),
-    "profesional": (PRO, "professional_navigation", ["👤 Mi perfil", "ℹ️ Quiénes somos"]),
+                ["🏠 Inicio", "🔎 Buscar profesionales", "📋 Mis solicitudes", "👤 Mi perfil", "ℹ️ Quiénes somos"]),
+    "profesional": (PRO, "professional_navigation",
+                    ["📋 Solicitudes", "👤 Mi perfil", "📍 Cobertura", "ℹ️ Quiénes somos"]),
     "admin": (ADMIN, "admin_navigation", ["ℹ️ Quiénes somos"]),
 }
 
@@ -51,9 +52,9 @@ at.button(key="back_from_profile").click().run()
 check(not at.exception and keys(at, "client_view_prof_"), "[cliente] «← Volver» regresa a la lista")
 
 # ---------- Profesional: estado de verificación desde /auth/me/ ----------
-at = new_app(front, PRO)
+at = new_app(front, PRO, professional_navigation="👤 Mi perfil")
 check("Tu identidad está verificada" in texts(at), "[profesional] aprobado: lo dice su perfil")
-at = new_app(front, "pendiente@demo.overol.cl")
+at = new_app(front, "pendiente@demo.overol.cl", professional_navigation="👤 Mi perfil")
 check("pendiente de verificación" in texts(at), "[profesional] pendiente: aviso de revisión")
 
 # ---------- Admin: mientras el panel se conecta, se usa /admin/ de Django ----------

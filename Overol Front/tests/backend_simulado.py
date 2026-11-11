@@ -11,6 +11,9 @@ real de origin/main (leídos de su código: apps/authentication y apps/catalog):
   POST /auth/password/change/  204 · 400 {current_password|new_password: [...]}
   POST /auth/password/reset/   202 {detail}
   GET /catalog/categories/ · /specialties/ · /professionals/ (paginado) · /professionals/{id}/
+  GET|PATCH /professionals/me/availability/   403 si no es profesional
+  GET|POST /requests/          lista por rol · 201 · 400 por campo o non_field_errors
+  POST /requests/{id}/{accion}/  200 · 400 motivo · 403 sin permiso · 404 · 409 transición inválida
 
 Cualquier otra ruta responde 404, como una ruta que el backend no tiene.
 No reemplaza una prueba contra el backend real (ver PRUEBAS_MANUALES.md).
@@ -19,6 +22,7 @@ No reemplaza una prueba contra el backend real (ver PRUEBAS_MANUALES.md).
 import json
 import re
 import time
+from datetime import date, datetime, timedelta, timezone
 from itertools import count
 from urllib.parse import parse_qs, urlsplit
 
@@ -57,6 +61,9 @@ class BackendSimulado:
         self.reset_emails = []
         self.caido = False
         self.page_size_max = 50
+        self.visits = {}
+        self.visit_ids = count(1)
+        self.before_action = None  # función que corre justo antes de una acción (carreras)
         self.specialties = {}
         sid = count(1)
         for cid, (_, names) in CATEGORIES.items():
@@ -174,7 +181,12 @@ class BackendSimulado:
             ("GET", "/auth/me/"): self._me,
             ("PATCH", "/auth/me/"): self._patch_me,
             ("POST", "/auth/password/change/"): self._change_password,
+            ("GET", "/requests/"): self._list_visits,
+            ("POST", "/requests/"): self._create_visit,
         }
+        for prefix in ("/professionals/me/availability/", "/catalog/professionals/me/availability/"):
+            protected[("GET", prefix)] = lambda u, b: self._availability(u, b, "GET")
+            protected[("PATCH", prefix)] = lambda u, b: self._availability(u, b, "PATCH")
         if (method, path) in routes:
             return routes[(method, path)](body, query)
         if (method, path) in protected:
@@ -185,6 +197,12 @@ class BackendSimulado:
         match = re.fullmatch(r"/catalog/professionals/(\d+)/", path)
         if method == "GET" and match:
             return self._detail(int(match.group(1)))
+        match = re.fullmatch(r"/requests/(\d+)/(\w+)/", path)
+        if method == "POST" and match:
+            if not user:
+                return Respuesta(401, {"detail": "Las credenciales de autenticación no se proveyeron.",
+                                       "code": "not_authenticated"})
+            return self._visit_action(user, int(match.group(1)), match.group(2), body)
         return Respuesta(404, {"detail": "No encontrado."})
 
     # ---------------- Autenticación ----------------
@@ -334,6 +352,218 @@ class BackendSimulado:
                 "coverage_communes": pro["coverage_communes"], "trades": trades, "opinions": [],
             }
         return Respuesta(201, {"id": uid, "email": body["email"].lower(), "role": body["role"]})
+
+    # ---------------- Disponibilidad (apps/catalog/views.AvailabilityView) ----------------
+    def _availability(self, user, body, method):
+        pro = user["professional"]
+        if user["role"] != "PROFESSIONAL" or not pro:
+            return Respuesta(403, {"detail": "Solo los profesionales pueden gestionar su disponibilidad."})
+        if method == "PATCH":
+            for field in ("work_days", "work_start", "work_end", "is_available", "coverage_communes"):
+                if field in body:
+                    value = body[field]
+                    if field in ("work_start", "work_end") and value:
+                        value = value[:5] + ":00"  # TimeField: el backend la devuelve como HH:MM:SS
+                    pro[field] = value
+        return Respuesta(200, {k: pro[k] for k in ("work_days", "work_start", "work_end", "is_available", "coverage_communes")})
+
+    # ---------------- Solicitudes (apps/visits) ----------------
+    def _expire(self):
+        """Vencimiento perezoso al listar o crear: hoy el backend usa 30 días (PEDIDO 5.6)."""
+        limit = datetime.now(timezone.utc) - timedelta(days=30)
+        for visit in self.visits.values():
+            if visit["status"] == "PENDING" and visit["created_at"] <= limit:
+                visit["status"] = "EXPIRED"
+
+    def age_visit(self, vid, days):
+        """Hace que una solicitud parezca creada hace `days` días."""
+        self.visits[vid]["created_at"] -= timedelta(days=days)
+
+    def _pro_user(self, pid):
+        return next((u for u in self.users.values() if u["professional"] and u["professional"]["id"] == pid), None)
+
+    def _visit_data(self, visit, viewer):
+        client = self.users[visit["client"]]
+        pro_user = self._pro_user(visit["professional"])
+        name, cid = self.specialties[visit["specialty"]]
+        allowed = viewer["id"] in (client["id"], pro_user["id"]) and visit["status"] in (
+            "ACCEPTED", "PROFESSIONAL_FINISHED", "COMPLETED")
+        other = pro_user if viewer["id"] == client["id"] else client
+        iso = lambda value: value.isoformat().replace("+00:00", "Z") if value else None  # noqa: E731
+        return {
+            "id": visit["id"], "client": client["id"], "client_name": f"{client['first_name']} {client['last_name']}",
+            "professional": visit["professional"], "professional_name": f"{pro_user['first_name']} {pro_user['last_name']}",
+            "specialty": visit["specialty"], "specialty_name": name, "category_name": CATEGORIES[cid][0],
+            "problem_description": visit["problem_description"], "tentative_schedule": "",
+            "visit_date": visit["visit_date"], "visit_time": visit["visit_time"], "commune": visit["commune"],
+            "home_zone": None, "visit_address": visit["visit_address"], "status": visit["status"],
+            "rejection_reason": visit["rejection_reason"], "cancelled_by": visit["cancelled_by"],
+            "cancel_reason": visit["cancel_reason"],
+            "client_confirmed_at": iso(visit["client_confirmed_at"]),
+            "professional_confirmed_at": iso(visit["professional_confirmed_at"]),
+            "completed_at": iso(visit["completed_at"]), "expires_at": iso(visit["expires_at"]),
+            "phone": other["phone"] if allowed else None,
+            "address": other["address"] if allowed else None,
+            "contact_commune": other["commune"] if allowed else None,
+            "created_at": iso(visit["created_at"]),
+        }
+
+    def _list_visits(self, user, _):
+        self._expire()
+        if user["role"] == "PROFESSIONAL":
+            mine = [v for v in self.visits.values() if user["professional"] and v["professional"] == user["professional"]["id"]]
+        else:
+            mine = [v for v in self.visits.values() if v["client"] == user["id"]]
+        mine.sort(key=lambda v: v["created_at"], reverse=True)
+        return Respuesta(200, [self._visit_data(v, user) for v in mine])
+
+    def _create_visit(self, user, body):
+        # Campos (ModelSerializer): obligatorios y claves primarias válidas
+        errors = {}
+        for field in ("professional", "specialty", "problem_description", "visit_address"):
+            if field not in body or body[field] is None:
+                errors[field] = ["Este campo es requerido."]
+            elif isinstance(body[field], str) and not body[field].strip():
+                errors[field] = ["Este campo no puede estar en blanco."]
+        pro_user = self._pro_user(body.get("professional"))
+        if "professional" not in errors and not pro_user:
+            errors["professional"] = [f'Clave primaria "{body["professional"]}" inválida - objeto no existe.']
+        if "specialty" not in errors and body.get("specialty") not in self.specialties:
+            errors["specialty"] = [f'Clave primaria "{body["specialty"]}" inválida - objeto no existe.']
+        if errors:
+            return Respuesta(400, errors)
+
+        # VisitRequestSerializer.validate, en el mismo orden
+        self._expire()
+        pro = pro_user["professional"]
+        name, cid = self.specialties[body["specialty"]]
+
+        def fail(message, field=None):
+            return Respuesta(400, {field: [message]} if field else {"non_field_errors": [message]})
+
+        if user["role"] != "CLIENT":
+            return fail("Solo un cliente puede solicitar una visita.")
+        if pro["verification_status"] != "APPROVED":
+            return fail("El profesional no está verificado.")
+        if not any(t["category_id"] == cid and name in t["specialties"] for t in pro["trades"]):
+            return fail("La especialidad no pertenece al profesional seleccionado.")
+        visit_date = date.fromisoformat(body["visit_date"]) if body.get("visit_date") else None
+        if visit_date and visit_date < date.today():
+            return fail("La fecha no puede estar en el pasado.", "visit_date")
+        if not visit_date:
+            return fail("La fecha de visita es obligatoria.", "visit_date")
+        if not body.get("visit_time"):
+            return fail("La hora de visita es obligatoria.", "visit_time")
+        days = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+        if days[visit_date.weekday()] not in {str(d).strip().lower() for d in pro["work_days"] or []}:
+            return fail("La solicitud está fuera de los días de atención del profesional.", "visit_date")
+        if not pro["work_start"] or not pro["work_end"]:
+            return fail("El profesional no tiene un horario de atención configurado.", "visit_time")
+        parts = re.split(r"\s*(?:-|–|—|a)\s*", body["visit_time"], maxsplit=1)
+        if not all(re.fullmatch(r"\d{2}:\d{2}", x.strip()) for x in (parts[0], parts[-1])):
+            return fail("La hora debe usar HH:MM o HH:MM - HH:MM.", "visit_time")
+        start, end = parts[0].strip(), parts[-1].strip()
+        if end <= start or start < pro["work_start"][:5] or end > pro["work_end"][:5]:
+            return fail("La solicitud está fuera del horario de atención del profesional.", "visit_time")
+        if any(v["client"] == user["id"] and v["professional"] == pro["id"] and v["status"] == "PENDING"
+               for v in self.visits.values()):
+            return fail("Ya tienes una solicitud pendiente para este profesional.")
+        if not pro["is_available"]:
+            return fail("El profesional no está disponible.")
+        if body.get("commune") and pro["coverage_communes"] and body["commune"] not in pro["coverage_communes"]:
+            return fail("La comuna está fuera de la cobertura del profesional.", "commune")
+
+        vid = next(self.visit_ids)
+        now = datetime.now(timezone.utc)
+        self.visits[vid] = {
+            "id": vid, "client": user["id"], "professional": pro["id"], "specialty": body["specialty"],
+            "problem_description": body["problem_description"], "visit_date": body["visit_date"],
+            "visit_time": body["visit_time"], "commune": body.get("commune", ""),
+            "visit_address": body["visit_address"], "status": "PENDING", "rejection_reason": "",
+            "cancelled_by": "", "cancel_reason": "", "client_confirmed_at": None,
+            "professional_confirmed_at": None, "completed_at": None,
+            "created_at": now, "expires_at": now + timedelta(days=30),
+        }
+        return Respuesta(201, self._visit_data(self.visits[vid], user))
+
+    def add_visit(self, client_email, pro_email, status="PENDING", **fields):
+        """Crea una solicitud directamente (sin validar), para preparar una prueba."""
+        client = self.by_email(client_email)
+        pro = self.professional(pro_email)
+        trade = pro["trades"][0]
+        sid = next(s for s, (n, c) in self.specialties.items() if c == trade["category_id"] and n in trade["specialties"])
+        vid = next(self.visit_ids)
+        now = datetime.now(timezone.utc)
+        self.visits[vid] = {
+            "id": vid, "client": client["id"], "professional": pro["id"], "specialty": sid,
+            "problem_description": "Solicitud de prueba", "visit_date": (date.today() + timedelta(days=3)).isoformat(),
+            "visit_time": "09:00 - 11:00", "commune": pro["coverage_communes"][0], "visit_address": client["address"],
+            "status": status, "rejection_reason": "", "cancelled_by": "", "cancel_reason": "",
+            "client_confirmed_at": None, "professional_confirmed_at": None, "completed_at": None,
+            "created_at": now, "expires_at": now + timedelta(days=30),
+        }
+        self.visits[vid].update(fields)
+        return vid
+
+    def _visit_action(self, user, vid, action, body):
+        """apps/visits/views.VisitActionView: 409 si la transición no vale, 403 sin permiso."""
+        visit = self.visits.get(vid)
+        if not visit:
+            return Respuesta(404, {"detail": "No encontrado."})
+        if self.before_action:
+            self.before_action(visit)
+        pro_user = self._pro_user(visit["professional"])
+        now = datetime.now(timezone.utc)
+
+        def conflict(message):
+            return Respuesta(409, {"detail": message})
+
+        def only(owner_id):
+            return user["id"] == owner_id
+
+        if action not in ("accept", "reject", "cancel", "cancel_professional", "finish", "confirm"):
+            return Respuesta(400, {"detail": "Acción no soportada."})
+        professional_actions = ("accept", "reject", "cancel_professional", "finish")
+        if not only(pro_user["id"] if action in professional_actions else visit["client"]):
+            return Respuesta(403, {"detail": "No tienes permisos para esta solicitud."})
+
+        if action == "accept":
+            if visit["status"] != "PENDING":
+                return conflict("Solo se pueden aceptar solicitudes pendientes.")
+            visit["status"] = "ACCEPTED"
+        elif action == "reject":
+            reason = body.get("reason")
+            if not reason or not str(reason).strip():
+                return Respuesta(400, {"reason": ["Este campo es requerido." if reason is None else "Este campo no puede estar en blanco."]})
+            if len(reason) > 500:
+                return Respuesta(400, {"reason": ["Asegúrese de que este campo no tenga más de 500 caracteres."]})
+            if visit["status"] != "PENDING":
+                return conflict("Solo se pueden rechazar solicitudes pendientes.")
+            visit["status"], visit["rejection_reason"] = "REJECTED", reason
+        elif action == "cancel":
+            if visit["status"] not in ("PENDING", "ACCEPTED"):
+                return conflict("Solo se pueden cancelar solicitudes pendientes o aceptadas.")
+            visit.update(status="CANCELLED", cancelled_by="CLIENT", cancel_reason=(body.get("reason") or "").strip()[:500])
+        elif action == "cancel_professional":
+            reason = (body.get("reason") or "").strip()
+            if visit["status"] != "ACCEPTED":
+                return conflict("Solo se pueden cancelar solicitudes aceptadas.")
+            if not reason or len(reason) > 500:
+                return conflict("El motivo debe tener entre 1 y 500 caracteres.")
+            visit.update(status="CANCELLED", cancelled_by="PROFESSIONAL", cancel_reason=reason)
+        elif action == "finish":
+            if visit["status"] != "ACCEPTED":
+                return conflict("Solo se pueden finalizar servicios aceptados.")
+            visit.update(status="PROFESSIONAL_FINISHED", professional_confirmed_at=now)
+            if visit["client_confirmed_at"]:
+                visit.update(status="COMPLETED", completed_at=now)
+        elif action == "confirm":
+            if visit["status"] not in ("ACCEPTED", "PROFESSIONAL_FINISHED"):
+                return conflict("El cliente solo puede confirmar un servicio activo.")
+            visit["client_confirmed_at"] = now
+            if visit["professional_confirmed_at"]:
+                visit.update(status="COMPLETED", completed_at=now)
+        return Respuesta(200, self._visit_data(visit, user))
 
     # ---------------- Catálogo ----------------
     def _categories(self, *_):

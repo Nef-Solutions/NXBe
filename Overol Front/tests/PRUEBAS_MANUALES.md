@@ -3,7 +3,8 @@
 Las pruebas automáticas usan una imitación del backend. Estas se hacen a mano, con el backend Django de verdad y un navegador.
 Anota en cada caso ✅ o ❌ y lo que viste.
 
-**Etapa B:** login, bloqueo, registro, completar perfil, Mi perfil, contraseñas y sesión recordada.
+**Etapa B:** login, bloqueo, registro, completar perfil, Mi perfil, contraseñas y sesión recordada (casos 1 a 24).
+**Etapa C:** Cobertura y solicitudes (casos C1 a C16, al final).
 
 ## Preparación (una vez)
 
@@ -61,3 +62,27 @@ cd "C:\Users\benja\Documents\NXBe_repo\Overol Front"
 | 22 | Admin | Entra con `admin@demo.overol.cl` | Solo aparece «Quiénes somos», con el aviso de usar `/admin/` de Django mientras se conecta el panel |
 | 23 | Backend apagado | Detén runserver y recarga el front | La portada abre sin cifras ni destacados. «Profesionales» muestra «No se pudo cargar el catálogo». Al intentar ingresar: «No se pudo conectar con el servidor de Overol» |
 | 24 | Sin SQLite | Al terminar todo lo anterior | La carpeta del front sigue **sin** `overol.db` |
+
+## Etapa C: Cobertura y solicitudes
+
+**Antes de empezar:** hoy `seed_demo` no carga horario (pedido 5.1), así que ningún profesional de demo puede recibir solicitudes. El caso C1 lo arregla para `profesional1`.
+
+| # | Caso | Pasos | Resultado esperado |
+|---|---|---|---|
+| C1 | Cobertura | `profesional1` → «📍 Cobertura» → días Lun a Vie, de 09:00 a 18:00, comunas Santiago y Ñuñoa, disponible, tarifa 15000 → Guardar | Aviso «Cobertura, días, horario y tarifa actualizados». En `/admin/` → Professional profiles: `work_days` = ["Lunes", …, "Viernes"] (con **nombre completo**), `work_start` 09:00, `work_end` 18:00, `visit_fee` 15000 |
+| C2 | Cobertura se recarga | Sal y vuelve a «Cobertura» | Muestra lo guardado en C1 (días abreviados Lun…Vie) |
+| C3 | Formulario de solicitud | `cliente1` → Buscar profesionales → perfil de `profesional1` | Formulario con oficio, **especialidad** (las del profesional), comuna (solo su cobertura), fecha (un día hábil), franjas entre 09:00 y 18:00, y la dirección de `cliente1` bloqueada |
+| C4 | Solicitar | Describe el trabajo → «Solicitar visita» | Aviso «Solicitud enviada». En `/admin/` → Visit requests: una solicitud PENDING con la especialidad, la fecha, la franja y la dirección |
+| C5 | Duplicada | Repite C4 con el mismo profesional | Error «…Ya tienes una solicitud pendiente para este profesional.» (sin `non_field_errors` ni texto técnico) |
+| C6 | Día no laboral | Elige un sábado y envía (con otro profesional configurado, o cancela antes la de C4) | Error «Fecha: La solicitud está fuera de los días de atención del profesional.» |
+| C7 | Profesional sin horario | Perfil de `profesional2` (sin C1) | Aviso «todavía no configuró su horario» y sin botón «Solicitar visita» |
+| C8 | Mis solicitudes | `cliente1` → «📋 Mis solicitudes» | La solicitud aparece como **Pendiente**, con «vence el …» igual a `expires_at` del backend (hoy, 30 días después de creada), y **sin** datos de contacto |
+| C9 | Pestañas del profesional | `profesional1` → «📋 Solicitudes» | Pestaña «Pendientes (1)» con la solicitud y sin datos de contacto del cliente |
+| C10 | Rechazar con motivo | Rechazar → motivo «Otro» sin detalle → luego con detalle | Primero pide explicar el motivo. Después queda **Rechazada**. `cliente1` ve el motivo completo y en `/admin/` está en `rejection_reason` |
+| C11 | Aceptar y contacto | Nueva solicitud de `cliente1` → `profesional1` la acepta | Queda **Aceptada**. Cada uno ve el teléfono y la dirección del otro |
+| C12 | Finalizar (profesional primero) | `profesional1` → «Confirmar finalización» → `cliente1` → «Confirmar finalización» | Tras el profesional: el cliente ve **Esperando confirmación** y «Falta tu confirmación». Tras el cliente: **Finalizada** para ambos (`COMPLETED` en `/admin/`) |
+| C13 | Finalizar (cliente primero) | Otra solicitud aceptada: primero confirma el cliente, después el profesional | Tras el cliente sigue **Aceptada**, con «Ya confirmaste…». Tras el profesional: **Finalizada** |
+| C14 | Cancelación del profesional | Solicitud aceptada → «Cancelar solicitud» sin motivo → con motivo | Primero pide el motivo. Después queda **Cancelada** y el cliente ve el motivo |
+| C15 | Cancelación del cliente | Solicitud pendiente → «Cancelar solicitud» → advertencia → **mantén presionado** el botón | Queda **Cancelada** y en `/admin/` `cancelled_by` = CLIENT. «No, mantener mi solicitud» no cancela |
+| C16 | Estado cerrado por Overol | En `/admin/` cambia una solicitud a FORCED_CLOSED | El cliente la ve como **Cerrada por Overol** y el profesional, en la pestaña de cerradas |
+

@@ -125,7 +125,7 @@ check(at.session_state["me"]["address"] == "Av. Nueva 99", "la sesión se recarg
 
 # ---------- Mi perfil del profesional: preferencia, titular y presentación ----------
 PRO = "profesional1@demo.overol.cl"
-at = new_app(front, PRO)
+at = new_app(front, PRO, professional_navigation="👤 Mi perfil")
 at.selectbox(key="edit_contact_preference").select("Correo electrónico")
 at.text_input(key="edit_headline").input("Gasfiter certificado")
 at.text_area(key="edit_bio").input("Presentación nueva")
