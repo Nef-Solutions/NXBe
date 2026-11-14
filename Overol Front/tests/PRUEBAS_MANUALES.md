@@ -5,7 +5,8 @@ Anota en cada caso ✅ o ❌ y lo que viste.
 
 **Etapa B:** login, bloqueo, registro, completar perfil, Mi perfil, contraseñas y sesión recordada (casos 1 a 24).
 **Etapa C:** Cobertura y solicitudes (casos C1 a C17).
-**Etapa C2:** suscripción con Webpay, cédula, recuperación con código, oficios del backend y asistente (casos S1 a S12, al final).
+**Etapa C2:** suscripción con Webpay, cédula, recuperación con código, oficios del backend y asistente (casos S1 a S12).
+**Etapa D:** valoraciones, reclamos y pago de visitas (casos D1 a D8, al final).
 
 ## Preparación (una vez)
 
@@ -109,4 +110,19 @@ cd "C:\Users\benja\Documents\NXBe_repo\Overol Front"
 | S10 | Oficios del backend | Registro de profesional | La lista tiene los **66 oficios** del backend. Con «Soldador» (sin especialidades) avisa que no recibirá solicitudes hasta tenerlas y deja registrarse; con «Gasfitería» pide especialidades |
 | S11 | Asistente | `cliente1` → «🤖 Asistente» → pregunta por una llave que gotea (con la clave de Gemini configurada) | Aviso de no escribir datos personales. Responde Overil. Al recargar sin «Mantener sesión», el historial se pierde |
 | S12 | Límite y caída del asistente | Envía 6 consultas en una hora. Luego quita la clave de Gemini y reinicia runserver | La sexta: «Llegaste al límite de consultas…». Sin la clave: «El asistente no está disponible en este momento» |
+
+## Etapa D: valoraciones, reclamos y pago de visitas
+
+Necesitas una solicitud **Finalizada** entre `cliente1` y `profesional1` (casos C11 y C12).
+
+| # | Caso | Pasos | Resultado esperado |
+|---|---|---|---|
+| D1 | Evaluar al profesional | `cliente1` → «Mis solicitudes» → solicitud finalizada → «Evaluar el servicio» → notas y comentario → Enviar | «Evaluación enviada». En `/admin/` → Ratings: la valoración con autor `cliente1`. El comentario aparece en el perfil público de `profesional1` |
+| D2 | Evaluar dos veces | Cierra sesión, entra de nuevo e intenta evaluar el mismo servicio | «Ya habías evaluado este servicio» (el backend lo rechaza) |
+| D3 | Calificar al cliente | `profesional1` → «Solicitudes» → Finalizadas → «Calificar al cliente» | «Calificación al cliente registrada». En `/admin/` → Ratings: autor `profesional1` y destinatario `cliente1` |
+| D4 | Abrir un reclamo | `cliente1` → solicitud finalizada → «Abrir un reclamo de posventa» → describe el problema | «Reclamo #N enviado». Ya no ofrece reclamar de nuevo ese servicio. Aparece en «🛠️ Mis reclamos» como **Abierto** |
+| D5 | El profesional responde | `profesional1` → «🛠️ Reclamos» (con el contador) → responde | Queda **Respondido por el profesional**. `cliente1` ve la respuesta y en `/admin/` → Notifications hay una «Respuesta de posventa» |
+| D6 | Mediación y resolución | `cliente1` → «Pedir mediación de Overol». Luego `admin@demo.overol.cl` lo resuelve: en esta etapa, desde `/admin/` o con `POST /api/claims/{id}/resolve/` | Pasa a **En mediación** y, al resolverse, a **Resuelto** con la «Resolución de Overol» |
+| D7 | Pagar una visita | Solicitud **Aceptada** de un profesional con tarifa → «💳 Pagar la visita con Webpay» → paga en Webpay (sandbox) | Vuelve a «Mis solicitudes» con «Pago confirmado para la solicitud #N» y la tarjeta dice «Visita pagada». En `/admin/` → Payment transactions: AUTHORIZED con `visit` |
+| D8 | Sin tarifa | Igual con un profesional de tarifa 0 | «El profesional no tiene una tarifa de visita válida.» |
 

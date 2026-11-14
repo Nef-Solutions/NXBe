@@ -13,7 +13,8 @@ La conexión a la API avanza por etapas. Las pantallas que todavía no están co
 | B · Cuentas, sesión, perfil, catálogo y perfiles públicos | ✅ conectada |
 | C · Solicitudes y cobertura del profesional (días, horario y tarifa) | ✅ conectada |
 | C2 · Suscripción con Webpay (sandbox), cédula, recuperación con código, oficios del backend y asistente Overil | ✅ conectada |
-| D · Valoraciones y reclamos · E · Notificaciones y tickets · F · Resto del panel del profesional · G · Panel del admin | ⏳ pendientes (ocultas) |
+| D · Valoraciones, calificación al cliente, reclamos de posventa y pago de visitas con Webpay | ✅ conectada |
+| E · Notificaciones y tickets · F · Resto del panel del profesional · G · Panel del admin | ⏳ pendientes (ocultas) |
 
 ---
 
@@ -33,7 +34,8 @@ pip install -r requirements.txt
 Levanta el backend Django (carpeta `backend/` en la raíz del repositorio) siguiendo su propia documentación. Necesita **Python 3.12 o superior** (Django 6.1), PostgreSQL y Redis (por ejemplo con `docker compose up -d`) y un archivo `backend/.env` creado a partir de `backend/.env.example`. Después:
 
 ```powershell
-python -m pip install -r documentacionequirements.txt   # incluye google-genai y transbank-sdk
+python -m pip install -r documentacion
+equirements.txt   # incluye google-genai y transbank-sdk
 python manage.py migrate
 python manage.py seed_demo      # usuarios y catálogo de demostración
 python manage.py runserver

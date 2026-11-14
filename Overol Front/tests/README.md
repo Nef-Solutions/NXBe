@@ -60,6 +60,7 @@ Es una imitación: **no reemplaza las pruebas contra el backend real** (ver `PRU
 | `prueba_solicitudes.py` | Formulario (especialidad, dirección de `/me`, errores 400 legibles), Mis solicitudes y Solicitudes con pestañas, aceptar, rechazar con motivo, cancelar de ambos lados, finalizar y confirmar en los dos órdenes, contacto, 409, vencida y «Cerrada por Overol» |
 | `prueba_suscripcion_verificacion.py` | Suscripción y Webpay (formulario POST con `token_ws`, vuelta sin confiar en `?status=`, con y sin sesión), catálogo según la suscripción, cédula y mensajes de verificación |
 | `prueba_asistente.py` | Asistente para cliente y profesional, historial en la sesión, aviso de datos personales, 429 y 503 |
+| `prueba_valoraciones_reclamos.py` | Evaluar al profesional y al cliente (400 «ya calificado»), reclamos (crear, responder, mediación, resolución) y pago de visitas con Webpay |
 | `prueba_cobertura.py` | Disponibilidad con días en nombre completo, horario, comunas y tarifa; validaciones; el cliente ve el horario nuevo |
 
 `comun.py` reúne las utilidades: entrar con una cuenta del backend simulado, `check`, búsqueda de textos y peticiones.

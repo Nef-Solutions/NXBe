@@ -83,6 +83,10 @@ class BackendSimulado:
         self.assistant_down = False
         self.assistant_messages = []
         self._files = None
+        self.ratings = []
+        self.claims = {}
+        self.notifications = []
+        self.audit_log = []
         self.caido = False
         self.page_size_max = 50
         self.visits = {}
@@ -218,6 +222,9 @@ class BackendSimulado:
             ("GET", "/payments/professional-subscription/"): self._subscription,
             ("POST", "/payments/professional-subscription/transbank/"): self._start_subscription,
             ("POST", "/assistant/chat/"): self._assistant,
+            ("POST", "/ratings/"): self._rate,
+            ("GET", "/claims/"): self._list_claims,
+            ("POST", "/claims/"): self._create_claim,
         }
         for prefix in ("/professionals/me/availability/", "/catalog/professionals/me/availability/"):
             protected[("GET", prefix)] = lambda u, b: self._availability(u, b, "GET")
@@ -239,6 +246,9 @@ class BackendSimulado:
                 return self._start_visit_payment(user, vid)
             if method == "GET" and not match.group(2):
                 return self._visit_payment(user, vid)
+        match = re.fullmatch(r"/claims/(\d+)/(\w+)/", path)
+        if method == "POST" and match and user:
+            return self._claim_action(user, int(match.group(1)), match.group(2), body)
         match = re.fullmatch(r"/requests/(\d+)/(\w+)/", path)
         if method == "POST" and match:
             if not user:
@@ -801,6 +811,109 @@ class BackendSimulado:
             return Respuesta(503, {"detail": "El asistente no está disponible en este momento. Inténtalo más tarde."})
         self.assistant_messages.append(message)
         return Respuesta(200, {"reply": f"Para «{message[:40]}» te recomiendo contactar a un profesional de Overol."})
+
+    # ---------------- Valoraciones y reclamos (apps/visits) ----------------
+    def _rate(self, user, body):
+        errors = {}
+        for field in ("visit", "quality", "punctuality", "treatment"):
+            if body.get(field) in (None, ""):
+                errors[field] = ["Este campo es requerido."]
+        for field in ("quality", "punctuality", "treatment"):
+            if field not in errors and not 1 <= int(body[field]) <= 5:
+                errors[field] = ["Asegúrese de que este valor es menor o igual a 5." if int(body[field]) > 5
+                                 else "Asegúrese de que este valor es mayor o igual a 1."]
+        visit = self.visits.get(body.get("visit"))
+        if "visit" not in errors and not visit:
+            errors["visit"] = [f'Clave primaria "{body.get("visit")}" inválida - objeto no existe.']
+        elif visit and visit["status"] != "COMPLETED":
+            errors["visit"] = ["El servicio debe estar completado."]
+        if errors:
+            return Respuesta(400, errors)
+        pro_user = self._pro_user(visit["professional"])
+        if user["id"] not in (visit["client"], pro_user["id"]):
+            return Respuesta(400, {"visit": ["No puedes calificar este servicio."]})
+        if any(r["visit"] == visit["id"] and r["author"] == user["id"] for r in self.ratings):
+            return Respuesta(400, {"visit": ["Este servicio ya fue calificado por este usuario."]})
+        target = pro_user["id"] if user["id"] == visit["client"] else visit["client"]
+        rating = {"id": len(self.ratings) + 1, "visit": visit["id"], "author": user["id"], "target": target,
+                  "quality": int(body["quality"]), "punctuality": int(body["punctuality"]),
+                  "treatment": int(body["treatment"]), "comment": body.get("comment", ""),
+                  "created_at": datetime.now(timezone.utc).isoformat()}
+        self.ratings.append(rating)
+        if target == pro_user["id"]:
+            mine = [r for r in self.ratings if r["target"] == target]
+            pro_user["professional"]["rating_avg"] = sum(
+                (r["quality"] + r["punctuality"] + r["treatment"]) / 3 for r in mine) / len(mine)
+            if rating["comment"]:
+                pro_user["professional"]["opinions"].insert(0, {
+                    "quality": rating["quality"], "punctuality": rating["punctuality"], "treatment": rating["treatment"],
+                    "comment": rating["comment"], "created_at": rating["created_at"],
+                    "author_name": f"{user['first_name']} {user['last_name'][:1]}."})
+        return Respuesta(201, {k: rating[k] for k in ("id", "visit", "quality", "punctuality", "treatment", "comment", "created_at")})
+
+    def _claim_data(self, claim):
+        return {k: claim[k] for k in ("id", "visit", "description", "professional_response", "admin_resolution",
+                                       "status", "created_at", "resolved_at")}
+
+    def _list_claims(self, user, _):
+        if user["role"] == "ADMIN":
+            mine = list(self.claims.values())
+        else:
+            pid = user["professional"]["id"] if user["professional"] else None
+            mine = [c for c in self.claims.values()
+                    if c["client"] == user["id"] or self.visits[c["visit"]]["professional"] == pid]
+        return Respuesta(200, [self._claim_data(c) for c in mine])
+
+    def _create_claim(self, user, body):
+        visit = self.visits.get(body.get("visit"))
+        if not (body.get("description") or "").strip():
+            return Respuesta(400, {"description": ["Este campo no puede estar en blanco."]})
+        if not visit:
+            return Respuesta(400, {"visit": [f'Clave primaria "{body.get("visit")}" inválida - objeto no existe.']})
+        if any(c["visit"] == visit["id"] for c in self.claims.values()):
+            return Respuesta(400, {"visit": ["Ya existe after sales claim con este visit."]})
+        if visit["status"] != "COMPLETED":
+            return Respuesta(400, {"visit": ["Solo se puede reclamar un servicio completado."]})
+        if visit["client"] != user["id"]:
+            return Respuesta(400, {"visit": ["Solo el cliente del servicio puede reclamarlo."]})
+        cid = len(self.claims) + 1
+        self.claims[cid] = {"id": cid, "visit": visit["id"], "client": user["id"], "description": body["description"],
+                            "professional_response": "", "admin_resolution": "", "status": "OPEN",
+                            "created_at": datetime.now(timezone.utc).isoformat(), "resolved_at": None}
+        return Respuesta(201, self._claim_data(self.claims[cid]))
+
+    def _claim_action(self, user, cid, action, body):
+        claim = self.claims.get(cid)
+        if not claim:
+            return Respuesta(404, {"detail": "No encontrado."})
+        pro_user = self._pro_user(self.visits[claim["visit"]]["professional"])
+        if action == "respond":
+            if user["id"] != pro_user["id"] or claim["status"] != "OPEN":
+                return Respuesta(403, {"detail": "No puedes responder este reclamo."})
+            if not (body.get("response") or "").strip():
+                return Respuesta(400, {"detail": "La respuesta es obligatoria."})
+            claim.update(professional_response=body["response"].strip(), status="PROFESSIONAL_RESPONDED")
+            self.notifications_add(claim["client"], "Respuesta de posventa", body["response"].strip())
+        elif action == "escalate":
+            if user["id"] not in (claim["client"], pro_user["id"]):
+                return Respuesta(403, {"detail": "No puedes escalar este reclamo."})
+            claim["status"] = "ESCALATED"
+        elif action == "resolve":
+            if user["role"] != "ADMIN":
+                return Respuesta(403, {"detail": "Solo un administrador puede resolver reclamos."})
+            if not (body.get("resolution") or "").strip():
+                return Respuesta(400, {"detail": "La resolución es obligatoria."})
+            claim.update(admin_resolution=body["resolution"].strip(), status="RESOLVED",
+                         resolved_at=datetime.now(timezone.utc).isoformat())
+            self.audit_log.append(("resolve_claim", user["id"], cid))
+        else:
+            return Respuesta(400, {"detail": "Acción no soportada."})
+        return Respuesta(200, self._claim_data(claim))
+
+    def notifications_add(self, user_id, title, message, visit=None):
+        self.notifications.append({"id": len(self.notifications) + 1, "recipient": user_id, "title": title,
+                                   "message": message, "related_visit": visit, "is_read": False,
+                                   "created_at": datetime.now(timezone.utc).isoformat()})
 
     # ---------------- Catálogo ----------------
     def _categories(self, *_):
