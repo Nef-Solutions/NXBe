@@ -4,11 +4,17 @@ from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
+from django.core.validators import EmailValidator
+from PIL import Image, UnidentifiedImageError
 from rest_framework import serializers
 from rest_framework.exceptions import APIException, AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import User, ProfessionalProfile, VerificationCaseMessage
+
+MAX_ID_CARD_SIZE = 5 * 1024 * 1024
+MAX_ID_CARD_PDF_SIZE = 10 * 1024 * 1024
+MAX_ID_CARD_PIXELS = 25_000_000
 
 
 class AccountLocked(APIException):
@@ -230,3 +236,75 @@ class VerificationCaseMessageSerializer(serializers.ModelSerializer):
         model = VerificationCaseMessage
         fields = ('id', 'professional', 'message', 'admin_response', 'resolved_at', 'created_at')
         read_only_fields = ('id', 'professional', 'admin_response', 'resolved_at', 'created_at')
+
+
+class VerificationDocumentsSerializer(serializers.Serializer):
+    id_card_front = serializers.FileField(required=False)
+    id_card_back = serializers.FileField(required=False)
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError(
+                'Envía al menos uno de los archivos id_card_front o id_card_back.'
+            )
+
+        for field_name, upload in attrs.items():
+            extension = upload.name.rsplit('.', 1)[-1].lower() if '.' in upload.name else ''
+            if extension == 'pdf':
+                if upload.size > MAX_ID_CARD_PDF_SIZE:
+                    raise serializers.ValidationError({
+                        field_name: 'El PDF no puede superar 10 MB.'
+                    })
+                upload.seek(0)
+                header = upload.read(1024)
+                upload.seek(max(0, upload.size - 2048))
+                trailer = upload.read()
+                upload.seek(0)
+                if b'%PDF-' not in header or b'%%EOF' not in trailer:
+                    raise serializers.ValidationError({
+                        field_name: 'El archivo no es un PDF válido.'
+                    })
+                continue
+
+            if upload.size > MAX_ID_CARD_SIZE:
+                raise serializers.ValidationError({
+                    field_name: 'La imagen no puede superar 5 MB.'
+                })
+            try:
+                upload.seek(0)
+                with Image.open(upload) as image:
+                    image_format = image.format
+                    width, height = image.size
+                    if width * height > MAX_ID_CARD_PIXELS:
+                        raise serializers.ValidationError({
+                            field_name: 'La imagen supera la resolución permitida.'
+                        })
+                    image.verify()
+            except (
+                OSError,
+                UnidentifiedImageError,
+                ValueError,
+                Image.DecompressionBombError,
+            ):
+                raise serializers.ValidationError({
+                    field_name: 'El archivo debe ser una imagen JPEG o PNG válida.'
+                })
+            finally:
+                upload.seek(0)
+
+            valid_extensions = {'JPEG': {'jpg', 'jpeg'}, 'PNG': {'png'}}
+            if image_format not in valid_extensions or extension not in valid_extensions[image_format]:
+                raise serializers.ValidationError({
+                    field_name: 'El archivo debe ser JPEG (.jpg/.jpeg), PNG (.png) o PDF (.pdf).'
+                })
+        return attrs
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField(validators=[EmailValidator()])
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.RegexField(r'^\d{6}$')
+    new_password = serializers.CharField(write_only=True, min_length=8)

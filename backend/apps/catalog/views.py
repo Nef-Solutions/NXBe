@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
+from django.utils import timezone
 
 from apps.authentication.models import ProfessionalProfile, User
 from .models import HomeZone, ProfessionalTrade, Specialty, TradeCategory
@@ -40,10 +41,13 @@ class ProfessionalSearchView(ListAPIView):
 class ProfessionalDetailView(RetrieveAPIView):
 	permission_classes = [AllowAny]
 	serializer_class = ProfessionalDetailSerializer
-	queryset = ProfessionalProfile.objects.filter(
-		verification_status=ProfessionalProfile.VerificationStatus.APPROVED,
-		user__account_status=User.AccountStatus.ACTIVE,
-	).select_related('user').prefetch_related('specialties', 'trades')
+
+	def get_queryset(self):
+		return ProfessionalProfile.objects.filter(
+			verification_status=ProfessionalProfile.VerificationStatus.APPROVED,
+			user__account_status=User.AccountStatus.ACTIVE,
+			subscription_expires_at__gt=timezone.now(),
+		).select_related('user').prefetch_related('specialties', 'trades')
 
 
 class CategoryListView(ListAPIView):
@@ -74,7 +78,9 @@ class CommuneListView(APIView):
 
 	def get(self, request):
 		communes = ProfessionalProfile.objects.filter(
-			verification_status=ProfessionalProfile.VerificationStatus.APPROVED
+			verification_status=ProfessionalProfile.VerificationStatus.APPROVED,
+			user__account_status=User.AccountStatus.ACTIVE,
+			subscription_expires_at__gt=timezone.now(),
 		).values_list('coverage_communes', flat=True)
 		return Response(sorted({commune for values in communes for commune in (values or [])}))
 

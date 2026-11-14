@@ -2,6 +2,37 @@
 
 Este documento consolida la definición técnica de la colección de pruebas de Postman (`Overol - Pruebas API`) junto con los resultados obtenidos en la ejecución automatizada (*Test Run*).
 
+> **Vigencia:** los 17 requests y 54 asserts de este informe son una captura
+> histórica ejecutada el 19 de octubre de 2026. No representan la cobertura ni
+> todos los contratos de la API actual. En particular, el payload histórico de
+> `VIS-01` no incluye fecha, hora ni comuna, que hoy son requeridas para crear
+> una solicitud; tampoco cubre suscripciones, pagos sandbox ni Overil. Para el
+> contrato vigente, las reglas de negocio y la cobertura actual consulta el
+> [manual técnico integral](../manual-tecnico-integral-backend.md).
+
+## Estado actual documentado (13 de noviembre de 2026)
+
+La suite Django registró **76 pruebas aprobadas** en la última ejecución
+completa posterior a la incorporación de planes configurables de suscripción.
+También cubre el catálogo oficial de oficios y recursos de seguridad, carga
+privada de cédulas (imágenes y PDF), recuperación por código, permisos,
+expiración, intentos, consumo y reutilización de códigos. La suite sigue
+simulando los SDK externos; no representa una compra Transbank real ni una
+llamada actual a Gemini. Para repetir la validación desde `backend/`:
+
+```powershell
+python manage.py test
+python manage.py check
+python manage.py makemigrations --check --dry-run
+```
+
+La cobertura actual incluye autenticación, recuperación de contraseña,
+documentos privados, catálogo y suscripción vigente, ciclo de solicitudes,
+política y cuotas de Overil, e inicio/confirmación de pagos sandbox. El reporte
+histórico de Postman que sigue en este documento no se volvió a ejecutar y no
+constituye evidencia de una compra sandbox real ni de una llamada actual al
+modelo.
+
 ---
 
 ## 1. Resumen Ejecutivo de la Ejecución

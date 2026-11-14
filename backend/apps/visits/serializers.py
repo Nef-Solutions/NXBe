@@ -93,6 +93,8 @@ class VisitRequestSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Solo un cliente puede solicitar una visita.')
         if professional.verification_status != ProfessionalProfile.VerificationStatus.APPROVED:
             raise serializers.ValidationError('El profesional no está verificado.')
+        if not professional.has_active_subscription:
+            raise serializers.ValidationError('El profesional no tiene una suscripción mensual vigente.')
         if not specialty.professionals.filter(pk=professional.pk).exists():
             raise serializers.ValidationError('La especialidad no pertenece al profesional seleccionado.')
         if attrs.get('visit_date') and attrs['visit_date'] < timezone.localdate():

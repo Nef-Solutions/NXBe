@@ -1,10 +1,39 @@
 from django.db import connection
 from django.test import TestCase
+from django.utils import timezone
+from datetime import timedelta
 from rest_framework.exceptions import ValidationError
 from apps.authentication.models import User, ProfessionalProfile
 from apps.catalog.models import HomeZone, TradeCategory, Specialty
 from apps.catalog.services import ProfessionalSearchService
 from rest_framework.test import APIClient
+
+
+class OfficialTradeCatalogSeedTests(TestCase):
+    def test_official_trade_categories_are_seeded(self):
+        expected_names = {
+            'Gasfitería', 'Electricidad', 'Soldador', 'Carpintero', 'Electrónico',
+            'Yesero', 'Aseo', 'Albañil', 'Ventanero', 'Guardia', 'Ceramista',
+            'Pintor', 'Refrigeración', 'Aire acondicionado', 'Instalador de cámaras',
+            'Destape de alcantarillado', 'Costurera', 'Peluquería a domicilio',
+            'Mecánico', 'Cerrajería', 'Mueblista', 'Trazador', 'Ayudante por día',
+            'Excavador', 'Instalador de piscinas', 'Vulcanización', 'Piso flotante',
+            'Techumbre', 'Instalador de campanas de cocina', 'Ampliaciones',
+            'Radier', 'Domótica', 'Iluminación', 'Decoración', 'Paneles solares',
+            'Instalador', 'Instalación de malla anticaída', 'Cerradura inteligente',
+            'Alarmas', 'Citófono y videoportero', 'Impermeabilizador', 'Tabiquero',
+            'Papel mural', 'Cornisas y zócalos', 'Aislación térmica',
+            'Fumigación y control de plagas', 'Lavado de alfombras', 'Lavado de autos',
+            'Jardinero', 'Retiro de escombros', 'Regadío automático',
+            'Instalador de bombas', 'Pasto sintético', 'Quinchos y parrillas',
+            'Pérgolas y terrazas', 'Limpieza de piscinas', 'Cortinas roller y persianas',
+            'Tapicería', 'Espejos y vidrios', 'Tinas y jacuzzis', 'Electromecánico',
+            'Técnico de consolas', 'Cuidador de adulto mayor', 'Niñera',
+            'Paseador de animales', 'Peluquería canina',
+        }
+        loaded_names = set(TradeCategory.objects.values_list('name', flat=True))
+        self.assertTrue(expected_names.issubset(loaded_names))
+
 
 class CatalogSearchTestCase(TestCase):
     def setUp(self):
@@ -33,7 +62,8 @@ class CatalogSearchTestCase(TestCase):
         self.pro_aprobado = ProfessionalProfile.objects.create(
             user=self.user_aprobado,
             rut="11111111-1",
-            verification_status=ProfessionalProfile.VerificationStatus.APPROVED
+            verification_status=ProfessionalProfile.VerificationStatus.APPROVED,
+            subscription_expires_at=timezone.now() + timedelta(days=30),
         )
         self.especialidad_fugas.professionals.add(self.pro_aprobado)
 
@@ -58,6 +88,23 @@ class CatalogSearchTestCase(TestCase):
         results = ProfessionalSearchService.search(category_id=self.cat_gasfiteria.id)
         self.assertEqual(results.count(), 1)
         self.assertEqual(results.first().user.email, "juan@overol.cl")
+
+    def test_expired_subscription_hides_professional_from_search(self):
+        self.pro_aprobado.subscription_expires_at = timezone.now() - timedelta(seconds=1)
+        self.pro_aprobado.save(update_fields=['subscription_expires_at'])
+        self.assertEqual(
+            ProfessionalSearchService.search(category_id=self.cat_gasfiteria.id).count(),
+            0,
+        )
+
+    def test_expired_subscription_hides_professional_detail(self):
+        response = APIClient().get(f'/api/catalog/professionals/{self.pro_aprobado.pk}/')
+        self.assertEqual(response.status_code, 200)
+
+        self.pro_aprobado.subscription_expires_at = timezone.now() - timedelta(seconds=1)
+        self.pro_aprobado.save(update_fields=['subscription_expires_at'])
+        response = APIClient().get(f'/api/catalog/professionals/{self.pro_aprobado.pk}/')
+        self.assertEqual(response.status_code, 404)
 
     def test_search_by_home_zone(self):
         """Regla: Filtrar por zona del hogar."""
