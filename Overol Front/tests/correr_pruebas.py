@@ -33,8 +33,6 @@ def correr(suite, verbose):
         shutil.copytree(FRONT, copy, ignore=NO_COPIAR)
 
         env = dict(os.environ)
-        for key in ("OVEROL_CLAVE_DOCUMENTOS", "OVEROL_CLAVE_DOCUMENTOS_ARCHIVO", "OVEROL_BACKEND"):
-            env.pop(key, None)
         env.update(
             OVEROL_STREAMLIT_STARTED="1",
             OVEROL_API_URL="http://backend-simulado.invalid/api/",

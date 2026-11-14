@@ -39,7 +39,9 @@ cd "C:\Users\benja\Documents\NXBe_repo\Overol Front"
 
 **`backend/.env`:** además de lo de Postgres, define `PAYMENT_RESULT_URL=http://localhost:8501/` (para que Webpay vuelva al front) y, si quieres respuestas reales del asistente, la clave de Gemini. Sin esa clave, el asistente responde «no disponible» y todo lo demás funciona.
 
-**Suscripción de los profesionales de demo:** el catálogo y las solicitudes exigen una suscripción vigente y `seed_demo` no la trae. En `/admin/` → Professional profiles, pon a `profesional1` a `profesional3` una fecha futura en «Suscripción vigente hasta» (o págala en el caso S3).
+**Suscripción de los profesionales de demo:** el catálogo y las solicitudes exigen una suscripción vigente y `seed_demo` no la trae. Arranca con `scripts\demo_api.ps1 -DemoListo` (les da horario y un mes de suscripción), o en `/admin/` → Professional profiles pon a `profesional1` a `profesional3` una fecha futura en «Suscripción vigente hasta» (o págala en el caso S3).
+
+**Atajo:** `powershell -ExecutionPolicy Bypass -File scripts\demo_api.ps1 -DemoListo` hace la preparación de abajo (Docker, dependencias, `migrate`, `seed_demo`, `runserver` y el front).
 
 **Antes de empezar:** confirma que la carpeta del front **no** tiene `overol.db`, o bórralo. Al terminar, revisa que siga sin existir.
 
