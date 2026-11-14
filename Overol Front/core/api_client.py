@@ -427,3 +427,47 @@ def list_content():
 
 def complete_content(content_id):
     return request("POST", "professional-center/progress/", {"content": int(content_id)})
+
+
+# ------------------------------------------------------------
+# Administración (etapa G)
+# ------------------------------------------------------------
+
+ESTADOS_CUENTA = {"ACTIVE": "Activa", "SUSPENDED": "Suspendida", "BLOCKED": "Bloqueada", "DEACTIVATED": "Desactivada"}
+
+
+def decide_verification(professional_profile_id, decision, reason=""):
+    """POST /auth/verification/{id}/{approve|reject}/. Aprobar exige ambos lados de la cédula."""
+    return request("POST", f"auth/verification/{int(professional_profile_id)}/{decision}/", {"reason": reason.strip()})
+
+
+def set_account_status(user_id, status, reason):
+    """POST /auth/admin/accounts/{id}/status/ con ACTIVE, SUSPENDED, BLOCKED o DEACTIVATED y motivo."""
+    return request("POST", f"auth/admin/accounts/{int(user_id)}/status/", {"status": status, "reason": reason.strip()})
+
+
+def download_verification_document(professional_profile_id, side):
+    """Descarga privada de la cédula (admin con is_staff). Devuelve (bytes, tipo, nombre)."""
+    path = f"admin/verifications/{int(professional_profile_id)}/document/?side={side}"
+    for attempt in (1, 2):
+        if not st.session_state.get(ACCESS_KEY) and not refresh():
+            raise ApiError("Tu sesión expiró. Vuelve a iniciar sesión.", 401)
+        try:
+            response = requests.request(
+                "GET", API_BASE_URL + path,
+                headers={"Authorization": f"Bearer {st.session_state.get(ACCESS_KEY)}"},
+                timeout=API_TIMEOUT,
+            )
+        except requests.RequestException:
+            raise ApiError("No se pudo conectar con el servidor de Overol. Revisa que el backend esté en ejecución.")
+        if response.status_code == 401 and attempt == 1 and refresh():
+            continue
+        if response.status_code >= 400:
+            try:
+                data = response.json()
+            except ValueError:
+                data = None
+            raise ApiError(_error_message(response.status_code, data), response.status_code, data)
+        disposition = response.headers.get("Content-Disposition", "")
+        name = disposition.split("filename=")[-1].strip('"') if "filename=" in disposition else f"cedula_{side}"
+        return response.content, response.headers.get("Content-Type", "application/octet-stream"), name

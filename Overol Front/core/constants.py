@@ -27,20 +27,15 @@ def use_api():
 
 # Pantallas que todavía leen o escriben en SQLite: se ocultan de la barra hasta
 # conectarlas a la API. Al terminar cada etapa se quitan de aquí las que ya migraron.
-# Valor: etapa que la conecta (C solicitudes · D valoraciones y reclamos ·
-# E notificaciones y tickets · F profesional · G admin).
+# Valor: etapa que la conecta, o «pedido» si falta el endpoint en el backend.
 PANTALLAS_PENDIENTES_API = {
     "cliente": {},
     "profesional": {},
+    # Sin endpoint en el backend: se reactivan cuando exista (PEDIDO_BACKEND_PARA_NEFI.md 0.6)
     "admin": {
-        "📊 Indicadores": "G",
-        "🪪 Verificación": "G",
-        "👥 Usuarios": "G",
-        "⭐ Moderación": "G",
-        "🛠️ Reclamos": "G",
-        "🎓 Contenidos": "G",
-        "📜 Trazabilidad": "G",
-        "💬 Soporte": "G",
+        "⭐ Moderación": "pedido",
+        "🎓 Contenidos": "pedido",
+        "📜 Trazabilidad": "pedido",
     },
 }
 
