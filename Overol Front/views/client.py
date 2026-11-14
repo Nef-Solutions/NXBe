@@ -8,9 +8,6 @@ from core.constants import (
     COMUNAS,
     pantallas_visibles,
 )
-from core.database import (
-    search_professionals,
-)
 from ui.components import (
     contact_box,
     empty_state,
@@ -230,9 +227,7 @@ def client_search(user):
         return
 
     # El visitante ve tarjetas anónimas: buscar por nombre le revelaría quién es cada uno.
-    professionals = search_professionals(
-        professionals, text, include_name=not anonymous, trades_of=catalog_api.trades
-    )
+    professionals = catalog_api.search_professionals(professionals, text, include_name=not anonymous)
 
     if order == "Mejor evaluados":
         professionals = sorted(

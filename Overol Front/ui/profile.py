@@ -146,7 +146,7 @@ def profile_sections(professional, owner=False):
             else "Experiencia no informada"
         )
         if total is None:
-            rating = ""  # modo api: el backend aún no valora por oficio
+            rating = ""  # el backend aún no valora por oficio
         elif total:
             rating = (
                 f'<span class="stars">{stars(average)}</span> <b>{average}</b> '

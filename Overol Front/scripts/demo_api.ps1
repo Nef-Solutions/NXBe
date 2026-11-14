@@ -1,5 +1,8 @@
-﻿# Overol - demo en modo API (front conectado al backend Django).
+﻿# Overol - arranque de la demo: backend Django + front Streamlit (único script).
 # Uso, desde la raíz del front:  powershell -ExecutionPolicy Bypass -File scripts\demo_api.ps1
+# Opcional: -DemoListo deja a profesional1..3@demo.overol.cl con horario (09:00-18:00) y un mes
+#           de suscripción, para que aparezcan en el catálogo y reciban solicitudes
+#           (seed_demo todavía no lo hace). Modifica datos de tu base de desarrollo.
 #
 # Variables de entorno opcionales:
 #   OVEROL_FRONT_PYTHON    ruta al python.exe del front (por defecto, "python" del PATH)
@@ -9,6 +12,8 @@
 #   OVEROL_BACKEND_VENV    entorno virtual del backend (por defecto, %LOCALAPPDATA%\Overol\backend_venv)
 #
 # No escribe nada dentro de la carpeta del backend: el entorno vive fuera y se usa PYTHONDONTWRITEBYTECODE=1.
+
+param([switch]$DemoListo)
 
 # "Continue": en PowerShell 5.1, "Stop" convierte el stderr de docker/python en errores;
 # cada paso revisa $LASTEXITCODE y falla con su propio mensaje.
@@ -68,7 +73,7 @@ if (Get-NetTCPConnection -LocalPort $FrontPort -State Listen -ErrorAction Silent
 Ok "Python del front listo y puerto libre"
 
 # ------------------------------------------------------------------
-Step "(a) Comprobando Docker y levantando Postgres y Redis"
+Step "(a) Comprobando Docker y levantando Postgres/PostGIS"
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Fail "Docker no está instalado o no está en el PATH." }
 docker info --format "{{.ServerVersion}}" *> $null
 if ($LASTEXITCODE -ne 0) { Fail "Docker no está corriendo. Abre Docker Desktop, espera a que diga 'Running' y vuelve a ejecutar este script." }
@@ -95,7 +100,7 @@ for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 1
 }
 if (-not $pgReady) { Fail "Postgres (contenedor overol_db) no respondió en 30 segundos. Revisa: docker compose logs db" }
-Ok "Postgres y Redis arriba"
+Ok "Postgres arriba"
 
 # ------------------------------------------------------------------
 Step "(b) Comprobando el entorno del backend en $Venv"
@@ -111,6 +116,17 @@ if (-not (Test-Path $VenvPy)) {
 }
 & $VenvPy -c "import django" 2>$null
 if ($LASTEXITCODE -ne 0) { Fail "El entorno $Venv existe pero no tiene Django. Bórralo y vuelve a ejecutar el script para recrearlo." }
+# El backend nuevo usa Gemini (asistente) y Transbank (pagos): se instalan si faltan
+& $VenvPy -c "import google.genai, transbank" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "    Instalando las dependencias nuevas del backend (requirements.txt)..."
+    & $VenvPy -m pip install --disable-pip-version-check -q -r (Join-Path $Backend "documentacion\requirements.txt")
+    if ($LASTEXITCODE -ne 0) { Fail "Falló la instalación de backend\documentacion\requirements.txt." }
+}
+# Webpay vuelve al front solo si PAYMENT_RESULT_URL apunta a él (no se imprime ningún valor del .env)
+if (-not (Select-String -LiteralPath (Join-Path $Backend ".env") -Pattern '^\s*PAYMENT_RESULT_URL\s*=.*8501' -Quiet)) {
+    Write-Host "    Aviso: en backend\.env define PAYMENT_RESULT_URL=http://localhost:$FrontPort/ para volver de Webpay al front." -ForegroundColor Yellow
+}
 Ok "Entorno listo ($(& $VenvPy -c "import sys, django; print(sys.version.split()[0], '- Django', django.get_version())"))"
 
 # ------------------------------------------------------------------
@@ -122,6 +138,18 @@ if (Test-Api) {
     try {
         & $VenvPy manage.py migrate --noinput
         if ($LASTEXITCODE -ne 0) { Fail "manage.py migrate falló. Revisa el mensaje de arriba." }
+        & $VenvPy manage.py seed_demo
+        if ($LASTEXITCODE -ne 0) { Fail "manage.py seed_demo falló. Revisa el mensaje de arriba." }
+        Ok "Migraciones y datos de demostración listos (contraseña de los usuarios demo: OverolDemo123!)"
+        if ($DemoListo) {
+            $code = "from datetime import time, timedelta; from django.utils import timezone; " +
+                    "from apps.authentication.models import ProfessionalProfile as P; " +
+                    "qs = P.objects.filter(user__email__in=['profesional1@demo.overol.cl','profesional2@demo.overol.cl','profesional3@demo.overol.cl']); " +
+                    "n = qs.update(work_start=time(9), work_end=time(18), subscription_expires_at=timezone.now() + timedelta(days=30)); " +
+                    "print(f'    {n} profesionales de demo con horario y suscripción')"
+            & $VenvPy manage.py shell -c $code
+            if ($LASTEXITCODE -ne 0) { Fail "No se pudo preparar a los profesionales de demo (-DemoListo)." }
+        }
     } finally {
         Pop-Location
     }
@@ -143,8 +171,7 @@ if (-not $up) { Fail "El backend no respondió en $WaitSecs segundos. Revisa la 
 Ok "Backend respondiendo"
 
 # ------------------------------------------------------------------
-Step "(e) Arrancando el front en modo api (Ctrl+C para detenerlo)"
-$env:OVEROL_BACKEND = "api"
+Step "(e) Arrancando el front (Ctrl+C para detenerlo)"
 $env:OVEROL_API_URL = $ApiUrl
 # app.py relanza Streamlit si esta variable no vale "1"; así se evita una instancia duplicada
 $env:OVEROL_STREAMLIT_STARTED = "1"
