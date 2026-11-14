@@ -2,6 +2,7 @@
 
 import re
 import secrets
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -13,7 +14,6 @@ from core.constants import (
     HORAS,
     MAX_TEXTO,
     MOTIVOS_RECHAZO,
-    OFICIOS,
     UPLOAD_DIR,
     pantallas_visibles,
 )
@@ -51,7 +51,9 @@ from ui.components import (
     status_badge,
     thread_message,
 )
+from views import payments
 from views.about import about_page
+from views.assistant import assistant_page
 from views.shared import user_profile_page
 from ui.profile import profile_header, profile_reviews, profile_sections
 
@@ -72,8 +74,11 @@ def professional_dashboard(user):
         "🔔 Notificaciones",
         "👤 Mi perfil",
         "📍 Cobertura",
+        "💳 Suscripción",
+        "🪪 Verificación",
         "🛠️ Reclamos",
         "🎓 Desarrollo profesional",
+        "🤖 Asistente",
         "ℹ️ Quiénes somos",
     ])
 
@@ -114,6 +119,15 @@ def professional_dashboard(user):
 
     elif menu == "📍 Cobertura":
         professional_coverage(user)
+
+    elif menu == "💳 Suscripción":
+        professional_subscription(user)
+
+    elif menu == "🪪 Verificación":
+        professional_verification(user)
+
+    elif menu == "🤖 Asistente":
+        assistant_page(user)
 
     elif menu == "🛠️ Reclamos":
         professional_claims(user, professional)
@@ -451,6 +465,190 @@ def professional_coverage(user):
         "seleccionada esté dentro de tu cobertura y tengas la disponibilidad activa. "
         "Solo podrán pedirte visitas en los días y horas que indicaste."
     )
+
+
+def _fecha_hora(value):
+    """Fecha ISO del backend como dd-mm-aaaa HH:MM (hora local)."""
+    if not value:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return str(value)
+    return (parsed.astimezone() if parsed.tzinfo else parsed).strftime("%d-%m-%Y %H:%M")
+
+
+def professional_subscription(user):
+    """Suscripción mensual (GET/POST /api/payments/professional-subscription/...) con Webpay."""
+    section("💳 Suscripción")
+
+    back = payments.pop_return("subscription")
+
+    try:
+        data = api_client.get_subscription()
+    except api_client.ApiError as error:
+        st.error(f"No se pudo consultar tu suscripción. {error}")
+        return
+
+    status = data.get("status")
+    latest = data.get("latest_payment") or {}
+
+    # ---------- Vuelta de Webpay: se muestra el estado REAL, no el parámetro de la URL ----------
+    if back:
+        payment = payments.payment_status_text(latest.get("status"))
+        if status == "ACTIVE" and latest.get("status") == "AUTHORIZED":
+            st.success(f"✅ Pago confirmado. Tu suscripción está vigente hasta el {_fecha_hora(data.get('expires_at'))}.")
+        elif latest.get("status") == "PENDING":
+            st.info("Tu pago todavía figura pendiente en Overol. Revisa de nuevo en unos minutos.")
+        else:
+            st.error(f"El pago no se completó (estado: {payment}). Tu suscripción no cambió y no se hizo ningún cargo.")
+        st.session_state.pop(payments.PENDING_KEY, None)
+
+    plan = data.get("plan") or {}
+    amount = _fee_to_number(data.get("amount"))
+    label = {"ACTIVE": "Vigente", "EXPIRED": "Vencida", "INACTIVE": "Sin suscripción"}.get(status, status or "—")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Estado", label)
+    c2.metric("Vigente hasta", _fecha_hora(data.get("expires_at"))[:10] or "—")
+    c3.metric("Monto", f"${amount:,}".replace(",", ".") if amount else "—")
+    st.caption(
+        f"Plan: {plan.get('name', 'Suscripción profesional')} · "
+        f"{plan.get('duration_months', 1)} mes(es). La renovación es manual: no hay cobro automático."
+        + (f" Último pago: {payments.payment_status_text(latest.get('status'))}." if latest else "")
+    )
+
+    if status != "ACTIVE":
+        st.warning(
+            "Sin una suscripción vigente **no apareces en el catálogo** y los clientes no pueden "
+            "enviarte solicitudes."
+        )
+
+    pending = st.session_state.get(payments.PENDING_KEY)
+    if pending and pending.get("key") == "subscription":
+        st.info("Tu pago está listo. Continúa en Webpay:")
+        payments.webpay_form(pending["url"], pending["token"], "subscription")
+        if st.button("Cancelar y volver", key="sub_cancel"):
+            st.session_state.pop(payments.PENDING_KEY, None)
+            st.rerun()
+        return
+
+    if st.button(
+        "Renovar con Webpay" if status == "ACTIVE" else "Pagar con Webpay",
+        type="primary",
+        use_container_width=True,
+        key="sub_pay",
+    ):
+        try:
+            started = api_client.start_subscription_payment()
+        except api_client.ApiError as error:
+            st.error(f"No se pudo iniciar el pago. {error}")
+            return
+        st.session_state[payments.PENDING_KEY] = {"url": started["url"], "token": started["token"], "key": "subscription"}
+        st.rerun()
+
+    if status == "ACTIVE":
+        st.caption("Si renuevas antes de que venza, el mes nuevo se suma a tu fecha de vencimiento.")
+
+
+def professional_verification(user):
+    """Cédula (GET/POST /api/auth/verification/documents/) y mensajes con Overol."""
+    section("🪪 Verificación de identidad")
+    _verification_banner(user)
+
+    try:
+        info = api_client.get_verification_documents()
+    except api_client.ApiError as error:
+        st.error(f"No se pudo consultar tu verificación. {error}")
+        return
+
+    docs = info.get("documents") or {}
+    st.markdown(
+        f"**Frente de la cédula:** {'✅ cargado' if docs.get('front_uploaded') else '⏳ falta'}  \n"
+        f"**Reverso de la cédula:** {'✅ cargado' if docs.get('back_uploaded') else '⏳ falta'}"
+    )
+    st.caption(
+        "Sube ambos lados en JPG o PNG (hasta 5 MB) o PDF (hasta 10 MB). Un administrador los revisa; "
+        "al subir un documento nuevo, tu verificación vuelve a quedar en revisión. Los archivos son privados."
+    )
+
+    f1, f2 = st.columns(2)
+    front = f1.file_uploader("Frente de la cédula", type=["jpg", "jpeg", "png", "pdf"], key="ver_front")
+    back = f2.file_uploader("Reverso de la cédula", type=["jpg", "jpeg", "png", "pdf"], key="ver_back")
+
+    if st.button("Enviar documentos", type="primary", key="ver_send"):
+        files, errors = {}, []
+        for field, upload in (("id_card_front", front), ("id_card_back", back)):
+            if upload is None:
+                continue
+            problem = _document_problem(upload)
+            if problem:
+                errors.append(problem)
+            else:
+                files[field] = (upload.name, upload.getvalue(), upload.type or "application/octet-stream")
+        if errors:
+            for problem in errors:
+                st.error(problem)
+        elif not files:
+            st.warning("Elige al menos un archivo.")
+        else:
+            try:
+                api_client.upload_verification_documents(files)
+                load_user()
+            except api_client.ApiError as error:
+                st.error(f"No se pudieron enviar los documentos. {error}")
+            else:
+                flash("Documentos enviados. Quedan en revisión del equipo de Overol.")
+                st.rerun()
+
+    _verification_thread()
+
+
+def _document_problem(upload):
+    """Valida extensión, tamaño y firma del archivo antes de enviarlo (el backend también valida)."""
+    ext = Path(upload.name).suffix.lower()
+    data = upload.getvalue()
+    limit = 10 if ext == ".pdf" else 5
+    if ext not in SIGNATURES:
+        return f"«{upload.name}»: debe ser JPG, PNG o PDF."
+    if len(data) > limit * 1024 * 1024:
+        return f"«{upload.name}» supera {limit} MB."
+    if not data.startswith(SIGNATURES[ext]):
+        return f"«{upload.name}» no parece un {ext[1:].upper()} válido."
+    return None
+
+
+def _verification_thread():
+    """Mensajes del profesional al equipo de verificación (GET/POST /auth/verification/messages/)."""
+    st.markdown("#### 💬 Mensajes con el equipo de verificación")
+    try:
+        messages = api_client.get_verification_messages()
+    except api_client.ApiError as error:
+        st.error(f"No se pudieron cargar tus mensajes. {error}")
+        return
+
+    if not messages:
+        st.caption("Aún no hay mensajes.")
+    for item in messages:
+        with st.container(border=True):
+            st.markdown(f"**Tú** · {_fecha_hora(item.get('created_at'))}")
+            st.write(item.get("message", ""))
+            if item.get("admin_response"):
+                st.markdown(f"**Overol** · {_fecha_hora(item.get('resolved_at'))}")
+                st.write(item["admin_response"])
+
+    text = st.text_area("Escribe al equipo de Overol", max_chars=MAX_TEXTO, key="ver_message")
+    if st.button("Enviar mensaje", key="ver_message_send"):
+        if not text.strip():
+            st.warning("Escribe un mensaje.")
+            return
+        try:
+            api_client.send_verification_message(text)
+        except api_client.ApiError as error:
+            st.error(f"No se pudo enviar el mensaje. {error}")
+            return
+        flash("Mensaje enviado al equipo de verificación.")
+        st.rerun()
 
 
 def professional_reputation(professional):
@@ -956,7 +1154,7 @@ def _trades_manager(user, professional):
     all_trades = get_trades(pid, active_only=False)
     active_names = [t["trade"] for t in active]
     inactive = {t["trade"]: t for t in all_trades if not t["active"]}
-    available = [o for o in OFICIOS if o not in active_names]
+    available = [o for o in ESPECIALIDADES_POR_OFICIO if o not in active_names]  # etapa F: del backend
 
     if available:
         with st.expander("➕ Agregar un oficio"):

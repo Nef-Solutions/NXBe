@@ -75,6 +75,7 @@ from core.session import (
 )
 from ui.components import flash, load_css, navbar, security_note, show_flash
 from views.admin import admin_dashboard
+from views import payments
 from views.auth import login_screen
 from views.client import client_dashboard
 from views.professional import professional_dashboard
@@ -89,6 +90,9 @@ from views.visitor import visitor_dashboard
 load_css()
 
 # Todos los datos vienen del backend Django; el front ya no crea ni usa overol.db.
+# Vuelta de Webpay (?status=...): se guarda antes de que la URL se limpie.
+payments.capture_payment_return()
+
 # Si el navegador trae una sesión persistente vigente, se restaura sin pedir la contraseña.
 restore_session()
 
@@ -97,6 +101,7 @@ def back_to_visitor():
     """Callback del botón «Volver a explorar»: regresa siempre a la portada del visitante.
     Se ejecuta antes de redibujar la página, por eso no depende de st.rerun()."""
     st.session_state.pop("show_login", None)
+    st.session_state.pop(payments.RETURN_KEY, None)  # descarta una vuelta de Webpay sin sesión
     st.session_state["visitor_navigation"] = "🏠 Inicio"
     st.session_state["_visitor_prev_menu"] = "🏠 Inicio"
     close_professional()
@@ -113,6 +118,14 @@ if st.session_state.get("authenticated") and not _session_user:
     end_session()
     flash("Tu sesión terminó. Vuelve a iniciar sesión.", "warning")
     st.rerun()
+
+# Tras volver de Webpay: el resultado se muestra en la pantalla del pago. Sin sesión
+# (no marcó «Mantener mi sesión»), primero se le pide ingresar.
+if payments.pending_return():
+    if _session_user:
+        payments.route_payment_return(_session_user)
+    else:
+        st.session_state["show_login"] = True
 
 navbar(_session_user)
 
@@ -137,6 +150,9 @@ elif not st.session_state.authenticated:
         key="back_to_visitor",
         on_click=back_to_visitor,
     )
+
+    if payments.pending_return():
+        st.info("Volviste de Webpay. Inicia sesión para ver el resultado de tu pago.")
 
     login_screen()
 

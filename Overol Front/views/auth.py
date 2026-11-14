@@ -6,7 +6,7 @@ import unicodedata
 import streamlit as st
 
 from core import api_client
-from core.constants import COMUNAS, OFICIOS, PRIVACY_POLICY_VERSION
+from core.constants import COMUNAS, PRIVACY_POLICY_VERSION
 from core.security import (
     normalize_rut,
     validate_email,
@@ -181,29 +181,78 @@ def _login(email_clean, password, remember):
 
 
 def _password_recovery():
-    """Historia 007: el backend envía un enlace para restablecer la contraseña.
-    Por ahora el correo se imprime en la consola del backend (sin servidor de correo)."""
-    with st.expander("¿Olvidaste tu contraseña?"):
-        with st.form("recovery_form", clear_on_submit=True):
-            r_email = st.text_input("Correo electrónico de tu cuenta", key="recovery_email")
-            submitted = st.form_submit_button("Enviar instrucciones", use_container_width=True)
+    """Historia 007 en dos pasos: el backend envía un código de 6 dígitos al correo
+    (en desarrollo se imprime en la consola de runserver) y con él se elige la contraseña nueva."""
+    with st.expander("¿Olvidaste tu contraseña?", expanded=bool(st.session_state.get("_recovery_email"))):
+        email = st.session_state.get("_recovery_email")
+
+        if not email:
+            with st.form("recovery_form", clear_on_submit=True):
+                r_email = st.text_input("Correo electrónico de tu cuenta", key="recovery_email")
+                submitted = st.form_submit_button("Enviar código", use_container_width=True)
+
+            if submitted:
+                if not validate_email(r_email):
+                    st.error("Ingresa un correo válido.")
+                    return
+                try:
+                    detail = api_client.reset_password(r_email)
+                except api_client.ApiError as error:
+                    st.error(f"No se pudo enviar el código. {error}")
+                    return
+                st.session_state["_recovery_email"] = r_email.strip().lower()
+                st.session_state["_recovery_notice"] = (
+                    detail or "Si el correo está registrado, recibirás un código para recuperar tu contraseña."
+                )
+                st.rerun()
+            return
+
+        st.success(st.session_state.get("_recovery_notice", ""))
+        st.caption(f"Escribe el código de 6 dígitos que enviamos a **{email}**. Vence en 10 minutos.")
+
+        with st.form("recovery_confirm_form", clear_on_submit=False):
+            code = st.text_input("Código de 6 dígitos", max_chars=6, key="recovery_code")
+            new = st.text_input(
+                "Nueva contraseña",
+                type="password",
+                help="Mínimo 8 caracteres, con al menos una letra y un número.",
+                key="recovery_password",
+            )
+            confirm = st.text_input("Confirmar nueva contraseña", type="password", key="recovery_confirm")
+            submitted = st.form_submit_button("Cambiar contraseña", use_container_width=True, type="primary")
+
+        st.button("Pedir otro código", key="recovery_restart", on_click=_restart_recovery)
 
         if not submitted:
             return
 
-        if not validate_email(r_email):
-            st.error("Ingresa un correo válido.")
-            return
+        problems = validate_password_strength(new)
+        if not re.fullmatch(r"\d{6}", code.strip()):
+            st.error("El código tiene 6 dígitos.")
+        elif problems:
+            st.error("La contraseña necesita " + ", ".join(problems) + ".")
+        elif new != confirm:
+            st.error("Las contraseñas no coinciden.")
+        else:
+            try:
+                api_client.confirm_password_reset(email, code, new)
+            except api_client.ApiError as error:
+                messages = api_client.field_messages(error.data, "new_password")
+                st.error(
+                    "La contraseña no cumple las reglas de seguridad del servidor:\n\n"
+                    + "\n".join(f"- {m}" for m in messages)
+                    if messages else f"No se pudo cambiar la contraseña. {error}"
+                )
+                return
+            _restart_recovery()
+            flash("Contraseña restablecida. Ya puedes iniciar sesión con la nueva.")
+            st.rerun()
 
-        try:
-            detail = api_client.reset_password(r_email)
-        except api_client.ApiError as error:
-            st.error(f"No se pudo enviar la solicitud. {error}")
-            return
 
-        st.success(
-            detail or "Si el correo está registrado, recibirás instrucciones para recuperar tu contraseña."
-        )
+def _restart_recovery():
+    # Callback: vuelve al paso 1 (pedir el código)
+    for key in ("_recovery_email", "_recovery_notice", "recovery_code", "recovery_password", "recovery_confirm"):
+        st.session_state.pop(key, None)
 
 
 def _register_form():
@@ -244,6 +293,7 @@ def _register_form():
     anios = None
     comunas_trabajo = []
     especialidades = []
+    opciones = []
     category_id = None
 
     if tipo == "Profesional":
@@ -252,8 +302,15 @@ def _register_form():
             "Podrás completar tu perfil profesional una vez que ingreses."
         )
 
+        # Los oficios salen del catálogo oficial del backend (GET /api/catalog/categories/)
+        try:
+            oficios = sorted((c.get("name", "") for c in api_client.get_categories()), key=_plain)
+        except api_client.ApiError as error:
+            oficios = []
+            st.error(f"No se pudo cargar la lista de oficios del servidor. {error}")
+
         o1, o2 = st.columns(2)
-        oficio = o1.selectbox("Oficio principal", OFICIOS, key="register_trade")
+        oficio = o1.selectbox("Oficio principal", oficios, key="register_trade") or ""
         anios = o2.number_input(
             "Años de experiencia (opcional)",
             min_value=0,
@@ -271,7 +328,13 @@ def _register_form():
             st.warning(f"No se pudieron cargar las especialidades del servidor. {error}")
         else:
             if category_id is None:
-                st.warning(f"El oficio «{oficio}» todavía no está disponible en el servidor de Overol.")
+                if oficio:
+                    st.warning(f"El oficio «{oficio}» todavía no está disponible en el servidor de Overol.")
+            elif not opciones:
+                st.warning(
+                    f"«{oficio}» todavía no tiene especialidades en el servidor. Puedes registrarte, "
+                    "pero no recibirás solicitudes hasta tener al menos una especialidad."
+                )
             else:
                 nombres = st.multiselect(
                     "Especialidades",
@@ -339,7 +402,10 @@ def _register_form():
     if tipo == "Profesional" and not comunas_trabajo:
         errores.append("Selecciona al menos una comuna donde trabajas.")
 
-    if tipo == "Profesional" and category_id is not None and not especialidades:
+    if tipo == "Profesional" and not oficio:
+        errores.append("Elige tu oficio principal.")
+
+    if tipo == "Profesional" and category_id is not None and opciones and not especialidades:
         errores.append("Elige al menos una especialidad: sin ella los clientes no podrán solicitarte visitas.")
 
     if not validate_phone(telefono):

@@ -744,6 +744,7 @@ def search_professionals(professionals, text, include_name=True, trades_of=None)
             normalize_text(k)
             for t in trades
             for k in PALABRAS_CLAVE_OFICIO.get(t["trade"], [])
+            + (list(t.get("keywords", [])) if isinstance(t, dict) else [])
         ]
         haystack = normalize_text(" ".join(p or "" for p in parts)) + " " + " ".join(keywords)
 

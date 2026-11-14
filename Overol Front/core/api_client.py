@@ -49,6 +49,10 @@ FIELD_LABELS = {
     "visit_address": "Dirección de la visita",
     "reason": "Motivo",
     "visit_fee": "Tarifa",
+    "code": "Código",
+    "id_card_front": "Cédula (frente)",
+    "id_card_back": "Cédula (reverso)",
+    "message": "Mensaje",
 }
 
 # Claves de la respuesta de error que no son mensajes para el usuario
@@ -112,18 +116,20 @@ def _error_message(status, data):
     }.get(status, f"Error inesperado del servidor (código {status}).")
 
 
-def _send(method, path, payload=None, access=None):
+def _send(method, path, payload=None, access=None, files=None):
+    """`files` ({campo: (nombre, bytes, tipo)}) envía multipart en vez de JSON."""
     headers = {"Accept": "application/json"}
     if access:
         headers["Authorization"] = f"Bearer {access}"
 
+    extra = {"files": files, "data": payload or {}} if files else {"json": payload}
     try:
         response = requests.request(
             method,
             API_BASE_URL + path.lstrip("/"),
-            json=payload,
             headers=headers,
             timeout=API_TIMEOUT,
+            **extra,
         )
     except requests.RequestException:
         raise ApiError(
@@ -187,20 +193,20 @@ def refresh():
     return True
 
 
-def request(method, path, payload=None, auth=True):
+def request(method, path, payload=None, auth=True, files=None):
     """Petición a la API. Con auth=True envía el JWT y lo renueva si expiró."""
     if not auth:
-        return _send(method, path, payload)
+        return _send(method, path, payload, files=files)
 
     if not st.session_state.get(ACCESS_KEY) and not refresh():
         raise ApiError("Tu sesión expiró. Vuelve a iniciar sesión.", 401)
 
     try:
-        return _send(method, path, payload, st.session_state.get(ACCESS_KEY))
+        return _send(method, path, payload, st.session_state.get(ACCESS_KEY), files)
     except ApiError as error:
         if error.status != 401 or not refresh():
             raise
-        return _send(method, path, payload, st.session_state.get(ACCESS_KEY))
+        return _send(method, path, payload, st.session_state.get(ACCESS_KEY), files)
 
 
 # ------------------------------------------------------------
@@ -257,9 +263,62 @@ def change_password(current_password, new_password):
 
 
 def reset_password(email):
-    """El backend responde 202 exista o no la cuenta (no revela qué correos están registrados)."""
+    """Paso 1: el backend envía un código de 6 dígitos (202 exista o no la cuenta)."""
     data = request("POST", "auth/password/reset/", {"email": email.strip().lower()}, auth=False)
     return (data or {}).get("detail", "")
+
+
+def confirm_password_reset(email, code, new_password):
+    """Paso 2: código de 6 dígitos y contraseña nueva. Anula las sesiones abiertas."""
+    data = request(
+        "POST",
+        "auth/password/reset/confirm/",
+        {"email": email.strip().lower(), "code": code.strip(), "new_password": new_password},
+        auth=False,
+    )
+    return (data or {}).get("detail", "")
+
+
+# ------------------------------------------------------------
+# Verificación, suscripción, pagos y asistente
+# ------------------------------------------------------------
+
+def get_verification_documents():
+    return request("GET", "auth/verification/documents/") or {}
+
+
+def upload_verification_documents(files):
+    """files: {"id_card_front"|"id_card_back": (nombre, bytes, tipo)} (multipart)."""
+    return request("POST", "auth/verification/documents/", files=files) or {}
+
+
+def get_verification_messages():
+    return request("GET", "auth/verification/messages/") or []
+
+
+def send_verification_message(message):
+    return request("POST", "auth/verification/messages/", {"message": message.strip()})
+
+
+def get_subscription():
+    return request("GET", "payments/professional-subscription/") or {}
+
+
+def start_subscription_payment():
+    """Inicia el pago del plan activo: devuelve url y token de Webpay (sandbox)."""
+    return request("POST", "payments/professional-subscription/transbank/", {}) or {}
+
+
+def get_visit_payment(visit_id):
+    return request("GET", f"payments/visits/{int(visit_id)}/") or {}
+
+
+def start_visit_payment(visit_id):
+    return request("POST", f"payments/visits/{int(visit_id)}/transbank/", {}) or {}
+
+
+def assistant_chat(message):
+    return (request("POST", "assistant/chat/", {"message": message.strip()}) or {}).get("reply", "")
 
 
 def get_categories():

@@ -32,6 +32,7 @@ from ui.components import (
     status_badge,
 )
 from views.about import about_page
+from views.assistant import assistant_page
 from views.home import home_page
 from views.shared import (
     apply_deeplink,
@@ -51,6 +52,7 @@ def client_dashboard(user):
         "🏠 Inicio",
         "🔎 Buscar profesionales",
         "📋 Mis solicitudes",
+        "🤖 Asistente",
         "🛠️ Mis reclamos",
         "🔔 Notificaciones",
         "👤 Mi perfil",
@@ -82,6 +84,9 @@ def client_dashboard(user):
 
     elif menu == "📋 Mis solicitudes":
         client_requests(user)
+
+    elif menu == "🤖 Asistente":
+        assistant_page(user)
 
     elif menu == "🛠️ Mis reclamos":
         client_claims(user)

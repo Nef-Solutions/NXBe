@@ -38,6 +38,16 @@ def _fee(value):
     return f"${amount:,}".replace(",", ".") if amount else ""
 
 
+def _keywords_by_category():
+    try:
+        return {
+            c["id"]: [k.strip() for k in (c.get("keywords") or "").split(",") if k.strip()]
+            for c in _categories()
+        }
+    except api_client.ApiError:
+        return {}
+
+
 def from_api(data, anonymous=False):
     """Profesional de la API con las claves de la base local. `anonymous` quita el nombre."""
     days = [DIAS_CORTOS[str(d).strip().lower()] for d in data.get("work_days") or []
@@ -48,9 +58,12 @@ def from_api(data, anonymous=False):
         data.get("name") or f"{data.get('first_name', '')} {data.get('last_name', '')}"
     ).strip()
 
+    keywords = _keywords_by_category()
     trades = [
         {
             "trade": t.get("category") or "",
+            # Palabras clave del oficio en el backend, para la búsqueda del front
+            "keywords": keywords.get(t.get("category_id"), []),
             "specialties": ",".join(s.get("name", "") for s in t.get("specialties") or []),
             # Para solicitar una visita: el backend exige una especialidad del profesional
             "specialty_list": [{"id": s["id"], "name": s.get("name", "")} for s in t.get("specialties") or []],

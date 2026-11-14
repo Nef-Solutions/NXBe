@@ -76,11 +76,13 @@ ZONAS_HOGAR = [
     "Otra zona",
 ]
 
+# Oficios destacados en la portada: los nombres son los del catálogo oficial del backend.
+# La lista completa de oficios (66) sale de GET /api/catalog/categories/.
 CATEGORIAS = [
     ("🔧", "Gasfitería", "Reparaciones, fugas y cañerías"),
     ("⚡", "Electricidad", "Instalaciones y reparaciones eléctricas"),
-    ("🪚", "Carpintería", "Muebles, puertas y terminaciones"),
-    ("🎨", "Pintura", "Interior, exterior y terminaciones"),
+    ("🪚", "Carpintero", "Muebles, puertas y terminaciones"),
+    ("🎨", "Pintor", "Interior, exterior y terminaciones"),
 ]
 
 ROLES = {
@@ -104,16 +106,6 @@ ESTADOS_RECLAMO = [
     "Resuelto",
     "Cerrado",
 ]
-
-OFICIOS = [
-    "Gasfitería",
-    "Electricidad",
-    "Carpintería",
-    "Pintura",
-    "Maestro multipropósito",
-]
-
-ESPECIALIDADES = ["Gasfitería", "Electricidad", "Carpintería", "Pintura"]
 
 # Catálogo de especialidades por oficio (Historias 002, 008 y 018)
 ESPECIALIDADES_POR_OFICIO = {
@@ -148,7 +140,8 @@ ESPECIALIDADES_POR_OFICIO = {
     ],
 }
 
-# Palabras clave por oficio para la búsqueda por palabra clave (Historia 4.16).
+# Palabras clave extra por oficio para la búsqueda (Historia 4.16). Se suman a las
+# `keywords` que entrega el backend para cada oficio.
 PALABRAS_CLAVE_OFICIO = {
     "Gasfitería": [
         "agua",
@@ -179,7 +172,7 @@ PALABRAS_CLAVE_OFICIO = {
         "automático",
         "automatico",
     ],
-    "Carpintería": [
+    "Carpintero": [
         "mueble",
         "madera",
         "puerta",
@@ -189,7 +182,7 @@ PALABRAS_CLAVE_OFICIO = {
         "clóset",
         "estante",
     ],
-    "Pintura": [
+    "Pintor": [
         "pintar",
         "pintura",
         "pared",
@@ -218,7 +211,7 @@ PREFERENCIAS_CONTACTO = ["WhatsApp", "Llamada telefónica", "Correo electrónico
 
 # Oficios con ícono y descripción (portada y botones de categorías)
 OFICIOS_INFO = list(CATEGORIAS) + [
-    ("🧰", "Maestro multipropósito", "Reparaciones generales y trabajos menores del hogar"),
+    ("🔑", "Cerrajería", "Cerraduras, llaves y apertura de puertas"),
 ]
 
 # Integrantes del equipo (Documento 01 – Product Vision)
