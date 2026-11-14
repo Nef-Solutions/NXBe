@@ -12,6 +12,7 @@ La conexión a la API avanza por etapas. Las pantallas que todavía no están co
 |---|---|
 | B · Cuentas, sesión, perfil, catálogo y perfiles públicos | ✅ conectada |
 | C · Solicitudes y cobertura del profesional (días, horario y tarifa) | ✅ conectada |
+| C2 · Suscripción con Webpay (sandbox), cédula, recuperación con código, oficios del backend y asistente Overil | ✅ conectada |
 | D · Valoraciones y reclamos · E · Notificaciones y tickets · F · Resto del panel del profesional · G · Panel del admin | ⏳ pendientes (ocultas) |
 
 ---
@@ -32,10 +33,13 @@ pip install -r requirements.txt
 Levanta el backend Django (carpeta `backend/` en la raíz del repositorio) siguiendo su propia documentación. Necesita **Python 3.12 o superior** (Django 6.1), PostgreSQL y Redis (por ejemplo con `docker compose up -d`) y un archivo `backend/.env` creado a partir de `backend/.env.example`. Después:
 
 ```powershell
+python -m pip install -r documentacionequirements.txt   # incluye google-genai y transbank-sdk
 python manage.py migrate
 python manage.py seed_demo      # usuarios y catálogo de demostración
 python manage.py runserver
 ```
+
+Ya no se usa Redis: `docker compose up -d` levanta solo Postgres/PostGIS. En `backend/.env` define `PAYMENT_RESULT_URL=http://localhost:8501/` para que Webpay vuelva al front, y la clave de Gemini si quieres respuestas reales del asistente.
 
 Por defecto el front lo busca en `http://127.0.0.1:8000/api/`; se puede cambiar con `OVEROL_API_URL`.
 
@@ -76,8 +80,11 @@ Por defecto usan `python` del PATH para el front y `py -3.12` para crear el ento
 
 - **Sesión persistente** («Mantener mi sesión iniciada», 7 días): la cookie del navegador lleva solo un identificador aleatorio. El token de renovación del backend vive en la memoria del servidor de Streamlit. Si el servidor se reinicia, hay que volver a ingresar.
 - **Bloqueo:** tras 3 claves incorrectas, el backend bloquea la cuenta por 5 minutos, incluso con la clave correcta. El front muestra cuántos minutos faltan.
-- **Recuperar contraseña:** el backend envía el enlace por correo. En desarrollo, el correo se imprime en la consola de `runserver`.
-- **Registro de profesional:** el oficio debe existir en el catálogo del backend (hoy: Electricidad, Gasfitería y Cerrajería). Si no existe, el front lo avisa y no crea la cuenta.
+- **Recuperar contraseña:** en dos pasos. El backend envía un código de 6 dígitos por correo (en desarrollo se imprime en la consola de `runserver`) y con él se elige la contraseña nueva.
+- **Registro de profesional:** los 66 oficios salen del catálogo del backend. Si el oficio aún no tiene especialidades, se puede registrar igual, pero no recibirá solicitudes hasta tener al menos una.
+- **Suscripción:** un profesional solo aparece en el catálogo y recibe solicitudes con una suscripción vigente ($10.000 al mes, pagada con Webpay en modo de pruebas). `seed_demo` no la trae: para la demo, fija «Suscripción vigente hasta» en `/admin/` o págala desde «💳 Suscripción».
+- **Webpay:** al volver de Webpay, el front consulta el estado real del pago al backend; no confía en el parámetro de la URL. Si no marcaste «Mantener mi sesión», te pide ingresar antes de mostrar el resultado.
+- **Asistente Overil:** para clientes y profesionales con sesión. No guarda la conversación (solo vive en la sesión) y el texto se procesa con un servicio de Google: no escribas datos personales. Límite: 5 consultas por hora y 10 al día.
 - **Nombres:** nombre y apellido solo admiten letras, espacios y apóstrofes («Ana María», no «Ana-María»).
 - **Solicitudes:** para solicitar, el profesional debe tener horario (se configura en «📍 Cobertura») y al menos una especialidad en el oficio elegido. Hoy `seed_demo` no carga horario.
 - **Vencimiento:** el front muestra el plazo que entrega el backend (`expires_at`). Hoy son 30 días, no 72 horas (pedido a Nefi).

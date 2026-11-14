@@ -4,16 +4,18 @@ Las pruebas automáticas usan una imitación del backend. Estas se hacen a mano,
 Anota en cada caso ✅ o ❌ y lo que viste.
 
 **Etapa B:** login, bloqueo, registro, completar perfil, Mi perfil, contraseñas y sesión recordada (casos 1 a 24).
-**Etapa C:** Cobertura y solicitudes (casos C1 a C17, al final).
+**Etapa C:** Cobertura y solicitudes (casos C1 a C17).
+**Etapa C2:** suscripción con Webpay, cédula, recuperación con código, oficios del backend y asistente (casos S1 a S12, al final).
 
 ## Preparación (una vez)
 
 ```powershell
 # 1. Backend (desde la carpeta backend del repositorio)
 cd "C:\Users\benja\Documents\NXBe_repo\backend"
-docker compose up -d
+docker compose up -d                          # solo Postgres/PostGIS (Redis ya no se usa)
 $env:PYTHONDONTWRITEBYTECODE = "1"
 $py = "C:\Users\benja\Documents\Overol_envs\backend_venv\Scripts\python.exe"
+& $py -m pip install -r documentacion\requirements.txt   # trae google-genai y transbank-sdk
 & $py manage.py migrate
 & $py manage.py seed_demo
 & $py manage.py runserver 127.0.0.1:8000     # déjala abierta
@@ -30,6 +32,10 @@ cd "C:\Users\benja\Documents\NXBe_repo\Overol Front"
 | Cliente | `cliente1@demo.overol.cl`, `cliente2@demo.overol.cl` |
 | Profesional | `profesional1@demo.overol.cl` a `profesional3@demo.overol.cl` |
 | Admin | `admin@demo.overol.cl` (también entra a `/admin/` de Django) |
+
+**`backend/.env`:** además de lo de Postgres, define `PAYMENT_RESULT_URL=http://localhost:8501/` (para que Webpay vuelva al front) y, si quieres respuestas reales del asistente, la clave de Gemini. Sin esa clave, el asistente responde «no disponible» y todo lo demás funciona.
+
+**Suscripción de los profesionales de demo:** el catálogo y las solicitudes exigen una suscripción vigente y `seed_demo` no la trae. En `/admin/` → Professional profiles, pon a `profesional1` a `profesional3` una fecha futura en «Suscripción vigente hasta» (o págala en el caso S3).
 
 **Antes de empezar:** confirma que la carpeta del front **no** tiene `overol.db`, o bórralo. Al terminar, revisa que siga sin existir.
 
@@ -50,7 +56,7 @@ cd "C:\Users\benja\Documents\NXBe_repo\Overol Front"
 | 11 | Mi perfil del profesional | `profesional1` → Mi perfil → preferencia «Correo electrónico», un titular y una presentación → Guardar | En `/admin/` → Professional profiles: `contact_preference`, `headline` y `bio` actualizados. Arriba dice «Tu identidad está verificada» |
 | 12 | Profesional pendiente | Entra con el profesional del caso 3 | Aviso «Tu cuenta está pendiente de verificación» y no aparece en «Buscar profesionales». Apruébalo en `/admin/` (Professional profiles → `verification_status` = APPROVED) y aparece en el catálogo |
 | 13 | Cambiar contraseña | Mi perfil → «Cambiar contraseña» con la actual equivocada, y después con la correcta | Primero: «La contraseña actual no es correcta». Después: «Contraseña actualizada», y la nueva clave sirve para entrar |
-| 14 | Recuperar contraseña | Pantalla de ingreso → «¿Olvidaste tu contraseña?» → `cliente1@demo.overol.cl` | Mensaje «Si el correo está registrado, recibirás instrucciones…». En la **ventana de runserver** se imprime el correo con el enlace (el backend usa correo por consola) |
+| 14 | Recuperar contraseña | Ver el caso S6 (ahora es con un código de 6 dígitos) | — |
 | 15 | Recargar con la sesión recordada | Con el caso 6 abierto, recarga la página (F5) | Sigue dentro, sin pedir la contraseña |
 | 16 | La cookie no lleva tokens | F12 → Application → Cookies → `localhost:8501` | Hay una sola cookie `overol_session`, con un valor aleatorio largo, SameSite = Lax. **No** contiene `eyJ…` (un token JWT), ni el correo ni el nombre |
 | 17 | Cerrar sesión | «Cerrar sesión» en la barra lateral → recarga la página | Vuelve a la vista de visitante y al recargar no entra solo. La cookie `overol_session` desaparece |
@@ -86,3 +92,21 @@ cd "C:\Users\benja\Documents\NXBe_repo\Overol Front"
 | C15 | Cancelación del cliente | Solicitud pendiente → «Cancelar solicitud» → advertencia → **mantén presionado** el botón | Queda **Cancelada** y en `/admin/` `cancelled_by` = CLIENT. «No, mantener mi solicitud» no cancela |
 | C16 | Estado cerrado por Overol | En `/admin/` cambia una solicitud a FORCED_CLOSED | El cliente la ve como **Cerrada por Overol** y el profesional, en la pestaña de cerradas |
 | C17 | Profesional nuevo recibe solicitudes | Registra un profesional de **Gasfitería** marcando las especialidades «Fugas de agua» y «Destapes» (sin especialidades, el formulario no deja enviar) → en `/admin/` apruébalo (`verification_status` = APPROVED) → entra con él y configura «Cobertura» (C1) → `cliente1` abre su perfil | En `/admin/` → Professional profiles → Specialties: «Fugas de agua» y «Destapes». En el perfil, «Especialidad» ofrece esas dos y «Solicitar visita» crea la solicitud (PENDING) |
+
+## Etapa C2: suscripción, cédula, recuperación con código, oficios y asistente
+
+| # | Caso | Pasos | Resultado esperado |
+|---|---|---|---|
+| S1 | Suscripción vigente | `profesional1` (con fecha futura en `/admin/`) → «💳 Suscripción» | Estado **Vigente**, la fecha de vencimiento, monto $10.000 y el botón «Renovar con Webpay» |
+| S2 | Sin suscripción | Borra la fecha en `/admin/` → recarga «Suscripción». Luego `cliente1` busca profesionales | Estado **Sin suscripción** y el aviso «no apareces en el catálogo». El cliente ya no lo ve en la búsqueda |
+| S3 | Pagar con Webpay (sesión recordada) | Entra con «Mantener mi sesión» → «Pagar con Webpay» → «Ir a Webpay para pagar» → en Webpay paga con la tarjeta de prueba de Transbank para el ambiente de integración (la que indica su documentación) | Pasa a Webpay en la misma pestaña. Al terminar vuelve a `localhost:8501`, abre «Suscripción» y dice «Pago confirmado…». En `/admin/` → Payment transactions: AUTHORIZED, y la fecha de vencimiento avanzó un mes. **Anota si Transbank logra volver a `127.0.0.1:8000`** (la guía del backend advierte que podría no hacerlo) |
+| S4 | Pago anulado | Repite S3 y en Webpay anula la compra | Vuelve con «El pago no se completó (estado: rechazado)» y la suscripción no cambia |
+| S5 | Vuelta sin sesión | Repite S3 **sin** «Mantener mi sesión» | Al volver pide iniciar sesión, con el aviso «Volviste de Webpay». Tras ingresar, muestra el resultado |
+| S6 | Recuperar contraseña con código | «¿Olvidaste tu contraseña?» → `cliente1@demo.overol.cl` → «Enviar código» → copia el código de 6 dígitos que se imprime en la **ventana de runserver** → escríbelo con una contraseña nueva | Primero «recibirás un código». Con un código equivocado: «El código no es válido o ha expirado.». Con el correcto: «Contraseña restablecida» y la nueva clave sirve. Las sesiones abiertas de esa cuenta se cierran |
+| S7 | Subir la cédula | Profesional nuevo (caso 3 o C17) → «🪪 Verificación» → frente PNG y reverso PDF → «Enviar documentos» | «Documentos enviados». Ambos lados figuran ✅. En `/admin/` el perfil queda PENDING con los dos archivos |
+| S8 | Archivo inválido | Sube un `.png` que en realidad sea otro tipo, o una imagen de más de 5 MB | El front lo rechaza antes de enviar |
+| S9 | Mensaje de verificación | En «Verificación» escribe un mensaje → «Enviar mensaje». En `/admin/` → Verification case messages, responde | El mensaje aparece en el hilo y luego la respuesta de Overol |
+| S10 | Oficios del backend | Registro de profesional | La lista tiene los **66 oficios** del backend. Con «Soldador» (sin especialidades) avisa que no recibirá solicitudes hasta tenerlas y deja registrarse; con «Gasfitería» pide especialidades |
+| S11 | Asistente | `cliente1` → «🤖 Asistente» → pregunta por una llave que gotea (con la clave de Gemini configurada) | Aviso de no escribir datos personales. Responde Overil. Al recargar sin «Mantener sesión», el historial se pierde |
+| S12 | Límite y caída del asistente | Envía 6 consultas en una hora. Luego quita la clave de Gemini y reinicia runserver | La sexta: «Llegaste al límite de consultas…». Sin la clave: «El asistente no está disponible en este momento» |
+
