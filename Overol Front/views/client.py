@@ -9,7 +9,6 @@ from core.constants import (
     pantallas_visibles,
 )
 from core.database import (
-    count_unread_notifications,
     search_professionals,
 )
 from ui.components import (
@@ -23,6 +22,7 @@ from ui.components import (
     notifications_page,
     section,
     status_badge,
+    support_box,
 )
 from views import payments
 from views.about import about_page
@@ -54,7 +54,7 @@ def client_dashboard(user):
     ])
     badges = {}
     if "🔔 Notificaciones" in options:
-        badges["🔔 Notificaciones"] = count_unread_notifications(user["id"])
+        badges["🔔 Notificaciones"] = api_client.unread_notifications()
 
     menu = nav_bar("client_navigation", options, badges=badges)
 
@@ -274,6 +274,7 @@ def client_requests(user):
     try:
         requests = requests_api.list_requests()
         claims = {c["visit"]: c for c in requests_api.list_claims()}
+        tickets = api_client.list_tickets()
     except api_client.ApiError as error:
         st.error(f"No se pudieron cargar tus solicitudes. {error}")
         return
@@ -298,10 +299,10 @@ def client_requests(user):
         st.info("No hay solicitudes con ese estado.")
 
     for request in shown:
-        _client_request_card(request, claims)
+        _client_request_card(user, request, claims, [t for t in tickets if t.get("visit") == request["id"]])
 
 
-def _client_request_card(request, claims):
+def _client_request_card(user, request, claims, tickets):
     rid = request["id"]
     raw = request["raw_status"]
 
@@ -386,7 +387,8 @@ def _client_request_card(request, claims):
             _rating_block(request)
             _claim_block(request, claims.get(rid))
 
-        # Etapa E: soporte
+        # ---------- Tickets de soporte sobre esta solicitud ----------
+        support_box(user, rid, "cliente", tickets)
 
 
 def _client_action(rid, name, success, kind="success"):

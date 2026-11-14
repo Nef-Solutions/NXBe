@@ -23,7 +23,6 @@ from core.security import encrypt_document
 from core.database import (
     add_trade,
     audit,
-    count_unread_notifications,
     deactivate_trade,
     get_connection,
     get_professional_by_user,
@@ -47,6 +46,7 @@ from ui.components import (
     security_note,
     stars,
     status_badge,
+    support_box,
     thread_message,
 )
 from views import payments
@@ -88,7 +88,7 @@ def professional_dashboard(user):
 
     badges = {}
     if "🔔 Notificaciones" in options:
-        badges["🔔 Notificaciones"] = count_unread_notifications(user["id"])
+        badges["🔔 Notificaciones"] = api_client.unread_notifications()
     if "🛠️ Reclamos" in options:
         try:
             badges["🛠️ Reclamos"] = sum(1 for c in requests_api.list_claims() if c["raw_status"] == "OPEN")
@@ -160,6 +160,7 @@ def professional_requests(user):
 
     try:
         requests = requests_api.list_requests()
+        tickets = api_client.list_tickets()
     except api_client.ApiError as error:
         st.error(f"No se pudieron cargar tus solicitudes. {error}")
         return
@@ -194,7 +195,7 @@ def professional_requests(user):
                 st.caption("No hay solicitudes en esta categoría.")
 
             for request in rows:
-                _request_card(request)
+                _request_card(user, request, [t for t in tickets if t.get("visit") == request["id"]])
 
 
 def _pro_action(rid, name, success, reason=None, kind="success"):
@@ -213,7 +214,7 @@ def _pro_action(rid, name, success, reason=None, kind="success"):
     st.rerun()
 
 
-def _request_card(request):
+def _request_card(user, request, tickets):
     rid = request["id"]
     raw = request["raw_status"]
 
@@ -317,7 +318,8 @@ def _request_card(request):
         if raw == "COMPLETED":
             _client_rating_block(request)
 
-        # Etapa E: soporte
+        # ---------- Tickets de soporte sobre esta solicitud ----------
+        support_box(user, rid, "profesional", tickets)
 
 
 def _fee_to_number(value):

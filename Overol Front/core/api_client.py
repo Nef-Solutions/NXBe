@@ -344,3 +344,46 @@ def update_availability(work_days, work_start, work_end, is_available, coverage)
             "coverage_communes": list(coverage),
         },
     )
+
+
+# ------------------------------------------------------------
+# Notificaciones y tickets de soporte (etapa E)
+# ------------------------------------------------------------
+
+ESTADOS_TICKET = {"OPEN": "Abierto", "IN_REVIEW": "En revisión", "RESOLVED": "Resuelto"}
+
+
+def list_notifications():
+    """GET /notifications/: las del usuario, de la más nueva a la más antigua."""
+    data = request("GET", "notifications/") or []
+    items = data.get("results", []) if isinstance(data, dict) else data
+    return sorted(items, key=lambda n: n.get("created_at") or "", reverse=True)
+
+
+def unread_notifications():
+    """Cantidad de no leídas (None si el backend no responde)."""
+    try:
+        return sum(1 for n in list_notifications() if not n.get("is_read"))
+    except ApiError:
+        return None
+
+
+def read_notification(notification_id):
+    return request("POST", f"notifications/{int(notification_id)}/read/", {})
+
+
+def list_tickets(status=None):
+    """GET /tickets/: los propios (el admin ve todos). `status`: OPEN, IN_REVIEW o RESOLVED."""
+    data = request("GET", "tickets/" + (f"?status={status}" if status else "")) or []
+    items = data.get("results", []) if isinstance(data, dict) else data
+    return sorted(items, key=lambda t: t.get("id", 0), reverse=True)
+
+
+def create_ticket(visit_id, subject, description):
+    return request("POST", "tickets/", {
+        "visit": int(visit_id), "subject": subject.strip(), "description": description.strip(),
+    })
+
+
+def resolve_ticket(ticket_id, response):
+    return request("POST", f"tickets/{int(ticket_id)}/resolve/", {"response": response.strip()})

@@ -30,11 +30,8 @@ def use_api():
 # Valor: etapa que la conecta (C solicitudes · D valoraciones y reclamos ·
 # E notificaciones y tickets · F profesional · G admin).
 PANTALLAS_PENDIENTES_API = {
-    "cliente": {
-        "🔔 Notificaciones": "E",
-    },
+    "cliente": {},
     "profesional": {
-        "🔔 Notificaciones": "E",
         "🎓 Desarrollo profesional": "F",
     },
     "admin": {
