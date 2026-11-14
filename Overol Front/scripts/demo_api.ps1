@@ -84,12 +84,26 @@ if (-not (Test-Path -LiteralPath (Join-Path $Backend ".env"))) {
     Fail "Falta `"$Backend\.env`". Cópialo desde .env.example (Copy-Item `"$Backend\.env.example`" `"$Backend\.env`") y completa sus valores según la documentación del backend."
 }
 
-Push-Location $Backend
-try {
-    docker compose up -d
-    if ($LASTEXITCODE -ne 0) { Fail "docker compose up -d falló en $Backend. Revisa el mensaje de arriba." }
-} finally {
-    Pop-Location
+# Si ya existe un contenedor overol_db (por ejemplo, uno anterior con datos de prueba), se usa ese
+# y no se ejecuta compose up. Este script nunca borra ni recrea contenedores ni volúmenes.
+$dbState = docker ps -a --filter "name=^/overol_db$" --format "{{.State}}" 2>$null | Select-Object -First 1
+if ($dbState) {
+    if ($dbState -eq "running") {
+        Ok "El contenedor overol_db ya existe y está corriendo: se usa tal cual (sin docker compose up)"
+    } else {
+        Write-Host "    El contenedor overol_db ya existe (estado: $dbState): se inicia con docker start (sin docker compose up)"
+        docker start overol_db *> $null
+        if ($LASTEXITCODE -ne 0) { Fail "No se pudo iniciar el contenedor overol_db con docker start. Revisa: docker logs overol_db" }
+    }
+} else {
+    Write-Host "    No existe un contenedor overol_db: se crea con docker compose up -d"
+    Push-Location $Backend
+    try {
+        docker compose up -d
+        if ($LASTEXITCODE -ne 0) { Fail "docker compose up -d falló en $Backend. Revisa el mensaje de arriba." }
+    } finally {
+        Pop-Location
+    }
 }
 
 Write-Host "    Esperando a que Postgres acepte conexiones..."
@@ -99,7 +113,7 @@ for ($i = 0; $i -lt 30; $i++) {
     if ($LASTEXITCODE -eq 0) { $pgReady = $true; break }
     Start-Sleep -Seconds 1
 }
-if (-not $pgReady) { Fail "Postgres (contenedor overol_db) no respondió en 30 segundos. Revisa: docker compose logs db" }
+if (-not $pgReady) { Fail "Postgres (contenedor overol_db) no respondió en 30 segundos. Revisa: docker logs overol_db" }
 Ok "Postgres arriba"
 
 # ------------------------------------------------------------------
