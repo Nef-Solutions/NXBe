@@ -11,9 +11,11 @@ CLIENTE, PRO, ADMIN = "cliente1@demo.overol.cl", "profesional1@demo.overol.cl", 
 ROLES = {
     "visitante": (None, "visitor_navigation", ["🏠 Inicio", "🔎 Profesionales", "ℹ️ Quiénes somos"]),
     "cliente": (CLIENTE, "client_navigation",
-                ["🏠 Inicio", "🔎 Buscar profesionales", "📋 Mis solicitudes", "👤 Mi perfil", "ℹ️ Quiénes somos"]),
+                ["🏠 Inicio", "🔎 Buscar profesionales", "📋 Mis solicitudes", "🤖 Asistente", "👤 Mi perfil",
+                 "ℹ️ Quiénes somos"]),
     "profesional": (PRO, "professional_navigation",
-                    ["📋 Solicitudes", "👤 Mi perfil", "📍 Cobertura", "ℹ️ Quiénes somos"]),
+                    ["📋 Solicitudes", "👤 Mi perfil", "📍 Cobertura", "💳 Suscripción", "🪪 Verificación",
+                     "🤖 Asistente", "ℹ️ Quiénes somos"]),
     "admin": (ADMIN, "admin_navigation", ["ℹ️ Quiénes somos"]),
 }
 
@@ -31,7 +33,9 @@ for role, (email, nav, options) in ROLES.items():
         at.button(key=f"{nav}_btn_{i}").click().run()
         ok = ok and not at.exception and at.session_state[nav] == option
     check(ok, f"[{role}] todas las secciones abren sin excepción")
-    check(not any("Asistente" in (b.label or "") for b in at.button), f"[{role}] sin «Asistente»")
+    has_assistant = any("Asistente" in (b.label or "") for b in at.button)
+    check(has_assistant == (role in ("cliente", "profesional")),
+          f"[{role}] «Asistente» {'disponible' if role in ('cliente', 'profesional') else 'no disponible'}")
 
 # ---------- Visitante ----------
 at = new_app(front)

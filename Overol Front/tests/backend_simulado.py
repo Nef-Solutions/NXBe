@@ -30,12 +30,26 @@ DEMO_PASSWORD = "OverolDemo123!"
 COMMON_PASSWORDS = {"password", "password123", "12345678", "123456789", "qwerty123", "overol123"}
 NAME_RE = re.compile(r"[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s']+")
 
+# Parte del catálogo oficial del backend (66 oficios); los últimos no tienen especialidades
 CATEGORIES = {
     1: ("Gasfitería", ["Fugas de agua", "Destapes", "Grifería y artefactos sanitarios", "Calefont y termo"]),
     2: ("Electricidad", ["Enchufes e interruptores", "Tableros eléctricos", "Iluminación", "Instalación de ventiladores"]),
-    3: ("Carpintería", ["Muebles a medida", "Reparación de puertas", "Closets", "Instalación de pisos"]),
-    4: ("Pintura", ["Pintura interior", "Pintura exterior", "Empastes y reparaciones", "Impermeabilización"]),
+    3: ("Carpintero", ["Muebles a medida", "Reparación de puertas", "Closets", "Instalación de pisos"]),
+    4: ("Pintor", ["Pintura interior", "Pintura exterior", "Empastes y reparaciones", "Impermeabilización"]),
     5: ("Cerrajería", ["Apertura de puertas", "Cambio de chapas"]),
+    6: ("Soldador", []),
+    7: ("Jardinero", []),
+}
+
+
+KEYWORDS = {
+    1: "gasfiter, gasfíter, gasfitería, calefont, cañerías",
+    2: "eléctrico, electricista, electricidad, enchufes, tablero",
+    3: "carpintero, carpintería",
+    4: "pintor, pintura",
+    5: "cerrajero, cerrajería, cerradura, llave",
+    6: "soldador, soldadura",
+    7: "jardinero, jardinería",
 }
 
 
@@ -59,6 +73,16 @@ class BackendSimulado:
         self.blacklist = set()
         self.calls = []        # (método, ruta, cuerpo)
         self.reset_emails = []
+        self.reset_codes = {}       # correo → {code, attempts, expires}
+        self.code_seq = count(123456)
+        self.msg_ids = count(1)
+        self.payments = {}
+        self.payment_ids = count(1)
+        self.plan_amount = 10000
+        self.assistant_use = {}     # id de usuario → consultas en la hora
+        self.assistant_down = False
+        self.assistant_messages = []
+        self._files = None
         self.caido = False
         self.page_size_max = 50
         self.visits = {}
@@ -129,6 +153,8 @@ class BackendSimulado:
             "opinions": [{"quality": q, "punctuality": p, "treatment": t, "comment": c,
                           "created_at": "2026-11-01T10:00:00", "author_name": "Clara P."}
                          for q, p, t, c in opinions],
+            # Los perfiles de demo tienen suscripción vigente (el seed_demo real no la trae)
+            "subscription_expires_at": datetime.now(timezone.utc) + timedelta(days=20) if status == "APPROVED" else None,
         }
         return uid
 
@@ -149,7 +175,7 @@ class BackendSimulado:
         self.access.clear()
 
     # ---------------- Despacho de peticiones ----------------
-    def request(self, method, url, json=None, headers=None, timeout=None, **_):
+    def request(self, method, url, json=None, headers=None, timeout=None, **kwargs):
         import requests
 
         from core.constants import API_BASE_URL
@@ -164,7 +190,8 @@ class BackendSimulado:
         user = self.users.get(self.access.get(token)) if token else None
         if user and user["account_status"] == "DEACTIVATED":
             user = None  # JWTAuthentication rechaza un usuario con is_active=False
-        body = json or {}
+        body = json or kwargs.get("data") or {}
+        self._files = kwargs.get("files")  # multipart: {campo: (nombre, bytes, tipo)}
         path = parts.path
 
         routes = {
@@ -172,6 +199,7 @@ class BackendSimulado:
             ("POST", "/auth/token/refresh/"): self._refresh,
             ("POST", "/auth/register/"): self._register,
             ("POST", "/auth/password/reset/"): self._reset,
+            ("POST", "/auth/password/reset/confirm/"): self._reset_confirm,
             ("GET", "/catalog/categories/"): self._categories,
             ("GET", "/catalog/specialties/"): self._specialties,
             ("GET", "/catalog/professionals/"): self._search,
@@ -183,6 +211,13 @@ class BackendSimulado:
             ("POST", "/auth/password/change/"): self._change_password,
             ("GET", "/requests/"): self._list_visits,
             ("POST", "/requests/"): self._create_visit,
+            ("GET", "/auth/verification/documents/"): self._documents,
+            ("POST", "/auth/verification/documents/"): self._upload_documents,
+            ("GET", "/auth/verification/messages/"): self._messages,
+            ("POST", "/auth/verification/messages/"): self._send_message,
+            ("GET", "/payments/professional-subscription/"): self._subscription,
+            ("POST", "/payments/professional-subscription/transbank/"): self._start_subscription,
+            ("POST", "/assistant/chat/"): self._assistant,
         }
         for prefix in ("/professionals/me/availability/", "/catalog/professionals/me/availability/"):
             protected[("GET", prefix)] = lambda u, b: self._availability(u, b, "GET")
@@ -197,6 +232,13 @@ class BackendSimulado:
         match = re.fullmatch(r"/catalog/professionals/(\d+)/", path)
         if method == "GET" and match:
             return self._detail(int(match.group(1)))
+        match = re.fullmatch(r"/payments/visits/(\d+)/(transbank/)?", path)
+        if match and user and method in ("GET", "POST"):
+            vid = int(match.group(1))
+            if method == "POST" and match.group(2):
+                return self._start_visit_payment(user, vid)
+            if method == "GET" and not match.group(2):
+                return self._visit_payment(user, vid)
         match = re.fullmatch(r"/requests/(\d+)/(\w+)/", path)
         if method == "POST" and match:
             if not user:
@@ -296,9 +338,6 @@ class BackendSimulado:
         user["password"] = body["new_password"]
         return Respuesta(204)
 
-    def _reset(self, body, _):
-        self.reset_emails.append(body.get("email"))
-        return Respuesta(202, {"detail": "Si el correo está registrado, recibirás instrucciones para recuperar tu contraseña."})
 
     def _register(self, body, _):
         errors = {}
@@ -448,6 +487,8 @@ class BackendSimulado:
             return fail("Solo un cliente puede solicitar una visita.")
         if pro["verification_status"] != "APPROVED":
             return fail("El profesional no está verificado.")
+        if not self.active_subscription(pro):
+            return fail("El profesional no tiene una suscripción mensual vigente.")
         if not any(t["category_id"] == cid and name in t["specialties"] for t in pro["trades"]):
             return fail("La especialidad no pertenece al profesional seleccionado.")
         visit_date = date.fromisoformat(body["visit_date"]) if body.get("visit_date") else None
@@ -568,9 +609,202 @@ class BackendSimulado:
                 visit.update(status="COMPLETED", completed_at=now)
         return Respuesta(200, self._visit_data(visit, user))
 
+    # ---------------- Recuperación con código (authentication/views.py) ----------------
+    def _reset(self, body, _):
+        self.reset_emails.append(body.get("email"))
+        user = self.by_email(body.get("email"))
+        if user and user["account_status"] != "DEACTIVATED":
+            self.reset_codes[user["email"]] = {"code": f"{next(self.code_seq):06d}", "attempts": 0,
+                                                "expires": time.time() + 600}
+        return Respuesta(202, {"detail": "Si el correo está registrado, recibirás un código para recuperar tu contraseña."})
+
+    def _reset_confirm(self, body, _):
+        errors = {}
+        if not body.get("email"):
+            errors["email"] = ["Este campo es requerido."]
+        if not re.fullmatch(r"\d{6}", str(body.get("code", ""))):
+            errors["code"] = ["Este valor no coincide con el patrón requerido."]
+        if len(body.get("new_password") or "") < 8:
+            errors["new_password"] = ["Asegúrese de que este campo tenga al menos 8 caracteres."]
+        if errors:
+            return Respuesta(400, errors)
+        user = self.by_email(body["email"])
+        entry = self.reset_codes.get(user["email"]) if user else None
+        invalid = Respuesta(400, {"detail": "El código no es válido o ha expirado."})
+        if not entry or entry["expires"] <= time.time() or entry["attempts"] >= 5:
+            return invalid
+        if entry["code"] != body["code"]:
+            entry["attempts"] += 1
+            return invalid
+        problems = self._password_problems(body["new_password"], (user["email"],))
+        if problems:
+            return Respuesta(400, {"new_password": problems})
+        user["password"] = body["new_password"]
+        del self.reset_codes[user["email"]]
+        for token, uid in list(self.refresh.items()):  # anula las sesiones abiertas
+            if uid == user["id"]:
+                self.refresh.pop(token)
+                self.blacklist.add(token)
+        return Respuesta(200, {"detail": "La contraseña se restableció correctamente."})
+
+    # ---------------- Cédula y mensajes de verificación ----------------
+    def _pro_or_403(self, user, message):
+        if user["role"] != "PROFESSIONAL" or not user["professional"]:
+            return None, Respuesta(403, {"detail": message})
+        return user["professional"], None
+
+    def _documents_data(self, pro):
+        return {"professional_profile_id": pro["id"], "verification_status": pro["verification_status"],
+                "documents": {"front_uploaded": bool(pro.get("id_front")), "back_uploaded": bool(pro.get("id_back"))}}
+
+    def _documents(self, user, _):
+        pro, error = self._pro_or_403(user, "Solo los profesionales pueden cargar documentos de verificación.")
+        return error or Respuesta(200, self._documents_data(pro))
+
+    def _upload_documents(self, user, _):
+        pro, error = self._pro_or_403(user, "Solo los profesionales pueden cargar documentos de verificación.")
+        if error:
+            return error
+        files = self._files or {}
+        if not files:
+            return Respuesta(400, {"non_field_errors": ["Envía al menos uno de los archivos id_card_front o id_card_back."]})
+        for field, (name, data, _type) in files.items():
+            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+            if ext == "pdf":
+                if len(data) > 10 * 1024 * 1024:
+                    return Respuesta(400, {field: ["El PDF no puede superar 10 MB."]})
+                if b"%PDF-" not in data[:1024] or b"%%EOF" not in data[-2048:]:
+                    return Respuesta(400, {field: ["El archivo no es un PDF válido."]})
+                continue
+            if len(data) > 5 * 1024 * 1024:
+                return Respuesta(400, {field: ["La imagen no puede superar 5 MB."]})
+            png, jpg = data.startswith(b"\x89PNG"), data.startswith(b"\xff\xd8\xff")
+            if not (png and ext == "png") and not (jpg and ext in ("jpg", "jpeg")):
+                return Respuesta(400, {field: ["El archivo debe ser una imagen JPEG o PNG válida."]})
+        for field in files:
+            pro["id_front" if field == "id_card_front" else "id_back"] = files[field][0]
+        pro["verification_status"] = "PENDING"
+        return Respuesta(200, self._documents_data(pro))
+
+    def _messages(self, user, _):
+        pro, error = self._pro_or_403(user, "Solo los profesionales pueden gestionar su verificación.")
+        return error or Respuesta(200, sorted(pro.setdefault("messages", []), key=lambda m: m["id"], reverse=True))
+
+    def _send_message(self, user, body):
+        pro, error = self._pro_or_403(user, "Solo los profesionales pueden gestionar su verificación.")
+        if error:
+            return error
+        if not (body.get("message") or "").strip():
+            return Respuesta(400, {"message": ["Este campo no puede estar en blanco."]})
+        item = {"id": next(self.msg_ids), "professional": pro["id"], "message": body["message"], "admin_response": "",
+                "resolved_at": None, "created_at": datetime.now(timezone.utc).isoformat()}
+        pro.setdefault("messages", []).append(item)
+        return Respuesta(201, item)
+
+    # ---------------- Suscripción y pagos (apps/payments) ----------------
+    def active_subscription(self, pro):
+        return bool(pro.get("subscription_expires_at") and pro["subscription_expires_at"] > datetime.now(timezone.utc))
+
+    def _payment_data(self, payment):
+        return {k: payment[k] for k in ("id", "visit_id", "professional_profile_id", "amount", "buy_order",
+                                         "status", "created_at", "updated_at")}
+
+    def _start_payment(self, payer, amount, visit_id=None, professional_id=None):
+        pid = next(self.payment_ids)
+        token = f"tbk-{pid:04d}"
+        now = datetime.now(timezone.utc).isoformat()
+        self.payments[pid] = {"id": pid, "visit_id": visit_id, "professional_profile_id": professional_id,
+                              "amount": str(amount), "buy_order": f"ov-{pid:023d}", "status": "PENDING",
+                              "created_at": now, "updated_at": now, "token": token, "payer": payer}
+        return Respuesta(201, {**self._payment_data(self.payments[pid]),
+                               "url": "https://webpay3gint.transbank.cl/webpayserver/initTransaction",
+                               "token": token, "environment": "sandbox"})
+
+    def _subscription(self, user, _):
+        if user["role"] != "PROFESSIONAL":
+            return Respuesta(403, {"detail": "Solo los profesionales pueden consultar su suscripción."})
+        pro = user["professional"]
+        expires = pro.get("subscription_expires_at")
+        status = "ACTIVE" if self.active_subscription(pro) else "EXPIRED" if expires else "INACTIVE"
+        latest = next((p for p in sorted(self.payments.values(), key=lambda p: p["id"], reverse=True)
+                       if p["professional_profile_id"] == pro["id"]), None)
+        return Respuesta(200, {
+            "professional_profile_id": pro["id"], "status": status, "amount": str(self.plan_amount),
+            "plan": {"code": "professional-monthly", "name": "Suscripción profesional mensual", "duration_months": 1},
+            "expires_at": expires.isoformat() if expires else None,
+            "latest_payment": self._payment_data(latest) if latest else None,
+        })
+
+    def _start_subscription(self, user, _):
+        if user["role"] != "PROFESSIONAL":
+            return Respuesta(403, {"detail": "Solo un profesional puede contratar esta suscripción."})
+        pro = user["professional"]
+        if any(p["professional_profile_id"] == pro["id"] and p["status"] == "PENDING" for p in self.payments.values()):
+            return Respuesta(409, {"detail": "Ya existe un pago de suscripción pendiente."})
+        return self._start_payment(user["id"], self.plan_amount, professional_id=pro["id"])
+
+    def _visit_payment(self, user, vid):
+        payment = next((p for p in sorted(self.payments.values(), key=lambda p: p["id"], reverse=True)
+                        if p["visit_id"] == vid and p["payer"] == user["id"]), None)
+        if not payment:
+            return Respuesta(404, {"detail": "No existe un pago para esta solicitud."})
+        return Respuesta(200, self._payment_data(payment))
+
+    def _start_visit_payment(self, user, vid):
+        visit = self.visits.get(vid)
+        if not visit or visit["client"] != user["id"]:
+            return Respuesta(404, {"detail": "No se encontró la solicitud de visita."})
+        if visit["status"] != "ACCEPTED":
+            return Respuesta(409, {"detail": "Solo puedes pagar una solicitud aceptada por el profesional."})
+        fee = self._pro_user(visit["professional"])["professional"]["visit_fee"]
+        if not fee or int(float(fee)) <= 0:
+            return Respuesta(409, {"detail": "El profesional no tiene una tarifa de visita válida."})
+        mine = [p for p in self.payments.values() if p["visit_id"] == vid]
+        if any(p["status"] == "AUTHORIZED" for p in mine):
+            return Respuesta(409, {"detail": "Esta solicitud ya tiene un pago autorizado."})
+        if any(p["status"] == "PENDING" for p in mine):
+            return Respuesta(409, {"detail": "Ya existe un pago pendiente para esta solicitud."})
+        return self._start_payment(user["id"], int(float(fee)), visit_id=vid)
+
+    def webpay_return(self, token, outcome="authorized"):
+        """Simula que Transbank vuelve al backend: confirma y devuelve los parámetros con que
+        el backend redirige al front (PAYMENT_RESULT_URL)."""
+        payment = next(p for p in self.payments.values() if p["token"] == token)
+        if outcome == "cancelled":
+            payment["status"] = "REJECTED"
+        elif payment["status"] == "PENDING":
+            payment["status"] = "AUTHORIZED" if outcome == "authorized" else "REJECTED"
+            if payment["status"] == "AUTHORIZED" and payment["professional_profile_id"]:
+                pro = next(u["professional"] for u in self.users.values()
+                           if u["professional"] and u["professional"]["id"] == payment["professional_profile_id"])
+                start = max(pro.get("subscription_expires_at") or datetime.now(timezone.utc), datetime.now(timezone.utc))
+                pro["subscription_expires_at"] = start + timedelta(days=30)
+        params = {"status": payment["status"].lower() if outcome != "cancelled" else "cancelled"}
+        if payment["visit_id"]:
+            params["visit_id"] = str(payment["visit_id"])
+        if payment["professional_profile_id"]:
+            params["professional_profile_id"] = str(payment["professional_profile_id"])
+        return params
+
+    # ---------------- Asistente (apps/assistant) ----------------
+    def _assistant(self, user, body):
+        message = (body.get("message") or "").strip()
+        if not message:
+            return Respuesta(400, {"message": ["Este campo no puede estar en blanco."]})
+        if len(message) > 1500:
+            return Respuesta(400, {"message": ["Asegúrese de que este campo no tenga más de 1500 caracteres."]})
+        used = self.assistant_use.setdefault(user["id"], 0)
+        if used >= 5:  # throttle de DRF: 5 por hora
+            return Respuesta(429, {"detail": "Solicitud fue regulada (throttled). Se espera que esté disponible en 3540 segundos."})
+        self.assistant_use[user["id"]] = used + 1
+        if self.assistant_down:
+            return Respuesta(503, {"detail": "El asistente no está disponible en este momento. Inténtalo más tarde."})
+        self.assistant_messages.append(message)
+        return Respuesta(200, {"reply": f"Para «{message[:40]}» te recomiendo contactar a un profesional de Overol."})
+
     # ---------------- Catálogo ----------------
     def _categories(self, *_):
-        return Respuesta(200, [{"id": cid, "name": name, "keywords": "", "home_zones": []}
+        return Respuesta(200, [{"id": cid, "name": name, "keywords": KEYWORDS.get(cid, ""), "home_zones": []}
                                for cid, (name, _) in CATEGORIES.items()])
 
     def _specialties(self, _, query):
@@ -602,7 +836,8 @@ class BackendSimulado:
 
     def _approved(self):
         return [u for u in self.users.values()
-                if u["professional"] and u["professional"]["verification_status"] == "APPROVED"]
+                if u["professional"] and u["professional"]["verification_status"] == "APPROVED"
+                and u["account_status"] == "ACTIVE" and self.active_subscription(u["professional"])]
 
     def _search(self, _, query):
         result = []

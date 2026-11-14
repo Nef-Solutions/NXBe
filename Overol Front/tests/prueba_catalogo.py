@@ -69,8 +69,8 @@ at.selectbox(key="search_trade").select("Todas")
 at.selectbox(key="search_commune").select("Ñuñoa").run()
 expected = {pid for pid, u in CATALOG.items() if "Ñuñoa" in u["professional"]["coverage_communes"]}
 check(last_list_query().get("commune") == "Ñuñoa" and card_ids(at) == expected, "comuna → commune=Ñuñoa, filtrada por el backend")
-check(set(at.selectbox(key="search_trade").options) == {"Todas", "Gasfitería", "Electricidad", "Carpintería",
-                                                          "Pintura", "Cerrajería"},
+check(set(at.selectbox(key="search_trade").options) == {"Todas", "Gasfitería", "Electricidad", "Carpintero",
+                                                          "Pintor", "Cerrajería", "Soldador", "Jardinero"},
       "los oficios del filtro salen de GET /catalog/categories/")
 
 # ---------- Paginación ----------

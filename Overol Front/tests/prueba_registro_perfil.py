@@ -73,11 +73,20 @@ check("register_certifications" not in [w.key for w in at.text_input], "el formu
 
 # ---------- Registro de profesional ----------
 backend.calls.clear()
-at = fill(register_page(), "paula.multi@prueba.cl", "Clave1234", "Profesional", "Maestro multipropósito")
-check("«Maestro multipropósito» todavía no está disponible" in texts(at)
-      and not any((w.key or "").startswith("register_specialties_") for w in at.multiselect),
-      "oficio que el backend no tiene: el formulario lo avisa y no ofrece especialidades")
-check(not calls("POST", "/auth/register/") and "Gasfitería" in errors(at), "oficio que el backend no tiene: no envía el registro")
+at = register_page()
+at.radio(key="register_role").set_value("Profesional").run()
+check(set(at.selectbox(key="register_trade").options) == {"Carpintero", "Cerrajería", "Electricidad", "Gasfitería",
+                                                           "Jardinero", "Pintor", "Soldador"},
+      "los oficios salen de GET /catalog/categories/ (no de una lista fija del front)")
+
+at.selectbox(key="register_trade").select("Soldador").run()
+check("todavía no tiene especialidades" in texts(at) and "no recibirás solicitudes" in texts(at),
+      "oficio sin especialidades: avisa que no recibirá solicitudes hasta tenerlas")
+backend.calls.clear()
+at = fill(register_page(), "paula.soldadora@prueba.cl", "Clave1234", "Profesional", "Soldador")
+body = last_body("POST", "/auth/register/") or {}
+check(body.get("professional_profile", {}).get("categories") == [{"category": 6, "years_experience": 4, "specialties": []}]
+      and backend.by_email("paula.soldadora@prueba.cl"), "oficio sin especialidades: igual puede registrarse")
 
 at = register_page()
 at.radio(key="register_role").set_value("Profesional").run()
@@ -108,9 +117,12 @@ check(new_pro and new_pro["professional"]["verification_status"] == "PENDING", "
 check(new_pro["professional"]["trades"][0]["specialties"] == ["Fugas de agua", "Destapes"],
       "el backend guardó las especialidades del oficio")
 
-# Una vez aprobado y con horario, un cliente ya puede solicitarle una visita
+# Una vez aprobado, con horario y con suscripción vigente, un cliente ya puede solicitarle una visita
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
 new_pro["professional"].update(verification_status="APPROVED", work_days=["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"],
-                               work_start="09:00:00", work_end="18:00:00")
+                               work_start="09:00:00", work_end="18:00:00",
+                               subscription_expires_at=datetime.now(timezone.utc) + timedelta(days=30))
 pid = new_pro["professional"]["id"]
 at = new_app(front, "cliente1@demo.overol.cl", client_navigation="🔎 Buscar profesionales",
              _client_prev_menu="🔎 Buscar profesionales", selected_professional=pid)
@@ -194,14 +206,39 @@ check(backend.by_email(CLIENTE)["password"] == "NuevaClave99" and any("Contrase�
       "cambia la contraseña con POST /auth/password/change/")
 backend.by_email(CLIENTE)["password"] = "OverolDemo123!"
 
-# ---------- Recuperar contraseña ----------
+# ---------- Recuperar contraseña en dos pasos (código de 6 dígitos) ----------
 at = register_page()
 at.text_input(key="recovery_email").input("no-es-correo")
-submit(at, "Enviar instrucciones")
+submit(at, "Enviar código")
 check("correo válido" in errors(at) and not backend.reset_emails, "recuperación: valida el correo antes de enviar")
 at.text_input(key="recovery_email").input("Cliente1@Demo.Overol.cl")
-submit(at, "Enviar instrucciones")
-check(backend.reset_emails == ["cliente1@demo.overol.cl"] and any("recibirás instrucciones" in s.value for s in at.success),
-      "recuperación: POST /auth/password/reset/ y muestra el mensaje del backend")
+submit(at, "Enviar código")
+check(backend.reset_emails == ["cliente1@demo.overol.cl"] and any("recibirás un código" in s.value for s in at.success),
+      "paso 1: POST /auth/password/reset/ y muestra el mensaje del backend")
+check(any(w.key == "recovery_code" for w in at.text_input), "paso 2: pide el código y la contraseña nueva")
+code = backend.reset_codes[CLIENTE]["code"]
+
+at.text_input(key="recovery_code").input("12")
+at.text_input(key="recovery_password").input("RecuperadaNueva9")
+at.text_input(key="recovery_confirm").input("RecuperadaNueva9")
+submit(at, "Cambiar contraseña")
+check("6 dígitos" in errors(at) and not calls("POST", "/auth/password/reset/confirm/"), "código mal escrito: no envía")
+
+at.text_input(key="recovery_code").input("000000" if code != "000000" else "111111")
+submit(at, "Cambiar contraseña")
+check("El código no es válido o ha expirado." in errors(at), "código incorrecto: mensaje del backend")
+
+refresh = backend.issue_tokens(backend.by_email(CLIENTE)["id"])[1]
+at.text_input(key="recovery_code").input(code)
+at.text_input(key="recovery_password").input("RecuperadaNueva9")
+at.text_input(key="recovery_confirm").input("RecuperadaNueva9")
+submit(at, "Cambiar contraseña")
+body = last_body("POST", "/auth/password/reset/confirm/") or {}
+check(body == {"email": CLIENTE, "code": code, "new_password": "RecuperadaNueva9"}
+      and backend.by_email(CLIENTE)["password"] == "RecuperadaNueva9", "paso 2: POST /auth/password/reset/confirm/")
+check("Contraseña restablecida" in toasts(at) and not any(w.key == "recovery_code" for w in at.text_input),
+      "aviso y vuelve al paso 1")
+check(refresh in backend.blacklist, "el backend cerró las sesiones abiertas de esa cuenta")
+backend.by_email(CLIENTE)["password"] = "OverolDemo123!"
 
 terminar()

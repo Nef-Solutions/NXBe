@@ -92,8 +92,8 @@ backend.professional(PRO2)["work_start"] = "09:00:00"
 saved = backend.professional(PRO3)["trades"][1]["specialties"]
 backend.professional(PRO3)["trades"][1]["specialties"] = []
 at, pid = profile(PRO3)
-at.selectbox(key=f"request_trade_{pid}").select("Pintura").run()
-check("aún no registra especialidades de Pintura" in texts(at) and f"send_request_{pid}" not in keys(at),
+at.selectbox(key=f"request_trade_{pid}").select("Pintor").run()
+check("aún no registra especialidades de Pintor" in texts(at) and f"send_request_{pid}" not in keys(at),
       "oficio sin especialidades: no se puede solicitar")
 backend.professional(PRO3)["trades"][1]["specialties"] = saved
 
