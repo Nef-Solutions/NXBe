@@ -15,7 +15,8 @@ La conexión a la API avanza por etapas. Las pantallas que todavía no están co
 | C2 · Suscripción con Webpay (sandbox), cédula, recuperación con código, oficios del backend y asistente Overil | ✅ conectada |
 | D · Valoraciones, calificación al cliente, reclamos de posventa y pago de visitas con Webpay | ✅ conectada |
 | E · Notificaciones y tickets de soporte | ✅ conectada |
-| F · Resto del panel del profesional · G · Panel del admin | ⏳ pendientes (ocultas) |
+| F · Panel del profesional: vista pública y reputación, oficios y desarrollo profesional | ✅ conectada |
+| G · Panel del admin | ⏳ pendiente (oculto) |
 
 ---
 

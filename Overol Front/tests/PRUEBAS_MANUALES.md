@@ -7,7 +7,8 @@ Anota en cada caso ✅ o ❌ y lo que viste.
 **Etapa C:** Cobertura y solicitudes (casos C1 a C17).
 **Etapa C2:** suscripción con Webpay, cédula, recuperación con código, oficios del backend y asistente (casos S1 a S12).
 **Etapa D:** valoraciones, reclamos y pago de visitas (casos D1 a D8).
-**Etapa E:** notificaciones y tickets de soporte (casos E1 a E5, al final).
+**Etapa E:** notificaciones y tickets de soporte (casos E1 a E5).
+**Etapa F:** perfil, reputación, oficios y desarrollo profesional (casos F1 a F6, al final).
 
 ## Preparación (una vez)
 
@@ -136,4 +137,15 @@ Necesitas una solicitud **Finalizada** entre `cliente1` y `profesional1` (casos 
 | E3 | Abrir un ticket | `cliente1` → «Mis solicitudes» → «💬 Contactar a soporte» → asunto y mensaje → «Abrir ticket» | «Ticket #N abierto». Aparece **Abierto** dentro de la solicitud. En `/admin/` → Support tickets: con la solicitud y el usuario |
 | E4 | Respuesta de soporte | Resuelve el ticket con `POST /api/tickets/{id}/resolve/` (o desde el panel del admin cuando esté la etapa G) | `cliente1` ve «Soporte Overol» con la respuesta, el ticket **Resuelto** y una notificación «Ticket resuelto» |
 | E5 | Cada uno lo suyo | `profesional1` revisa la misma solicitud | No ve el ticket del cliente. Puede abrir el suyo |
+
+## Etapa F: perfil, reputación, oficios y desarrollo profesional
+
+| # | Caso | Pasos | Resultado esperado |
+|---|---|---|---|
+| F1 | Vista pública y reputación | `profesional1` (verificado y con suscripción) → «👤 Mi perfil» → «Vista pública y reputación» | Valoración promedio, cantidad de opiniones y su perfil como lo ven los clientes |
+| F2 | Sin perfil público | Un profesional pendiente o sin suscripción → la misma pestaña | Explica que aparece al estar verificado y con suscripción vigente |
+| F3 | Editar un oficio | «Oficios» → «Editar» → cambia los años y agrega una especialidad → Guardar | En `/admin/` → Professional trades cambian los años, y la especialidad queda en el perfil |
+| F4 | Agregar un oficio | «Agregar un oficio» → Electricidad con una especialidad | Aparece en la lista y el profesional sale al filtrar por Electricidad en el catálogo |
+| F5 | Desactivar un oficio | «Desactivar oficio» | Queda «⛔ desactivado» y deja de aparecer en ese filtro del catálogo. No se puede reactivar (falta en el backend) |
+| F6 | Desarrollo profesional | «🎓 Desarrollo profesional» → abre un contenido → «Marcar como completado» | Contenidos por módulo (Tributario, Seguridad, Gestión), con los 9 de seguridad que trae la migración. Queda ✅ y en `/admin/` → Content progress se registra |
 

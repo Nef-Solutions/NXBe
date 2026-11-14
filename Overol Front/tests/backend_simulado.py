@@ -87,6 +87,15 @@ class BackendSimulado:
         self.claims = {}
         self.notifications = []
         self.tickets = {}
+        self.progress = set()
+        self.contents = [
+            {"id": 1, "title": "Cómo emitir boletas de honorarios", "description": "Guía del SII", "module": "TAX",
+             "url": "https://www.sii.cl", "is_external": True, "order": 1, "is_visible": True},
+            {"id": 2, "title": "Trabajo seguro en altura", "description": "Video", "module": "SAFETY",
+             "url": "https://www.youtube.com/watch?v=demo", "is_external": True, "order": 1, "is_visible": True},
+            {"id": 3, "title": "Cómo cotizar un trabajo", "description": "", "module": "MANAGEMENT",
+             "url": "https://example.org/cotizar", "is_external": True, "order": 1, "is_visible": True},
+        ]
         self.audit_log = []
         self.caido = False
         self.page_size_max = 50
@@ -228,7 +237,12 @@ class BackendSimulado:
             ("POST", "/claims/"): self._create_claim,
             ("GET", "/notifications/"): self._list_notifications,
             ("POST", "/tickets/"): self._create_ticket,
+            ("GET", "/professional-center/content/"): self._content,
+            ("POST", "/professional-center/progress/"): self._progress,
         }
+        for prefix in ("/professionals/me/trades/", "/catalog/professionals/me/trades/"):
+            protected[("GET", prefix)] = self._my_trades
+            protected[("POST", prefix)] = self._add_trade
         for prefix in ("/professionals/me/availability/", "/catalog/professionals/me/availability/"):
             protected[("GET", prefix)] = lambda u, b: self._availability(u, b, "GET")
             protected[("PATCH", prefix)] = lambda u, b: self._availability(u, b, "PATCH")
@@ -249,6 +263,9 @@ class BackendSimulado:
                 return self._start_visit_payment(user, vid)
             if method == "GET" and not match.group(2):
                 return self._visit_payment(user, vid)
+        match = re.fullmatch(r"(?:/catalog)?/professionals/me/trades/(\d+)/", path)
+        if match and user and method in ("PATCH", "DELETE"):
+            return self._change_trade(user, int(match.group(1)), method, body)
         if method == "GET" and path == "/tickets/" and user:
             return self._list_tickets(user, query)
         match = re.fullmatch(r"/notifications/(\d+)/read/", path)
@@ -996,6 +1013,65 @@ class BackendSimulado:
         self.notifications_add(ticket["user"], "Ticket resuelto", ticket["response"])
         return Respuesta(200, self._ticket_data(ticket))
 
+    # ---------------- Oficios del profesional (catalog/views.Trade*View) ----------------
+    def _trade_data(self, trade):
+        return {"id": trade["id"], "category_id": trade["category_id"], "years_experience": trade["years_experience"],
+                "description": trade.get("description", ""), "certification": None,
+                "certification_verified": False, "is_active": trade.get("is_active", True)}
+
+    def _my_trades(self, user, _):
+        if user["role"] != "PROFESSIONAL":
+            return Respuesta(403, {"detail": "Solo los profesionales pueden gestionar oficios."})
+        return Respuesta(200, [self._trade_data(t) for t in user["professional"]["trades"]])
+
+    def _names_for(self, ids, cid):
+        return [self.specialties[s][0] for s in ids or [] if s in self.specialties and self.specialties[s][1] == cid]
+
+    def _add_trade(self, user, body):
+        if user["role"] != "PROFESSIONAL":
+            return Respuesta(403, {"detail": "Solo los profesionales pueden gestionar oficios."})
+        cid = body.get("category_id")
+        if cid not in CATEGORIES:
+            return Respuesta(400, {"category_id": [f'Clave primaria "{cid}" inválida - objeto no existe.']})
+        pro = user["professional"]
+        if any(t["category_id"] == cid for t in pro["trades"]):
+            return Respuesta(400, {"non_field_errors": ["Los campos professional, category deben formar un conjunto único."]})
+        trade = {"id": 5000 + len(pro["trades"]) + user["id"] * 10, "category_id": cid,
+                 "years_experience": body.get("years_experience", 0), "description": body.get("description", ""),
+                 "specialties": self._names_for(body.get("specialties"), cid), "is_active": True}
+        pro["trades"].append(trade)
+        return Respuesta(201, self._trade_data(trade))
+
+    def _change_trade(self, user, tid, method, body):
+        trade = next((t for t in (user["professional"] or {}).get("trades", []) if t["id"] == tid), None)
+        if not trade:  # el backend real responde 500 aquí (PEDIDO 5.11)
+            return Respuesta(404, {"detail": "No encontrado."})
+        if method == "DELETE":
+            trade["is_active"] = False
+            return Respuesta(204)
+        for field in ("years_experience", "description"):
+            if field in body:
+                trade[field] = body[field]
+        trade["specialties"] += [n for n in self._names_for(body.get("specialties"), trade["category_id"])
+                                 if n not in trade["specialties"]]
+        return Respuesta(200, self._trade_data(trade))
+
+    # ---------------- Centro de desarrollo profesional ----------------
+    def _content(self, user, _):
+        if user["role"] != "PROFESSIONAL":
+            return Respuesta(403, {"detail": "Solo los profesionales pueden acceder."})
+        return Respuesta(200, [c for c in self.contents if c["is_visible"]])
+
+    def _progress(self, user, body):
+        if user["role"] != "PROFESSIONAL":
+            return Respuesta(403, {"detail": "Solo los profesionales pueden registrar progreso."})
+        key = (user["professional"]["id"], body.get("content"))
+        if key in self.progress:
+            return Respuesta(400, {"non_field_errors": ["Los campos professional, content deben formar un conjunto único."]})
+        self.progress.add(key)
+        return Respuesta(201, {"id": len(self.progress), "content": body.get("content"),
+                               "completed_at": datetime.now(timezone.utc).isoformat()})
+
     # ---------------- Catálogo ----------------
     def _categories(self, *_):
         return Respuesta(200, [{"id": cid, "name": name, "keywords": KEYWORDS.get(cid, ""), "home_zones": []}
@@ -1013,7 +1089,7 @@ class BackendSimulado:
             "years_experience": t["years_experience"], "description": "",
             "specialties": [{"id": sid, "name": name} for sid, (name, c) in self.specialties.items()
                             if c == t["category_id"] and name in t["specialties"]],
-        } for t in pro["trades"]]
+        } for t in pro["trades"] if t.get("is_active", True)]
         data = {
             "id": pro["id"], "name": f"{user['first_name']} {user['last_name']}",
             "first_name": user["first_name"], "last_name": user["last_name"],
@@ -1037,7 +1113,7 @@ class BackendSimulado:
         result = []
         for user in self._approved():
             pro = user["professional"]
-            cats = {t["category_id"] for t in pro["trades"]}
+            cats = {t["category_id"] for t in pro["trades"] if t.get("is_active", True)}
             specs = {s for t in pro["trades"] for s in t["specialties"]}
             if "category_id" in query and int(query["category_id"]) not in cats:
                 continue

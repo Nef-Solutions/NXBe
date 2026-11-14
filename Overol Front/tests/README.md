@@ -62,6 +62,7 @@ Es una imitación: **no reemplaza las pruebas contra el backend real** (ver `PRU
 | `prueba_asistente.py` | Asistente para cliente y profesional, historial en la sesión, aviso de datos personales, 429 y 503 |
 | `prueba_valoraciones_reclamos.py` | Evaluar al profesional y al cliente (400 «ya calificado»), reclamos (crear, responder, mediación, resolución) y pago de visitas con Webpay |
 | `prueba_notificaciones_tickets.py` | Notificaciones (contador, marcar una o todas, escape, cada uno las suyas) y tickets de soporte por solicitud con la respuesta del admin |
+| `prueba_profesional.py` | «Mi perfil» del profesional (datos, vista pública y reputación, oficios: agregar, editar, desactivar) y centro de desarrollo profesional |
 | `prueba_cobertura.py` | Disponibilidad con días en nombre completo, horario, comunas y tarifa; validaciones; el cliente ve el horario nuevo |
 
 `comun.py` reúne las utilidades: entrar con una cuenta del backend simulado, `check`, búsqueda de textos y peticiones.

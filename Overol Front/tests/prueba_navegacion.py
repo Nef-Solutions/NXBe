@@ -15,7 +15,8 @@ ROLES = {
                  "🔔 Notificaciones", "👤 Mi perfil", "ℹ️ Quiénes somos"]),
     "profesional": (PRO, "professional_navigation",
                     ["📋 Solicitudes", "🔔 Notificaciones", "👤 Mi perfil", "📍 Cobertura", "💳 Suscripción",
-                     "🪪 Verificación", "🛠️ Reclamos", "🤖 Asistente", "ℹ️ Quiénes somos"]),
+                     "🪪 Verificación", "🛠️ Reclamos", "🎓 Desarrollo profesional", "🤖 Asistente",
+                     "ℹ️ Quiénes somos"]),
     "admin": (ADMIN, "admin_navigation", ["ℹ️ Quiénes somos"]),
 }
 
