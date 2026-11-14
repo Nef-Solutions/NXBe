@@ -1,40 +1,21 @@
 """Vistas del rol Profesional (Historias 014 a 025)."""
 
 import re
-import secrets
 from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
 
+from core import api_client, catalog_api, requests_api
 from core.constants import (
     COMUNAS,
     DIAS_SEMANA,
-    ESPECIALIDADES_POR_OFICIO,
     HORAS,
     MAX_TEXTO,
     MOTIVOS_RECHAZO,
-    UPLOAD_DIR,
     pantallas_visibles,
 )
-from core import api_client, requests_api
 from core.session import load_user
-from core.security import encrypt_document
-from core.database import (
-    add_trade,
-    audit,
-    deactivate_trade,
-    get_connection,
-    get_professional_by_user,
-    get_professional_rating,
-    get_trade_ratings,
-    get_trades,
-    add_verification_message,
-    get_verification_documents,
-    get_verification_messages,
-    now_str,
-    update_trade,
-)
 from ui.components import (
     contact_box,
     empty_state,
@@ -43,19 +24,14 @@ from ui.components import (
     nav_bar,
     notifications_page,
     section,
-    security_note,
-    stars,
     status_badge,
     support_box,
-    thread_message,
 )
+from ui.profile import profile_header, profile_reviews, profile_sections
 from views import payments
 from views.about import about_page
 from views.assistant import assistant_page
 from views.shared import user_profile_page
-from ui.profile import profile_header, profile_reviews, profile_sections
-
-MAX_UPLOAD_MB = 5
 
 # Primeros bytes (firma) válidos para cada extensión permitida
 SIGNATURES = {
@@ -79,12 +55,6 @@ def professional_dashboard(user):
         "🤖 Asistente",
         "ℹ️ Quiénes somos",
     ])
-
-    # Desarrollo profesional aún usa el perfil profesional de SQLite; mientras esté
-    # oculta (PANTALLAS_PENDIENTES_API) no se consulta la base.
-    professional = None
-    if "🎓 Desarrollo profesional" in options:
-        professional = get_professional_by_user(user["id"])
 
     badges = {}
     if "🔔 Notificaciones" in options:
@@ -110,10 +80,7 @@ def professional_dashboard(user):
         notifications_page(user)
 
     elif menu == "👤 Mi perfil":
-        # Etapa B: datos personales y presentación desde /auth/me/.
-        # Etapa F: vuelve professional_profile (vista pública, oficios y verificación).
-        _verification_banner(user)
-        user_profile_page(user)
+        professional_profile(user)
 
     elif menu == "📍 Cobertura":
         professional_coverage(user)
@@ -131,7 +98,7 @@ def professional_dashboard(user):
         professional_claims(user)
 
     elif menu == "🎓 Desarrollo profesional":
-        professional_training(user, professional)
+        professional_training(user)
 
     elif menu == "ℹ️ Quiénes somos":
         about_page()
@@ -329,57 +296,6 @@ def _fee_to_number(value):
     except (TypeError, ValueError):
         digits = re.sub(r"\D", "", str(value or ""))
         return int(digits) if digits else 0
-
-
-def professional_profile(user, professional):
-    """Mi perfil: vista tipo LinkedIn arriba y, debajo, la edición en pestañas."""
-    status = professional["verification_status"]
-    docs = get_verification_documents(professional["id"])
-
-    # --- Estado de verificación ---
-    if status == "Aprobado":
-        st.success("✓ Tu identidad está verificada. Apareces en las búsquedas de los clientes.")
-    elif status == "Rechazado":
-        reason = professional["verification_reason"]
-        st.error(
-            "Tu verificación fue rechazada. Sube documentos actualizados "
-            "para enviarla nuevamente a revisión."
-            + (f" Motivo: {reason}" if reason else "")
-        )
-    elif docs:
-        st.info("⏳ Tus documentos están en revisión por el equipo de Overol.")
-    else:
-        st.warning(
-            "Para aparecer en las búsquedas debes subir tus documentos de "
-            "verificación (en «Editar mi perfil → Verificación»)."
-        )
-
-    st.caption("Así ven tu perfil los clientes registrados:")
-
-    profile_header(professional, anonymous=False)
-
-    tab_view, tab_about, tab_trades, tab_verification = st.tabs(
-        ["👁️ Mi perfil", "📝 Presentación", "🛠️ Oficios", "🪪 Verificación"]
-    )
-
-    with tab_view:
-        profile_sections(professional, owner=True)
-        profile_reviews(professional)
-
-    with tab_about:
-        _about_form(user, professional)
-
-    with tab_trades:
-        _trades_manager(user, professional)
-
-    with tab_verification:
-        professional_verification_upload(user)
-        _verification_messages(user, professional)
-
-    security_note(
-        "El RUT, el domicilio y los documentos de identidad son información sensible. "
-        "No se muestran públicamente."
-    )
 
 
 def professional_coverage(user):
@@ -655,178 +571,6 @@ def _verification_thread():
         st.rerun()
 
 
-def professional_reputation(professional):
-    """Historia 025: valoración independiente por oficio."""
-    section("⭐ Reputación por oficio")
-
-    ratings_by_trade = get_trade_ratings(professional["id"])
-    active = [r for r in ratings_by_trade if r["trade"]["active"]]
-    inactive = [r for r in ratings_by_trade if not r["trade"]["active"]]
-
-    cols = st.columns(min(3, max(1, len(active))))
-
-    for i, item in enumerate(active):
-        with cols[i % len(cols)]:
-            st.metric(
-                item["trade"]["trade"],
-                f"★ {item['average']}" if item["total"] else "Sin datos",
-                f"{item['total']} evaluaciones",
-                delta_color="off",
-            )
-
-    if inactive:
-        st.markdown("#### Oficios inactivos")
-        st.caption("Su valoración histórica se conserva como información inactiva.")
-        for item in inactive:
-            st.write(
-                f"• **{item['trade']['trade']}** — "
-                f"{'★ ' + str(item['average']) if item['total'] else 'Sin datos'} "
-                f"({item['total']} evaluaciones)"
-            )
-
-    conn = get_connection()
-    ratings = conn.execute(
-        """
-        SELECT
-            r.*,
-            u.name AS client_name
-        FROM ratings r
-        JOIN users u ON u.id = r.client_id
-        WHERE r.professional_id = ?
-        ORDER BY r.id DESC
-        """,
-        (professional["id"],),
-    ).fetchall()
-    conn.close()
-
-    section("Historial de evaluaciones")
-
-    if not ratings:
-        empty_state("⭐", "Todavía no tienes evaluaciones", "Aparecerán aquí cuando un cliente evalúe un servicio finalizado.")
-        return
-
-    for rating in ratings:
-        average_rating = round(
-            (rating["quality"] + rating["punctuality"] + rating["treatment"]) / 3,
-            1,
-        )
-
-        with st.container(border=True):
-            st.markdown(f"### {stars(average_rating)} {average_rating} · {rating['trade'] or 'Servicio'}")
-            st.write(f"**Calidad:** {rating['quality']}/5 · **Puntualidad:** {rating['punctuality']}/5 · **Trato:** {rating['treatment']}/5")
-            st.write(f"**Comentario:** {rating['comment'] or 'Sin comentario'}")
-            st.caption("El historial de evaluaciones se conserva para trazabilidad.")
-
-
-def professional_training(user, professional):
-    section("🎓 Centro de Desarrollo Profesional")
-
-    conn = get_connection()
-    contents = conn.execute(
-        """
-        SELECT *
-        FROM training_content
-        WHERE active = 1
-        ORDER BY id
-        """
-    ).fetchall()
-
-    completed = conn.execute(
-        """
-        SELECT content_id
-        FROM training_progress
-        WHERE professional_id = ?
-        """,
-        (professional["id"],),
-    ).fetchall()
-
-    completed_ids = {
-        row["content_id"]
-        for row in completed
-    }
-
-    conn.close()
-
-    if not contents:
-        st.info(
-            "No hay contenidos disponibles."
-        )
-        return
-
-    filter_category = st.selectbox(
-        "Categoría",
-        ["Todas"] + sorted({c["category"] for c in contents}),
-        key="training_filter",
-    )
-
-    for content in contents:
-        if (
-            filter_category != "Todas"
-            and content["category"] != filter_category
-        ):
-            continue
-
-        with st.container(border=True):
-            st.markdown(
-                f"### {content['title']}"
-            )
-
-            st.caption(
-                f"{content['content_type']} · "
-                f"{content['category']}"
-            )
-
-            st.write(
-                content["description"]
-            )
-
-            if content["external_url"]:
-                st.link_button(
-                    "Ver recurso oficial",
-                    content["external_url"],
-                )
-
-            if content["id"] in completed_ids:
-                st.success(
-                    "✓ Contenido completado."
-                )
-            else:
-                if st.button(
-                    "Marcar como visto/completado",
-                    key=f"training_{content['id']}",
-                ):
-                    conn = get_connection()
-
-                    conn.execute(
-                        """
-                        INSERT OR IGNORE INTO training_progress
-                        (professional_id, content_id, completed_at)
-                        VALUES (?, ?, ?)
-                        """,
-                        (
-                            professional["id"],
-                            content["id"],
-                            now_str(),
-                        ),
-                    )
-
-                    conn.commit()
-                    conn.close()
-
-                    audit(
-                        user["id"],
-                        "CREATE",
-                        "training_progress",
-                        content["id"],
-                        "Contenido completado",
-                    )
-
-                    flash(
-                        "Contenido marcado como completado."
-                    )
-                    st.rerun()
-
-
 def professional_claims(user):
     """Reclamos de posventa de sus servicios (GET /api/claims/): responder o pedir mediación."""
     section("🛠️ Reclamos de posventa")
@@ -908,310 +652,173 @@ def _client_rating_block(request):
             st.rerun()
 
 
-def professional_verification_upload(user):
-    """
-    Flujo para demostrar RNF-SEG-05. No publica los archivos: guarda el archivo
-    en una carpeta local de demostración y sus metadatos en la base de datos.
-    """
-    professional = get_professional_by_user(user["id"])
+def professional_profile(user):
+    """Mi perfil: datos personales, vista pública con reputación y oficios."""
+    _verification_banner(user)
 
-    if not professional:
+    tab_data, tab_public, tab_trades = st.tabs(["👤 Datos personales", "👁️ Vista pública y reputación", "🛠️ Oficios"])
+
+    with tab_data:
+        user_profile_page(user)
+
+    with tab_public:
+        professional_reputation(user)
+
+    with tab_trades:
+        _trades_manager(user)
+
+
+def professional_reputation(user):
+    """Historia 025: perfil como lo ven los clientes, con la valoración y las opiniones
+    (GET /api/catalog/professionals/{id}/). El backend aún no valora por oficio."""
+    pid = user.get("professional_profile_id")
+    try:
+        professional = catalog_api.get_professional(pid) if pid else None
+    except api_client.ApiError as error:
+        st.error(f"No se pudo cargar tu perfil público. {error}")
         return
 
-    section("🪪 Documentos para verificación")
-
-    st.info(
-        "🔐 Tus documentos se guardan cifrados. Solo el equipo de administración "
-        "de Overol puede abrirlos y cada acceso queda registrado."
-    )
-
-    docs = get_verification_documents(professional["id"])
-
-    if docs:
-        st.markdown("**Documentos enviados**")
-        for doc in docs:
-            st.caption(
-                f"📄 {doc['document_type']} — {doc['original_name']} "
-                f"· {doc['uploaded_at']}"
-            )
-
-    document_type = st.selectbox(
-        "Tipo de documento",
-        ["Documento de identidad", "Certificación", "Otro respaldo"],
-        key="document_type",
-    )
-
-    upload_round = st.session_state.get("_upload_round", 0)
-
-    uploaded = st.file_uploader(
-        f"Selecciona un archivo (PDF, PNG o JPG · máx. {MAX_UPLOAD_MB} MB)",
-        type=["pdf", "png", "jpg", "jpeg"],
-        key=f"verification_upload_{upload_round}",
-    )
-
-    if uploaded and st.button(
-        "Enviar documento para revisión",
-        type="primary",
-        key="send_document",
-    ):
-        content = uploaded.getvalue()
-        extension = Path(uploaded.name).suffix.lower()
-
-        # Validación real del contenido (no solo de la extensión)
-        if len(content) > MAX_UPLOAD_MB * 1024 * 1024:
-            st.error(f"El archivo supera el máximo de {MAX_UPLOAD_MB} MB.")
-            return
-
-        expected = SIGNATURES.get(extension)
-        if not expected or not content.startswith(expected):
-            st.error(
-                "El contenido del archivo no corresponde a su extensión. "
-                "Sube un PDF, PNG o JPG válido."
-            )
-            return
-
-        try:
-            encrypted = encrypt_document(content)
-        except ImportError:
-            st.error("No se pudo guardar el documento: falta instalar el paquete cryptography.")
-            return
-
-        safe_name = f"{user['id']}_{secrets.token_hex(8)}{extension}.enc"
-        (UPLOAD_DIR / safe_name).write_bytes(encrypted)
-
-        conn = get_connection()
-
-        conn.execute(
-            """
-            INSERT INTO verification_documents
-            (professional_id, document_type, original_name, stored_name, uploaded_at, encrypted)
-            VALUES (?, ?, ?, ?, ?, 1)
-            """,
-            (
-                professional["id"],
-                document_type,
-                Path(uploaded.name).name,
-                safe_name,
-                now_str(),
-            ),
+    if not professional:
+        st.info(
+            "Tu perfil público aparece cuando estás **verificado** y tienes una **suscripción vigente** "
+            "(«💳 Suscripción»). Mientras tanto, los clientes no te ven en el catálogo."
         )
+        return
 
-        # Un profesional rechazado vuelve a la cola de revisión; uno ya
-        # aprobado conserva su estado al agregar respaldos adicionales.
-        conn.execute(
-            """
-            UPDATE professionals
-            SET verification_status = 'Pendiente'
-            WHERE id = ? AND verification_status = 'Rechazado'
-            """,
-            (professional["id"],),
-        )
-
-        conn.commit()
-        conn.close()
-
-        audit(
-            user["id"],
-            "UPLOAD",
-            "verification_documents",
-            professional["id"],
-            f"Documento enviado: {document_type}",
-        )
-
-        st.session_state["_upload_round"] = upload_round + 1
-        flash("Documento enviado para revisión administrativa.")
-        st.rerun()
+    total, average = catalog_api.rating(professional)
+    c1, c2 = st.columns(2)
+    c1.metric("Valoración promedio", f"{average:.1f} ★" if average else "Sin valoraciones")
+    c2.metric("Opiniones", total or 0)
+    st.caption("Así ven tu perfil los clientes registrados:")
+    profile_header(professional, anonymous=False)
+    profile_sections(professional)
+    profile_reviews(professional)
 
 
-def _verification_messages(user, professional):
-    """Hilo con el equipo de Overol sobre la verificación (máx. 500 caracteres por mensaje)."""
-    pid = professional["id"]
+def _trades_manager(user):
+    """Historia 018: oficios del profesional (GET/POST/PATCH/DELETE /api/professionals/me/trades/)."""
+    try:
+        trades = api_client.list_my_trades()
+        categories = {c["id"]: c["name"] for c in api_client.get_categories()}
+    except api_client.ApiError as error:
+        st.error(f"No se pudieron cargar tus oficios. {error}")
+        return
 
-    section("💬 Mensajes con el equipo de Overol")
-
-    messages = get_verification_messages(pid)
-
-    if not messages:
-        st.caption(
-            "¿Tienes dudas sobre tu verificación? Escríbenos aquí; "
-            "te responderemos en este mismo lugar."
-        )
-
-    for message in messages:
-        thread_message(
-            "Equipo Overol" if message["from_admin"] else "Tú",
-            message["created_at"],
-            message["body"],
-            message["from_admin"],
-        )
-
-    with st.form(f"verif_msg_form_{pid}", clear_on_submit=True):
-        body = st.text_area(
-            "Tu mensaje",
-            max_chars=MAX_TEXTO,
-            placeholder="Ej.: Subí mi cédula por ambos lados, ¿falta algo?",
-            key=f"verif_msg_text_{pid}",
-        )
-        sent = st.form_submit_button("Enviar mensaje", key=f"verif_msg_send_{pid}")
-
-    if sent:
-        ok, error = add_verification_message(pid, user["id"], body)
-
-        if not ok:
-            st.error(error)
-        else:
-            audit(user["id"], "VERIFY_MESSAGE", "professionals", pid, "Mensaje al administrador")
-            flash("Mensaje enviado al equipo de Overol.")
-            st.rerun()
-
-
-def _years_or_none(value):
-    return int(value) if value else None
-
-
-def _trades_manager(user, professional):
-    pid = professional["id"]
-
-    section("🛠️ Mis oficios")
     st.caption(
-        "Cada oficio tiene su propia experiencia, especialidades, certificaciones "
-        "y valoración. Los datos de experiencia y especialidades son opcionales."
+        "Cada oficio tiene sus especialidades: los clientes eligen una al solicitarte una visita. "
+        "Un oficio desactivado deja de recibir solicitudes."
     )
 
-    active = get_trades(pid)
-
-    for trade in active:
+    for trade in trades:
         tid = trade["id"]
-        specialty_catalog = ESPECIALIDADES_POR_OFICIO.get(trade["trade"], [])
-        current = [x for x in (trade["specialties"] or "").split(",") if x in specialty_catalog]
+        name = categories.get(trade.get("category_id"), f"Oficio #{trade.get('category_id')}")
+        active = trade.get("is_active", True)
+        with st.container(border=True):
+            st.markdown(f"**{name}** · {trade.get('years_experience') or 0} años de experiencia"
+                        + ("" if active else " · ⛔ desactivado"))
+            if trade.get("description"):
+                st.caption(trade["description"])
+            if not active:
+                st.caption("Por ahora el backend no permite reactivar un oficio desactivado.")
+                continue
 
-        with st.expander(f"🔧 {trade['trade']}"):
-            with st.form(f"trade_form_{tid}"):
-                years = st.number_input(
-                    "Años de experiencia (0 = no informar)",
-                    min_value=0,
-                    max_value=60,
-                    step=1,
-                    value=trade["years_experience"] or 0,
-                )
-                specialties = st.multiselect(
-                    "Especialidades",
-                    specialty_catalog,
-                    default=current,
-                )
-                certifications = st.text_input(
-                    "Certificaciones (opcional)",
-                    value=trade["certifications"] or "",
-                )
-                saved = st.form_submit_button(
-                    "Guardar oficio", type="primary", use_container_width=True
-                )
+            with st.expander("Editar"):
+                years = st.number_input("Años de experiencia", 0, 60, int(trade.get("years_experience") or 0),
+                                        key=f"trade_years_{tid}")
+                description = st.text_input("Descripción", value=trade.get("description") or "",
+                                            max_chars=MAX_TEXTO, key=f"trade_desc_{tid}")
+                options = _specialty_options(trade.get("category_id"))
+                extra = st.multiselect("Agregar especialidades", [s["name"] for s in options], key=f"trade_specs_{tid}",
+                                       help="Las especialidades se agregan; por ahora no se pueden quitar.")
+                if st.button("Guardar cambios", key=f"trade_save_{tid}"):
+                    fields = {"years_experience": int(years), "description": description.strip()}
+                    if extra:
+                        fields["specialties"] = [s["id"] for s in options if s["name"] in extra]
+                    _trade_call(api_client.update_trade, f"Oficio «{name}» actualizado.", tid, **fields)
+                if st.button("Desactivar oficio", key=f"trade_off_{tid}"):
+                    _trade_call(api_client.deactivate_trade, f"Oficio «{name}» desactivado.", tid)
 
-            if saved:
-                update_trade(tid, pid, _years_or_none(years), specialties, certifications)
-                audit(user["id"], "UPDATE", "professional_trades", tid,
-                      f"Oficio actualizado: {trade['trade']}")
-                flash(f"Oficio «{trade['trade']}» actualizado.")
-                st.rerun()
+    used = {t.get("category_id") for t in trades}
+    available = {cid: name for cid, name in categories.items() if cid not in used}
+    if not available:
+        return
 
-            # --- Eliminar con confirmación (no borra el historial de valoraciones) ---
-            if st.session_state.get(f"confirm_del_{tid}"):
-                st.warning(
-                    f"¿Eliminar el oficio «{trade['trade']}»? Su historial de "
-                    "valoraciones se conserva como información inactiva."
-                )
-                c1, c2 = st.columns(2)
+    st.markdown("#### ➕ Agregar un oficio")
+    names = sorted(available.values())
+    new_name = st.selectbox("Oficio", names, key="trade_new_category")
+    new_id = next(cid for cid, name in available.items() if name == new_name)
+    options = _specialty_options(new_id)
+    if options:
+        new_specs = st.multiselect("Especialidades", [s["name"] for s in options], key=f"trade_new_specs_{new_id}")
+    else:
+        new_specs = []
+        st.warning(f"«{new_name}» todavía no tiene especialidades en el servidor: no recibirás solicitudes de ese oficio.")
+    new_years = st.number_input("Años de experiencia", 0, 60, 0, key="trade_new_years")
+    new_desc = st.text_input("Descripción (opcional)", max_chars=MAX_TEXTO, key="trade_new_desc")
 
-                if c1.button("Sí, eliminar", type="primary", key=f"del_yes_{tid}"):
-                    st.session_state.pop(f"confirm_del_{tid}", None)
+    if st.button("Agregar oficio", type="primary", key="trade_add"):
+        if options and not new_specs:
+            st.warning("Elige al menos una especialidad.")
+            return
+        ids = [s["id"] for s in options if s["name"] in new_specs]
+        _trade_call(api_client.add_trade, f"Oficio «{new_name}» agregado.", new_id, new_years, new_desc, ids)
 
-                    if deactivate_trade(tid, pid):
-                        audit(user["id"], "DELETE", "professional_trades", tid,
-                              f"Oficio eliminado (desactivado): {trade['trade']}")
-                        flash(f"Oficio «{trade['trade']}» eliminado.", "warning")
-                    else:
-                        flash("Debes mantener al menos un oficio activo.", "warning")
+
+def _specialty_options(category_id):
+    try:
+        return api_client.get_specialties(category_id) if category_id else []
+    except api_client.ApiError:
+        return []
+
+
+def _trade_call(func, success, *args, **kwargs):
+    try:
+        func(*args, **kwargs)
+    except api_client.ApiError as error:
+        st.error(f"No se pudo guardar el oficio. {error}")
+        return
+    st.cache_data.clear()  # el catálogo cacheado debe mostrar el cambio
+    flash(success)
+    st.rerun()
+
+
+def professional_training(user):
+    """Historia 007: centro de desarrollo profesional (GET /api/professional-center/content/).
+    El backend no permite consultar el progreso: lo completado se recuerda en la sesión."""
+    section("🎓 Centro de Desarrollo Profesional")
+
+    try:
+        contents = api_client.list_content()
+    except api_client.ApiError as error:
+        st.error(f"No se pudieron cargar los contenidos. {error}")
+        return
+
+    if not contents:
+        empty_state("🎓", "Aún no hay contenidos", "El equipo de Overol publicará aquí guías y cursos.")
+        return
+
+    done = st.session_state.setdefault("_completed_content", set())
+    st.caption(f"Completaste {len(done & {c['id'] for c in contents})} de {len(contents)} contenidos en esta sesión.")
+
+    for module, label in api_client.MODULOS_CONTENIDO.items():
+        items = sorted((c for c in contents if c.get("module") == module), key=lambda c: c.get("order", 0))
+        if not items:
+            continue
+        st.markdown(f"#### {label}")
+        for content in items:
+            cid = content["id"]
+            with st.container(border=True):
+                st.markdown(f"**{content.get('title', '')}**" + (" · ✅ completado" if cid in done else ""))
+                if content.get("description"):
+                    st.caption(content["description"])
+                if content.get("url"):
+                    st.link_button("Abrir contenido", content["url"])
+                if cid not in done and st.button("Marcar como completado", key=f"content_done_{cid}"):
+                    try:
+                        api_client.complete_content(cid)
+                    except api_client.ApiError as error:
+                        if error.status != 400:  # 400: ya estaba registrado como completado
+                            st.error(f"No se pudo registrar tu avance. {error}")
+                            continue
+                    done.add(cid)
                     st.rerun()
-
-                if c2.button("Cancelar", key=f"del_no_{tid}"):
-                    st.session_state.pop(f"confirm_del_{tid}", None)
-                    st.rerun()
-            else:
-                if st.button("🗑️ Eliminar oficio", key=f"del_{tid}"):
-                    st.session_state[f"confirm_del_{tid}"] = True
-                    st.rerun()
-
-    # --- Agregar o reactivar un oficio ---
-    all_trades = get_trades(pid, active_only=False)
-    active_names = [t["trade"] for t in active]
-    inactive = {t["trade"]: t for t in all_trades if not t["active"]}
-    available = [o for o in ESPECIALIDADES_POR_OFICIO if o not in active_names]  # etapa F: del backend
-
-    if available:
-        with st.expander("➕ Agregar un oficio"):
-            new_trade = st.selectbox("Oficio", available, key="add_trade_select")
-
-            if new_trade in inactive:
-                total, _ = get_professional_rating(pid, new_trade)
-                st.info(
-                    f"Ya tuviste este oficio. Al agregarlo de nuevo se recupera "
-                    f"su valoración histórica ({total} evaluaciones)."
-                )
-
-            years = st.number_input(
-                "Años de experiencia (0 = no informar)",
-                min_value=0, max_value=60, step=1,
-                key=f"add_years_{new_trade}",
-            )
-            specialties = st.multiselect(
-                "Especialidades (opcional)",
-                ESPECIALIDADES_POR_OFICIO.get(new_trade, []),
-                key=f"add_specs_{new_trade}",
-            )
-            certifications = st.text_input(
-                "Certificaciones (opcional)",
-                key=f"add_certs_{new_trade}",
-            )
-
-            if st.button("Agregar oficio", type="primary", key="add_trade_button"):
-                result = add_trade(
-                    pid, new_trade, _years_or_none(years), specialties, certifications
-                )
-                audit(user["id"], "CREATE", "professional_trades", pid,
-                      f"Oficio {result}: {new_trade}")
-                flash(f"Oficio «{new_trade}» {result}.")
-                st.rerun()
-
-    if inactive:
-        st.caption(
-            "Oficios inactivos (su valoración histórica se conserva): "
-            + ", ".join(inactive)
-        )
-
-
-def _about_form(user, professional):
-    """Presentación del profesional: se muestra en su tarjeta y en su perfil."""
-    section("📝 Mi presentación")
-
-    with st.form("about_form"):
-        about = st.text_area(
-            "Cuéntales a los clientes quién eres y cómo trabajas",
-            value=professional["about"] or "",
-            max_chars=300,
-            placeholder="Ej: Gasfiter con 8 años de experiencia. Trabajo ordenado y con presupuesto claro.",
-        )
-        saved = st.form_submit_button("Guardar presentación", use_container_width=True)
-
-    if saved:
-        conn = get_connection()
-        conn.execute(
-            "UPDATE professionals SET about = ? WHERE id = ?",
-            (about.strip(), professional["id"]),
-        )
-        conn.commit()
-        conn.close()
-
-        audit(user["id"], "UPDATE", "professionals", professional["id"],
-              "Presentación del perfil actualizada")
-        flash("Presentación actualizada.")
-        st.rerun()

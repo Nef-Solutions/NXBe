@@ -387,3 +387,43 @@ def create_ticket(visit_id, subject, description):
 
 def resolve_ticket(ticket_id, response):
     return request("POST", f"tickets/{int(ticket_id)}/resolve/", {"response": response.strip()})
+
+
+# ------------------------------------------------------------
+# Oficios del profesional y centro de desarrollo (etapa F)
+# ------------------------------------------------------------
+
+MODULOS_CONTENIDO = {"TAX": "Tributario", "SAFETY": "Seguridad", "MANAGEMENT": "Gestión"}
+
+
+def list_my_trades():
+    """GET /professionals/me/trades/: id, category_id, years_experience, description,
+    certification, certification_verified, is_active (las especialidades no vienen)."""
+    return request("GET", "professionals/me/trades/") or []
+
+
+def add_trade(category_id, years, description, specialties):
+    return request("POST", "professionals/me/trades/", {
+        "category_id": int(category_id), "years_experience": int(years or 0),
+        "description": description.strip(), "specialties": list(specialties),
+    })
+
+
+def update_trade(trade_id, **fields):
+    """PATCH: years_experience, description y specialties (el backend solo agrega especialidades)."""
+    return request("PATCH", f"professionals/me/trades/{int(trade_id)}/", fields)
+
+
+def deactivate_trade(trade_id):
+    """DELETE: desactiva el oficio (no lo borra)."""
+    return request("DELETE", f"professionals/me/trades/{int(trade_id)}/")
+
+
+def list_content():
+    """GET /professional-center/content/ (solo profesionales): title, description, module, url, order."""
+    data = request("GET", "professional-center/content/") or []
+    return data.get("results", []) if isinstance(data, dict) else data
+
+
+def complete_content(content_id):
+    return request("POST", "professional-center/progress/", {"content": int(content_id)})
