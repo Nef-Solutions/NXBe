@@ -30,6 +30,8 @@ urlpatterns = [
     path('api/admin/verifications/<int:pk>/document/', VerificationDocumentView.as_view(), name='admin-verification-document'),
     path('api/catalog/', include('apps.catalog.urls')),
     path('api/professionals/', include('apps.catalog.professional_urls')),
+    path('api/assistant/', include('apps.assistant.urls')),
+    path('api/payments/', include('apps.payments.urls')),
     path('api/', include('apps.visits.urls')),
 ]
 

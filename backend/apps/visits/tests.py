@@ -65,6 +65,7 @@ class VisitBusinessRulesTestCase(TestCase):
 		self.professional = ProfessionalProfile.objects.create(
 			user=self.professional_user, rut='11111111-1',
 			verification_status=ProfessionalProfile.VerificationStatus.APPROVED,
+			subscription_expires_at=timezone.now() + timedelta(days=30),
 			work_days=['monday'], work_start='09:00', work_end='17:00',
 			is_available=True, coverage_communes=['Maipu'],
 		)
@@ -113,6 +114,16 @@ class VisitBusinessRulesTestCase(TestCase):
 			timedelta(days=30).total_seconds(),
 			delta=2,
 		)
+
+	def test_visit_cannot_be_requested_without_active_subscription(self):
+		self.professional.subscription_expires_at = None
+		self.professional.save(update_fields=['subscription_expires_at'])
+		payload = self.build_visit_payload()
+		request = self.factory.post('/api/requests/', payload, format='json')
+		request.user = self.client_user
+		serializer = VisitRequestSerializer(data=payload, context={'request': request})
+		self.assertFalse(serializer.is_valid())
+		self.assertIn('suscripción mensual vigente', str(serializer.errors))
 
 	def test_expiration_changes_status_and_notifies_once_per_run(self):
 		visit = VisitRequest.objects.create(
@@ -236,3 +247,23 @@ class VisitBusinessRulesTestCase(TestCase):
 			format='json',
 		)
 		self.assertEqual(response.status_code, 201)
+
+
+class SafetyResourcesSeedTests(TestCase):
+	def test_safety_videos_channels_and_playlist_are_seeded(self):
+		expected_urls = {
+			'https://www.youtube.com/watch?v=Y2kBQFdJMz4',
+			'https://www.youtube.com/watch?v=E78Lo3FAGko',
+			'https://www.youtube.com/watch?v=UHRJ1-CwsWE',
+			'https://www.youtube.com/watch?v=fsG0sJlIgLI',
+			'https://www.youtube.com/watch?v=eUIvPfOQ2k4',
+			'https://www.youtube.com/watch?v=cpcqOQSIGY0',
+			'https://youtube.com/@gestorcalidadssoma',
+			'https://youtube.com/@mutualtv',
+			'https://youtube.com/playlist?list=PLWCrmTUW4-e_rzvkeyXgqEkEk4GemRvM0',
+		}
+		loaded_urls = set(
+			ProfessionalContent.objects.filter(module=ProfessionalContent.Module.SAFETY)
+			.values_list('url', flat=True)
+		)
+		self.assertTrue(expected_urls.issubset(loaded_urls))

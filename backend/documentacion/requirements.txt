@@ -1,7 +1,17 @@
+# Python packages for the Overol backend.
+# Validated with CPython 3.14.8; install Python separately.
+
+# Django REST API
 Django==6.1.1
 djangorestframework==3.18.3
 djangorestframework-simplejwt==5.5.1
 django-cors-headers==4.9.0
+
+# PostgreSQL driver and image validation (PostGIS is provided by the database image)
 psycopg2-binary==2.9.13
 Pillow==13.0.0
+
+# Environment configuration and external integrations
 python-dotenv==1.2.4
+google-genai>=1.0,<3.0
+transbank-sdk==6.1.0

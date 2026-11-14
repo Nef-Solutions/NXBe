@@ -1,28 +1,63 @@
+import logging
+import secrets
+from datetime import timedelta
+from smtplib import SMTPException
+
 from django.contrib import messages
 from django.contrib.auth import login, logout
-from django.contrib.auth.forms import PasswordResetForm
+from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.password_validation import validate_password
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
 from django.db import IntegrityError
+from django.db import transaction
 from django.http import FileResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.conf import settings
+import mimetypes
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
-from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework.views import APIView
 
-from .models import ProfessionalProfile, User, VerificationCaseMessage
+from .models import PasswordResetCode, ProfessionalProfile, User, VerificationCaseMessage
 from rest_framework_simplejwt.views import TokenObtainPairView
 from apps.catalog.models import ProfessionalTrade, Specialty, TradeCategory
 from apps.visits.models import AfterSalesClaim, ContentProgress, Notification, ProfessionalContent, Rating, SupportTicket, VisitRequest
 from apps.visits.serializers import ClaimSerializer, ContentProgressSerializer, RatingSerializer, TicketSerializer, VisitRequestSerializer
 
-from .serializers import LoginSerializer, OverolTokenObtainPairSerializer, PasswordChangeSerializer, ProfileSerializer, RegistrationSerializer, VerificationCaseMessageSerializer
+from .serializers import (
+    LoginSerializer,
+    OverolTokenObtainPairSerializer,
+    PasswordChangeSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
+    ProfileSerializer,
+    RegistrationSerializer,
+    VerificationCaseMessageSerializer,
+    VerificationDocumentsSerializer,
+)
+
+logger = logging.getLogger(__name__)
+PASSWORD_RESET_CODE_LENGTH = 6
+PASSWORD_RESET_CODE_LIFETIME = timedelta(minutes=10)
+PASSWORD_RESET_CODE_MAX_ATTEMPTS = 5
+PASSWORD_RESET_MIN_INTERVAL = timedelta(minutes=1)
+
+
+class PasswordResetEmailUnavailable(APIException):
+	status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+	default_detail = 'No fue posible enviar el correo de recuperación. Inténtalo más tarde.'
+	default_code = 'password_reset_email_unavailable'
 
 
 class OverolTokenObtainPairView(TokenObtainPairView):
@@ -260,15 +295,158 @@ class ChangePasswordView(APIView):
 
 class OverolPasswordResetView(APIView):
 	permission_classes = [AllowAny]
+	throttle_classes = [ScopedRateThrottle]
+	throttle_scope = 'password_reset'
 
 	def post(self, request):
-		form = PasswordResetForm(request.data)
-		if form.is_valid():
-			form.save(request=request, use_https=request.is_secure())
+		serializer = PasswordResetRequestSerializer(data=request.data)
+		serializer.is_valid(raise_exception=True)
+		email = serializer.validated_data['email']
+		now = timezone.now()
+		with transaction.atomic():
+			user = User.objects.select_for_update().filter(
+				email__iexact=email,
+				is_active=True,
+			).first()
+			if user and user.has_usable_password():
+				last_request = user.password_reset_codes.order_by('-created_at').first()
+				if not last_request or last_request.created_at <= now - PASSWORD_RESET_MIN_INTERVAL:
+					PasswordResetCode.objects.filter(user=user).delete()
+					code = f'{secrets.randbelow(10 ** PASSWORD_RESET_CODE_LENGTH):0{PASSWORD_RESET_CODE_LENGTH}d}'
+					reset_code = PasswordResetCode.objects.create(
+						user=user,
+						code_hash=make_password(code),
+						expires_at=now + PASSWORD_RESET_CODE_LIFETIME,
+					)
+					message = render_to_string(
+						'registration/password_reset_code_email.txt',
+						{'code': code},
+					)
+					try:
+						send_mail(
+							'Código de recuperación de Overol',
+							message,
+							settings.DEFAULT_FROM_EMAIL,
+							[user.email],
+							fail_silently=False,
+						)
+					except (OSError, SMTPException) as error:
+						logger.exception('No se pudo enviar un código de recuperación.')
+						raise PasswordResetEmailUnavailable() from error
 		return Response(
-			{'detail': 'Si el correo está registrado, recibirás instrucciones para recuperar tu contraseña.'},
+			{'detail': 'Si el correo está registrado, recibirás un código para recuperar tu contraseña.'},
 			status=status.HTTP_202_ACCEPTED,
 		)
+
+
+class PasswordResetConfirmView(APIView):
+	permission_classes = [AllowAny]
+	throttle_classes = [ScopedRateThrottle]
+	throttle_scope = 'password_reset_confirm'
+
+	def post(self, request):
+		serializer = PasswordResetConfirmSerializer(data=request.data)
+		serializer.is_valid(raise_exception=True)
+		data = serializer.validated_data
+		now = timezone.now()
+		with transaction.atomic():
+			user = User.objects.select_for_update().filter(
+				email__iexact=data['email'],
+				is_active=True,
+			).first()
+			reset_code = None
+			if user:
+				reset_code = PasswordResetCode.objects.select_for_update().filter(
+					user=user,
+					consumed_at__isnull=True,
+				).order_by('-created_at').first()
+			if (
+				not user
+				or not reset_code
+				or reset_code.expires_at <= now
+				or reset_code.attempts >= PASSWORD_RESET_CODE_MAX_ATTEMPTS
+			):
+				return Response(
+					{'detail': 'El código no es válido o ha expirado.'},
+					status=status.HTTP_400_BAD_REQUEST,
+				)
+
+			if not check_password(data['code'], reset_code.code_hash):
+				reset_code.attempts += 1
+				if reset_code.attempts >= PASSWORD_RESET_CODE_MAX_ATTEMPTS:
+					reset_code.consumed_at = now
+				reset_code.save(update_fields=['attempts', 'consumed_at'])
+				return Response(
+					{'detail': 'El código no es válido o ha expirado.'},
+					status=status.HTTP_400_BAD_REQUEST,
+				)
+
+			try:
+				validate_password(data['new_password'], user)
+			except DjangoValidationError as error:
+				return Response({'new_password': error.messages}, status=status.HTTP_400_BAD_REQUEST)
+
+			user.set_password(data['new_password'])
+			user.save(update_fields=['password'])
+			reset_code.consumed_at = now
+			reset_code.save(update_fields=['consumed_at'])
+			for outstanding_token in OutstandingToken.objects.filter(
+				user=user,
+				expires_at__gt=now,
+			):
+				BlacklistedToken.objects.get_or_create(token=outstanding_token)
+
+		return Response(
+			{'detail': 'La contraseña se restableció correctamente.'},
+			status=status.HTTP_200_OK,
+		)
+
+
+class VerificationDocumentsView(APIView):
+	permission_classes = [IsAuthenticated]
+	parser_classes = [MultiPartParser, FormParser]
+
+	def get(self, request):
+		profile = self._professional_profile(request)
+		return Response({
+			'professional_profile_id': profile.pk,
+			'verification_status': profile.verification_status,
+			'documents': {
+				'front_uploaded': bool(profile.id_card_front),
+				'back_uploaded': bool(profile.id_card_back),
+			},
+		})
+
+	def post(self, request):
+		profile = self._professional_profile(request)
+		serializer = VerificationDocumentsSerializer(data=request.data)
+		serializer.is_valid(raise_exception=True)
+		previous_names = {}
+		updated_fields = []
+		for field_name, upload in serializer.validated_data.items():
+			old_file = getattr(profile, field_name)
+			previous_names[field_name] = old_file.name if old_file else None
+			setattr(profile, field_name, upload)
+			updated_fields.append(field_name)
+
+		profile.verification_status = ProfessionalProfile.VerificationStatus.PENDING
+		profile.save(update_fields=updated_fields + ['verification_status'])
+
+		for field_name, previous_name in previous_names.items():
+			new_name = getattr(profile, field_name).name
+			if previous_name and previous_name != new_name:
+				getattr(profile, field_name).storage.delete(previous_name)
+
+		return self.get(request)
+
+	@staticmethod
+	def _professional_profile(request):
+		if request.user.role != User.Role.PROFESSIONAL:
+			raise PermissionDenied('Solo los profesionales pueden cargar documentos de verificación.')
+		try:
+			return request.user.professional_profile
+		except ProfessionalProfile.DoesNotExist:
+			raise PermissionDenied('No se encontró el perfil profesional.')
 
 
 class VerificationMessageListCreateView(APIView):
@@ -302,6 +480,11 @@ class VerificationDecisionView(APIView):
 		reason = request.data.get('reason', '').strip()
 		if decision not in ('approve', 'reject') or decision == 'reject' and not reason:
 			return Response({'detail': 'Una decisión inválida o un motivo faltante.'}, status=status.HTTP_400_BAD_REQUEST)
+		if decision == 'approve' and not (profile.id_card_front and profile.id_card_back):
+			return Response(
+				{'detail': 'El profesional debe cargar ambos lados de su cédula antes de ser aprobado.'},
+				status=status.HTTP_400_BAD_REQUEST,
+			)
 		profile.verification_status = ProfessionalProfile.VerificationStatus.APPROVED if decision == 'approve' else ProfessionalProfile.VerificationStatus.REJECTED
 		profile.save(update_fields=['verification_status'])
 		from apps.visits.models import AdminAuditLog, Notification
@@ -365,6 +548,13 @@ class VerificationDocumentView(APIView):
 			return Response({'detail': 'side debe ser front o back.'}, status=status.HTTP_400_BAD_REQUEST)
 		if not field:
 			return Response({'detail': 'El documento solicitado no existe.'}, status=status.HTTP_404_NOT_FOUND)
-		return FileResponse(field.open('rb'), content_type=getattr(field.file, 'content_type', 'application/octet-stream'))
+		response = FileResponse(
+			field.open('rb'),
+			as_attachment=True,
+			filename=field.name.rsplit('/', 1)[-1],
+			content_type=mimetypes.guess_type(field.name)[0] or 'application/octet-stream',
+		)
+		response['X-Content-Type-Options'] = 'nosniff'
+		return response
 
 # Create your views here.

@@ -1,11 +1,18 @@
 from datetime import timedelta
+from io import BytesIO
+import re
+import tempfile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase
+from django.core import mail
+from django.core.cache import cache
+from django.test import Client, TestCase, override_settings
 from django.utils import timezone
+from PIL import Image
 from rest_framework.test import APIClient
 from django.core.exceptions import ValidationError
-from apps.authentication.models import User, ProfessionalProfile
+from apps.authentication.models import PasswordResetCode, User, ProfessionalProfile
+from apps.authentication.storage import private_verification_storage
 from apps.authentication.validators import sanitize_person_name, validate_rut_chileno
 from apps.catalog.models import TradeCategory
 
@@ -199,6 +206,7 @@ class AuthenticationBusinessRulesTestCase(TestCase):
             user=self.professional_user,
             rut='22222222-2',
             verification_status=ProfessionalProfile.VerificationStatus.APPROVED,
+            subscription_expires_at=timezone.now() + timedelta(days=30),
         )
 
     def test_registration_requires_privacy_and_strong_password(self):
@@ -323,3 +331,346 @@ class AuthenticationBusinessRulesTestCase(TestCase):
         self.assertEqual(response.data['status'], ProfessionalProfile.VerificationStatus.REJECTED)
         self.assertTrue(Notification.objects.filter(recipient=self.professional_user).exists())
         self.assertTrue(AdminAuditLog.objects.filter(target_id=self.professional.pk).exists())
+
+
+class VerificationDocumentUploadTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='document_professional',
+            email='document.professional@overol.cl',
+            password='PasswordSegura123!',
+            first_name='Documento',
+            last_name='Profesional',
+            rut='11111111-1',
+            role=User.Role.PROFESSIONAL,
+        )
+        self.profile = ProfessionalProfile.objects.create(
+            user=self.user,
+            rut=self.user.rut,
+        )
+        self.client.force_authenticate(self.user)
+
+        self.storage = private_verification_storage
+        self.previous_location = self.storage._location
+        self.previous_location_cache = self.storage.__dict__.pop('location', None)
+        self.previous_base_location_cache = self.storage.__dict__.pop('base_location', None)
+        self.temp_storage = tempfile.TemporaryDirectory()
+        self.storage._location = self.temp_storage.name
+
+    def tearDown(self):
+        for field_name in ('id_card_front', 'id_card_back'):
+            uploaded = getattr(self.profile, field_name)
+            if uploaded:
+                uploaded.storage.delete(uploaded.name)
+        self.temp_storage.cleanup()
+        self.storage._location = self.previous_location
+        self.storage.__dict__.pop('location', None)
+        self.storage.__dict__.pop('base_location', None)
+        if self.previous_location_cache is not None:
+            self.storage.__dict__['location'] = self.previous_location_cache
+        if self.previous_base_location_cache is not None:
+            self.storage.__dict__['base_location'] = self.previous_base_location_cache
+
+    @staticmethod
+    def make_image(name, image_format='PNG'):
+        content = BytesIO()
+        Image.new('RGB', (12, 12), color='blue').save(content, format=image_format)
+        return SimpleUploadedFile(
+            name,
+            content.getvalue(),
+            content_type=f'image/{image_format.lower()}',
+        )
+
+    @staticmethod
+    def make_pdf(name='id.pdf'):
+        return SimpleUploadedFile(
+            name,
+            b'%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n',
+            content_type='application/pdf',
+        )
+
+    def test_professional_can_upload_each_document_and_query_upload_state(self):
+        response = self.client.post(
+            '/api/auth/verification/documents/',
+            {'id_card_front': self.make_image('front.png')},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['verification_status'], 'PENDING')
+        self.assertEqual(response.data['documents'], {
+            'front_uploaded': True,
+            'back_uploaded': False,
+        })
+        status_response = self.client.get('/api/auth/verification/documents/')
+        self.assertEqual(status_response.status_code, 200)
+        self.assertEqual(status_response.data['documents'], response.data['documents'])
+        self.assertNotIn('id_card_front', status_response.data)
+
+        self.profile.refresh_from_db()
+        self.profile.verification_status = ProfessionalProfile.VerificationStatus.APPROVED
+        self.profile.save(update_fields=['verification_status'])
+        response = self.client.post(
+            '/api/auth/verification/documents/',
+            {'id_card_back': self.make_image('back.jpg', 'JPEG')},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['verification_status'], 'PENDING')
+        self.assertEqual(response.data['documents'], {
+            'front_uploaded': True,
+            'back_uploaded': True,
+        })
+
+    def test_document_upload_rejects_empty_or_non_image_payload(self):
+        empty_response = self.client.post(
+            '/api/auth/verification/documents/',
+            {},
+            format='multipart',
+        )
+        self.assertEqual(empty_response.status_code, 400)
+
+        invalid_response = self.client.post(
+            '/api/auth/verification/documents/',
+            {'id_card_front': SimpleUploadedFile(
+                'fake.png',
+                b'not an image',
+                content_type='image/png',
+            )},
+            format='multipart',
+        )
+        self.assertEqual(invalid_response.status_code, 400)
+        self.profile.refresh_from_db()
+        self.assertFalse(self.profile.id_card_front)
+
+    def test_document_upload_rejects_files_over_five_megabytes_before_decoding(self):
+        response = self.client.post(
+            '/api/auth/verification/documents/',
+            {'id_card_front': SimpleUploadedFile(
+                'oversized.png',
+                b'x' * (5 * 1024 * 1024 + 1),
+                content_type='image/png',
+            )},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('5 MB', str(response.data['id_card_front']))
+
+    def test_professional_can_upload_pdf_and_admin_receives_private_attachment(self):
+        response = self.client.post(
+            '/api/auth/verification/documents/',
+            {'id_card_front': self.make_pdf()},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['documents']['front_uploaded'])
+
+        admin = User.objects.create_superuser(
+            username='pdf_document_admin',
+            email='pdf.document.admin@overol.cl',
+            password='PasswordSegura123!',
+        )
+        admin.role = User.Role.ADMIN
+        admin.save(update_fields=['role'])
+        self.client.force_authenticate(admin)
+        download = self.client.get(
+            f'/api/admin/verifications/{self.profile.pk}/document/?side=front'
+        )
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(download['Content-Type'], 'application/pdf')
+        self.assertTrue(download['Content-Disposition'].startswith('attachment;'))
+        self.assertEqual(b''.join(download.streaming_content), self.make_pdf().read())
+
+    def test_document_upload_rejects_pdf_signature_with_wrong_extension(self):
+        response = self.client.post(
+            '/api/auth/verification/documents/',
+            {'id_card_front': self.make_pdf('id.png')},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_only_professional_can_upload_documents(self):
+        client_user = User.objects.create_user(
+            username='document_client',
+            email='document.client@overol.cl',
+            password='PasswordSegura123!',
+            first_name='Cliente',
+            last_name='Documento',
+            rut='22222222-2',
+            role=User.Role.CLIENT,
+        )
+        self.client.force_authenticate(client_user)
+        response = self.client.post(
+            '/api/auth/verification/documents/',
+            {'id_card_front': self.make_image('front.png')},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_cannot_approve_before_both_documents_are_uploaded(self):
+        admin = User.objects.create_superuser(
+            username='document_admin',
+            email='document.admin@overol.cl',
+            password='PasswordSegura123!',
+        )
+        admin.role = User.Role.ADMIN
+        admin.save(update_fields=['role'])
+        self.client.force_authenticate(admin)
+        response = self.client.post(
+            f'/api/auth/verification/{self.profile.pk}/approve/',
+            {},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+
+@override_settings(
+    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+)
+class PasswordResetApiTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='password_reset_user',
+            email='password.reset@overol.cl',
+            password='PasswordSegura123!',
+            first_name='Recuperar',
+            last_name='Cuenta',
+            rut='11111111-1',
+        )
+
+    def request_code(self, email=None):
+        response = self.client.post(
+            '/api/auth/password/reset/',
+            {'email': email or self.user.email},
+            format='json',
+        )
+        return response
+
+    @staticmethod
+    def emailed_code():
+        match = re.search(r'(?<!\d)\d{6}(?!\d)', mail.outbox[-1].body)
+        if not match:
+            raise AssertionError('The recovery email did not contain a six-digit code.')
+        return match.group()
+
+    def test_reset_request_returns_generic_response_and_sends_code(self):
+        response = self.request_code()
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(len(mail.outbox), 1)
+        code = self.emailed_code()
+        self.assertRegex(code, r'^\d{6}$')
+        reset = PasswordResetCode.objects.get(user=self.user)
+        self.assertTrue(reset.code_hash.startswith('pbkdf2_'))
+        self.assertNotEqual(reset.code_hash, code)
+        self.assertEqual(self.request_code().status_code, 202)
+        self.assertEqual(len(mail.outbox), 1)
+
+        unknown_response = self.request_code('unknown@overol.cl')
+        self.assertEqual(unknown_response.status_code, 202)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_valid_code_changes_password_revokes_refresh_and_cannot_be_reused(self):
+        token_response = self.client.post(
+            '/api/auth/token/',
+            {'email': self.user.email, 'password': 'PasswordSegura123!'},
+            format='json',
+        )
+        self.assertEqual(token_response.status_code, 200)
+        self.assertEqual(self.request_code().status_code, 202)
+        code = self.emailed_code()
+
+        response = self.client.post(
+            '/api/auth/password/reset/confirm/',
+            {
+                'email': self.user.email,
+                'code': code,
+                'new_password': 'BrandNewSecurePass890!',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('BrandNewSecurePass890!'))
+        refresh_response = self.client.post(
+            '/api/auth/token/refresh/',
+            {'refresh': token_response.data['refresh']},
+            format='json',
+        )
+        self.assertEqual(refresh_response.status_code, 401)
+
+        replay_response = self.client.post(
+            '/api/auth/password/reset/confirm/',
+            {
+                'email': self.user.email,
+                'code': code,
+                'new_password': 'AnotherSecurePass890!',
+            },
+            format='json',
+        )
+        self.assertEqual(replay_response.status_code, 400)
+
+    def test_reset_confirmation_rejects_invalid_code_and_weak_password(self):
+        self.assertEqual(self.request_code().status_code, 202)
+        code = self.emailed_code()
+        response = self.client.post(
+            '/api/auth/password/reset/confirm/',
+            {
+                'email': self.user.email,
+                'code': '000000' if code != '000000' else '000001',
+                'new_password': 'BrandNewSecurePass890!',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+        weak_password_response = self.client.post(
+            '/api/auth/password/reset/confirm/',
+            {
+                'email': self.user.email,
+                'code': code,
+                'new_password': 'short',
+            },
+            format='json',
+        )
+        self.assertEqual(weak_password_response.status_code, 400)
+        self.assertTrue(self.user.check_password('PasswordSegura123!'))
+
+    def test_reset_code_expires_and_is_invalidated_after_five_wrong_attempts(self):
+        self.assertEqual(self.request_code().status_code, 202)
+        code = self.emailed_code()
+        reset = PasswordResetCode.objects.get(user=self.user)
+        reset.expires_at = timezone.now() - timedelta(seconds=1)
+        reset.save(update_fields=['expires_at'])
+        expired = self.client.post(
+            '/api/auth/password/reset/confirm/',
+            {
+                'email': self.user.email,
+                'code': code,
+                'new_password': 'BrandNewSecurePass890!',
+            },
+            format='json',
+        )
+        self.assertEqual(expired.status_code, 400)
+
+        PasswordResetCode.objects.filter(pk=reset.pk).update(
+            created_at=timezone.now() - timedelta(minutes=2),
+        )
+        self.assertEqual(self.request_code().status_code, 202)
+        reset = PasswordResetCode.objects.get(user=self.user)
+        code = self.emailed_code()
+        wrong_code = '000000' if code != '000000' else '000001'
+        for _ in range(5):
+            rejected = self.client.post(
+                '/api/auth/password/reset/confirm/',
+                {
+                    'email': self.user.email,
+                    'code': wrong_code,
+                    'new_password': 'BrandNewSecurePass890!',
+                },
+                format='json',
+            )
+            self.assertEqual(rejected.status_code, 400)
+        reset.refresh_from_db()
+        self.assertIsNotNone(reset.consumed_at)

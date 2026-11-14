@@ -25,7 +25,10 @@ class CustomUserAdmin(admin.ModelAdmin):
 
 @admin.register(ProfessionalProfile)
 class ProfessionalProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'rut', 'verification_status', 'visit_fee', 'rating_avg')
+    list_display = (
+        'user', 'rut', 'verification_status', 'subscription_expires_at',
+        'visit_fee', 'rating_avg',
+    )
     list_filter = ('verification_status',)
     search_fields = ('rut', 'user__first_name', 'user__last_name', 'user__email')
     list_editable = ('verification_status',)

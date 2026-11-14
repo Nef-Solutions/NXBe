@@ -2,7 +2,8 @@ from django.db.models import BooleanField, Q
 from django.db import connection
 from django.db.models.expressions import RawSQL
 from rest_framework.exceptions import ValidationError
-from apps.authentication.models import ProfessionalProfile
+from django.utils import timezone
+from apps.authentication.models import ProfessionalProfile, User
 
 class ProfessionalSearchService:
     @staticmethod
@@ -25,7 +26,9 @@ class ProfessionalSearchService:
         """
         # Regla 1: Solo verificados
         qs = ProfessionalProfile.objects.filter(
-            verification_status=ProfessionalProfile.VerificationStatus.APPROVED
+            verification_status=ProfessionalProfile.VerificationStatus.APPROVED,
+            user__account_status=User.AccountStatus.ACTIVE,
+            subscription_expires_at__gt=timezone.now(),
         ).select_related('user')
 
         # Regla 2: Filtrado por Zona del Hogar

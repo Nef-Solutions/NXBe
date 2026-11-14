@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'apps.catalog',
     'apps.visits',
     'apps.assistant',
+    'apps.payments',
 ]
 
 MIDDLEWARE = [
@@ -127,6 +128,11 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
+    'DEFAULT_THROTTLE_RATES': {
+        'assistant': '5/hour',
+        'password_reset': '5/hour',
+        'password_reset_confirm': '10/hour',
+    },
 }
 
 
@@ -140,6 +146,20 @@ SIMPLE_JWT = {
 
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
 
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.5-flash-lite')
+ASSISTANT_DAILY_USER_LIMIT = 10
+ASSISTANT_DAILY_GLOBAL_LIMIT = 50
+ASSISTANT_MAX_OUTPUT_TOKENS = 300
+
+TRANSBANK_RETURN_URL = os.getenv(
+    'TRANSBANK_RETURN_URL',
+    'http://127.0.0.1:8000/api/payments/transbank/return/',
+)
+PAYMENT_RESULT_URL = os.getenv(
+    'PAYMENT_RESULT_URL',
+    'http://localhost:3000/payment-result',
+)
 
 # Configuración CORS para desarrollo con Frontend
 CORS_ALLOW_ALL_ORIGINS = True  # En producción se especifica la lista de dominios autorizados

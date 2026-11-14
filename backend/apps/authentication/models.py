@@ -70,14 +70,14 @@ class ProfessionalProfile(models.Model):
         related_name='professional_profile'
     )
     rut = models.CharField('RUT', max_length=12, unique=True)
-    id_card_front = models.ImageField(
-        'Foto frontal cédula', 
+    id_card_front = models.FileField(
+        'Documento frontal cédula',
         upload_to='verifications/id_front/',
         storage=private_verification_storage,
         blank=True
     )
-    id_card_back = models.ImageField(
-        'Foto trasera cédula', 
+    id_card_back = models.FileField(
+        'Documento trasero cédula',
         upload_to='verifications/id_back/',
         storage=private_verification_storage,
         blank=True
@@ -89,6 +89,7 @@ class ProfessionalProfile(models.Model):
         default=VerificationStatus.PENDING
     )
     visit_fee = models.DecimalField('Tarifa de visita ($CLP)', max_digits=10, decimal_places=0, default=0)
+    subscription_expires_at = models.DateTimeField('Suscripción vigente hasta', null=True, blank=True)
     rating_avg = models.DecimalField('Calificación promedio', max_digits=3, decimal_places=2, default=0.0)
     bio = models.CharField(max_length=500, blank=True)
     headline = models.CharField(max_length=160, blank=True)
@@ -117,6 +118,10 @@ class ProfessionalProfile(models.Model):
         if (self.service_latitude is None) != (self.service_longitude is None):
             raise ValidationError('La latitud y la longitud deben enviarse juntas.')
 
+    @property
+    def has_active_subscription(self):
+        return bool(self.subscription_expires_at and self.subscription_expires_at > timezone.now())
+
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
@@ -130,6 +135,18 @@ class VerificationCaseMessage(models.Model):
     message = models.TextField()
     admin_response = models.TextField(blank=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at',)
+
+
+class PasswordResetCode(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_codes')
+    code_hash = models.CharField(max_length=128)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    consumed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
