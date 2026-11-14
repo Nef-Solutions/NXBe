@@ -25,7 +25,6 @@ from core.database import (
     audit,
     count_unread_notifications,
     deactivate_trade,
-    get_claims_for_professional,
     get_connection,
     get_professional_by_user,
     get_professional_rating,
@@ -34,7 +33,6 @@ from core.database import (
     add_verification_message,
     get_verification_documents,
     get_verification_messages,
-    notify,
     now_str,
     update_trade,
 )
@@ -82,20 +80,20 @@ def professional_dashboard(user):
         "ℹ️ Quiénes somos",
     ])
 
-    # Reclamos y Desarrollo profesional aún usan el perfil profesional de SQLite; mientras
-    # estén ocultas (PANTALLAS_PENDIENTES_API) no se consulta la base.
+    # Desarrollo profesional aún usa el perfil profesional de SQLite; mientras esté
+    # oculta (PANTALLAS_PENDIENTES_API) no se consulta la base.
     professional = None
-    if {"🛠️ Reclamos", "🎓 Desarrollo profesional"} & set(options):
+    if "🎓 Desarrollo profesional" in options:
         professional = get_professional_by_user(user["id"])
 
     badges = {}
     if "🔔 Notificaciones" in options:
         badges["🔔 Notificaciones"] = count_unread_notifications(user["id"])
-    if "🛠️ Reclamos" in options and professional:
-        badges["🛠️ Reclamos"] = sum(
-            1 for c in get_claims_for_professional(professional["id"])
-            if c["status"] == "Abierto" and not c["professional_response"]
-        )
+    if "🛠️ Reclamos" in options:
+        try:
+            badges["🛠️ Reclamos"] = sum(1 for c in requests_api.list_claims() if c["raw_status"] == "OPEN")
+        except api_client.ApiError:
+            pass
 
     menu = nav_bar("professional_navigation", options, badges=badges)
 
@@ -130,7 +128,7 @@ def professional_dashboard(user):
         assistant_page(user)
 
     elif menu == "🛠️ Reclamos":
-        professional_claims(user, professional)
+        professional_claims(user)
 
     elif menu == "🎓 Desarrollo profesional":
         professional_training(user, professional)
@@ -315,7 +313,11 @@ def _request_card(request):
                     else:
                         _pro_action(rid, "cancel_professional", f"Solicitud #{rid} cancelada.", reason.strip(), "warning")
 
-        # Etapa D: calificar al cliente de un servicio finalizado · Etapa E: soporte
+        # ---------- Finalizada: calificar al cliente ----------
+        if raw == "COMPLETED":
+            _client_rating_block(request)
+
+        # Etapa E: soporte
 
 
 def _fee_to_number(value):
@@ -823,98 +825,85 @@ def professional_training(user, professional):
                     st.rerun()
 
 
-def professional_claims(user, professional):
+def professional_claims(user):
+    """Reclamos de posventa de sus servicios (GET /api/claims/): responder o pedir mediación."""
     section("🛠️ Reclamos de posventa")
 
-    claims = get_claims_for_professional(
-        professional["id"]
-    )
+    try:
+        claims = requests_api.list_claims()
+    except api_client.ApiError as error:
+        st.error(f"No se pudieron cargar los reclamos. {error}")
+        return
 
     if not claims:
         empty_state("🛠️", "No tienes reclamos registrados", "Aquí aparecerán los reclamos de posventa de tus clientes.")
         return
 
     for claim in claims:
+        cid = claim["id"]
         with st.container(border=True):
-            st.markdown(
-                f"### Reclamo #{claim['id']}"
-            )
+            st.markdown(f"### Reclamo #{cid}")
             status_badge(claim["status"])
-
-            st.write(
-                f"**Cliente:** {claim['client_name']}"
-            )
-            st.write(
-                f"**Motivo:** {claim['reason']}"
-            )
+            st.caption(f"Solicitud #{claim['visit']} · abierto el {claim['created_at']}")
+            st.write(f"**Motivo:** {claim['description']}")
 
             if claim["professional_response"]:
-                st.write(
-                    f"**Tu respuesta:** {claim['professional_response']}"
-                )
+                st.write(f"**Tu respuesta:** {claim['professional_response']}")
+            if claim["admin_resolution"]:
+                st.write(f"**Resolución de Overol:** {claim['admin_resolution']}")
 
-            if claim["response"]:
-                st.write(
-                    f"**Mediación de Overol:** {claim['response']}"
-                )
-
-            if claim["status"] == "Abierto" and not claim["professional_response"]:
-                response = st.text_area(
-                    "Respuesta al cliente",
-                    key=f"claim_response_{claim['id']}",
-                    max_chars=MAX_TEXTO,
-                )
-
-                if st.button(
-                    "Responder reclamo",
-                    key=f"respond_claim_{claim['id']}",
-                ):
+            if claim["raw_status"] == "OPEN":
+                response = st.text_area("Respuesta al cliente", key=f"claim_response_{cid}", max_chars=MAX_TEXTO)
+                if st.button("Responder reclamo", key=f"respond_claim_{cid}"):
                     if not response.strip():
-                        st.warning(
-                            "Escribe una respuesta."
-                        )
+                        st.warning("Escribe una respuesta.")
                     else:
-                        conn = get_connection()
+                        _claim_action(cid, "respond", "Respuesta enviada al cliente.", response=response.strip())
 
-                        cur = conn.execute(
-                            """
-                            UPDATE claims
-                            SET professional_response = ?,
-                                status = 'En mediación',
-                                updated_at = ?
-                            WHERE id = ? AND professional_id = ? AND status = 'Abierto'
-                            """,
-                            (
-                                response.strip()[:MAX_TEXTO],
-                                now_str(),
-                                claim["id"],
-                                professional["id"],
-                            ),
-                        )
+            if claim["raw_status"] in ("OPEN", "PROFESSIONAL_RESPONDED"):
+                if st.button("Pedir mediación de Overol", key=f"escalate_claim_{cid}"):
+                    _claim_action(cid, "escalate", "Reclamo enviado a mediación de Overol.")
 
-                        if cur.rowcount:
-                            notify(
-                                conn,
-                                claim["client_id"],
-                                "Respuesta a tu reclamo",
-                                f"El profesional respondió tu reclamo #{claim['id']}. "
-                                "Revísalo en «Mis reclamos».",
-                                claim["request_id"],
-                            )
 
-                        conn.commit()
-                        conn.close()
+def _claim_action(claim_id, name, success, **payload):
+    try:
+        requests_api.claim_action(claim_id, name, **payload)
+    except api_client.ApiError as error:
+        st.error(f"No se pudo actualizar el reclamo. {error}")
+        return
+    flash(success)
+    st.rerun()
 
-                        audit(
-                            user["id"],
-                            "UPDATE",
-                            "claims",
-                            claim["id"],
-                            "Respuesta de profesional",
-                        )
 
-                        flash("Respuesta enviada al cliente.")
-                        st.rerun()
+def _client_rating_block(request):
+    """Historia 024: el profesional califica al cliente (POST /api/ratings/ con el mismo servicio)."""
+    rid = request["id"]
+    rated = st.session_state.setdefault("_rated_visits", set())
+
+    if rid in rated:
+        st.success("✓ Ya calificaste a este cliente.")
+        return
+
+    with st.expander("⭐ Calificar al cliente"):
+        c1, c2, c3 = st.columns(3)
+        quality = c1.slider("Claridad del encargo", 1, 5, 5, key=f"client_quality_{rid}")
+        punctuality = c2.slider("Puntualidad", 1, 5, 5, key=f"client_punctuality_{rid}")
+        treatment = c3.slider("Trato", 1, 5, 5, key=f"client_treatment_{rid}")
+        comment = st.text_input("Comentario (opcional)", max_chars=MAX_TEXTO, key=f"client_comment_{rid}")
+
+        if st.button("Guardar calificación", type="primary", key=f"save_client_rating_{rid}"):
+            try:
+                requests_api.rate(rid, quality, punctuality, treatment, comment)
+            except api_client.ApiError as error:
+                if requests_api.already_rated(error):
+                    rated.add(rid)
+                    flash("Ya habías calificado a este cliente.", "info")
+                    st.rerun()
+                st.error(f"No se pudo guardar la calificación. {error}")
+                return
+            rated.add(rid)
+            flash("Calificación al cliente registrada.")
+            st.rerun()
 
 
 def professional_verification_upload(user):

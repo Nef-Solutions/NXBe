@@ -31,12 +31,10 @@ def use_api():
 # E notificaciones y tickets · F profesional · G admin).
 PANTALLAS_PENDIENTES_API = {
     "cliente": {
-        "🛠️ Mis reclamos": "D",
         "🔔 Notificaciones": "E",
     },
     "profesional": {
         "🔔 Notificaciones": "E",
-        "🛠️ Reclamos": "D",
         "🎓 Desarrollo profesional": "F",
     },
     "admin": {

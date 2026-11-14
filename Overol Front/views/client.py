@@ -1,22 +1,16 @@
 """Vistas del rol Cliente (RF 002, 003, 004, 006, 009)."""
 
-import sqlite3
-
 import streamlit as st
 
 from core import api_client, catalog_api, requests_api
 from core.constants import (
+    MAX_TEXTO,
     COMUNAS,
     pantallas_visibles,
 )
 from core.database import (
-    audit,
     count_unread_notifications,
     search_professionals,
-    get_claims_for_client,
-    get_connection,
-    get_rating_for_request,
-    now_str,
 )
 from ui.components import (
     contact_box,
@@ -28,9 +22,9 @@ from ui.components import (
     nav_bar,
     notifications_page,
     section,
-    stars,
     status_badge,
 )
+from views import payments
 from views.about import about_page
 from views.assistant import assistant_page
 from views.home import home_page
@@ -275,9 +269,11 @@ def client_search(user):
 def client_requests(user):
     """Historias 010 a 013: solicitudes del cliente (GET /api/requests/)."""
     section("📋 Mis solicitudes")
+    _visit_payment_result()
 
     try:
         requests = requests_api.list_requests()
+        claims = {c["visit"]: c for c in requests_api.list_claims()}
     except api_client.ApiError as error:
         st.error(f"No se pudieron cargar tus solicitudes. {error}")
         return
@@ -302,10 +298,10 @@ def client_requests(user):
         st.info("No hay solicitudes con ese estado.")
 
     for request in shown:
-        _client_request_card(request)
+        _client_request_card(request, claims)
 
 
-def _client_request_card(request):
+def _client_request_card(request, claims):
     rid = request["id"]
     raw = request["raw_status"]
 
@@ -381,7 +377,16 @@ def _client_request_card(request):
         if raw in ("PENDING", "ACCEPTED"):
             _cancel_flow(request)
 
-        # Etapa D: valoración y reclamo de un servicio finalizado · Etapa E: soporte
+        # ---------- Aceptada: pagar la visita con Webpay ----------
+        if raw == "ACCEPTED":
+            _visit_payment_block(request)
+
+        # ---------- Finalizada: evaluar y posventa ----------
+        if raw == "COMPLETED":
+            _rating_block(request)
+            _claim_block(request, claims.get(rid))
+
+        # Etapa E: soporte
 
 
 def _client_action(rid, name, success, kind="success"):
@@ -426,159 +431,137 @@ def _cancel_flow(request):
         st.rerun()
 
 
-def _rating_block(user, request):
+def _rating_block(request):
+    """Historia 006: el cliente evalúa al profesional (POST /api/ratings/). El backend no
+    permite consultar si ya se evaluó: se recuerda en la sesión y se confirma con su 400."""
     rid = request["id"]
-    rating = get_rating_for_request(rid)
+    rated = st.session_state.setdefault("_rated_visits", set())
 
-    if rating:
-        average = round(
-            (rating["quality"] + rating["punctuality"] + rating["treatment"]) / 3, 1
-        )
-        st.success(f"✓ Servicio evaluado · {stars(average)} {average}")
+    if rid in rated:
+        st.success("✓ Ya evaluaste este servicio. ¡Gracias!")
         return
 
-    st.markdown(f"#### ⭐ Evaluar servicio · {request['trade'] or request['service']}")
+    with st.expander("⭐ Evaluar el servicio"):
+        c1, c2, c3 = st.columns(3)
+        quality = c1.slider("Calidad", 1, 5, 5, key=f"rate_quality_{rid}")
+        punctuality = c2.slider("Puntualidad", 1, 5, 5, key=f"rate_punctuality_{rid}")
+        treatment = c3.slider("Trato", 1, 5, 5, key=f"rate_treatment_{rid}")
+        comment = st.text_area("Comentario (opcional)", max_chars=MAX_TEXTO, key=f"rate_comment_{rid}")
 
-    s1, s2, s3 = st.columns(3)
-    quality = s1.slider("Calidad", 1, 5, 5, key=f"quality_{rid}")
-    punctuality = s2.slider("Puntualidad", 1, 5, 5, key=f"punctuality_{rid}")
-    treatment = s3.slider("Trato", 1, 5, 5, key=f"treatment_{rid}")
-
-    comment = st.text_area("Comentario (opcional)", key=f"rating_comment_{rid}")
-
-    if st.button("Publicar evaluación", type="primary", key=f"save_rating_{rid}"):
-        conn = get_connection()
-
-        try:
-            cur = conn.execute(
-                """
-                INSERT INTO ratings
-                (request_id, client_id, professional_id, trade, quality,
-                 punctuality, treatment, comment, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    rid,
-                    user["id"],
-                    request["professional_id"],
-                    request["trade"] or request["service"],
-                    quality,
-                    punctuality,
-                    treatment,
-                    comment.strip(),
-                    now_str(),
-                ),
-            )
-            rating_id = cur.lastrowid
-            conn.commit()
-        except sqlite3.IntegrityError:
-            conn.rollback()
-            flash("Este servicio ya fue evaluado.", "warning")
+        if st.button("Enviar evaluación", type="primary", key=f"send_rating_{rid}"):
+            try:
+                requests_api.rate(rid, quality, punctuality, treatment, comment)
+            except api_client.ApiError as error:
+                if requests_api.already_rated(error):
+                    rated.add(rid)
+                    flash("Ya habías evaluado este servicio.", "info")
+                    st.rerun()
+                st.error(f"No se pudo enviar la evaluación. {error}")
+                return
+            rated.add(rid)
+            flash("Evaluación enviada. ¡Gracias por ayudar a otros clientes!")
             st.rerun()
-        finally:
-            conn.close()
 
-        audit(user["id"], "CREATE", "ratings", rating_id,
-              f"Evaluación de solicitud {rid}")
-        flash("Evaluación registrada. ¡Gracias por tu opinión!")
+
+def _claim_block(request, claim):
+    """Historia 009: reclamo de posventa de un servicio finalizado (POST /api/claims/)."""
+    rid = request["id"]
+
+    if claim:
+        st.info(f"Abriste el reclamo #{claim['id']} ({claim['status']}). Síguelo en «🛠️ Mis reclamos».")
+        return
+
+    with st.expander("🛠️ Abrir un reclamo de posventa"):
+        description = st.text_area(
+            "¿Qué problema tuviste con el servicio?",
+            max_chars=MAX_TEXTO,
+            key=f"claim_reason_{rid}",
+        )
+        if st.button("Enviar reclamo", key=f"send_claim_{rid}"):
+            if not description.strip():
+                st.warning("Debes describir el problema.")
+                return
+            try:
+                created = requests_api.create_claim(rid, description)
+            except api_client.ApiError as error:
+                st.error(f"No se pudo abrir el reclamo. {error}")
+                return
+            flash(f"Reclamo #{created['id']} enviado. El profesional y Overol lo revisarán.")
+            st.rerun()
+
+
+def _visit_payment_block(request):
+    """Pago de la visita con Webpay (sandbox), solo con la solicitud aceptada."""
+    rid = request["id"]
+    try:
+        payment = api_client.get_visit_payment(rid)
+    except api_client.ApiError as error:
+        payment = None if error.status == 404 else {"status": "?"}
+
+    if payment and payment.get("status") == "AUTHORIZED":
+        st.success(f"✓ Visita pagada (${_money(payment.get('amount'))}).")
+        return
+
+    pending = st.session_state.get(payments.PENDING_KEY)
+    if pending and pending.get("key") == f"visit_{rid}":
+        st.info("Tu pago está listo. Continúa en Webpay:")
+        payments.webpay_form(pending["url"], pending["token"], f"visit_{rid}")
+        if st.button("Cancelar y volver", key=f"visit_pay_cancel_{rid}"):
+            st.session_state.pop(payments.PENDING_KEY, None)
+            st.rerun()
+        return
+
+    if payment and payment.get("status") in ("REJECTED", "FAILED"):
+        st.caption(f"Último intento de pago: {payments.payment_status_text(payment.get('status'))}.")
+
+    if st.button("💳 Pagar la visita con Webpay", key=f"visit_pay_{rid}"):
+        try:
+            started = api_client.start_visit_payment(rid)
+        except api_client.ApiError as error:
+            st.error(f"No se pudo iniciar el pago. {error}")
+            return
+        st.session_state[payments.PENDING_KEY] = {"url": started["url"], "token": started["token"], "key": f"visit_{rid}"}
         st.rerun()
 
 
-def _claim_block(user, request, existing_claim_id):
-    """Posventa: disponible en servicios completados, hayan sido evaluados o no."""
-    rid = request["id"]
-
-    if existing_claim_id:
-        st.info(
-            f"🛠️ Ya registraste el reclamo #{existing_claim_id} para este servicio. "
-            "Puedes seguirlo en «Mis reclamos»."
-        )
+def _visit_payment_result():
+    """Vuelta de Webpay de un pago de visita: se muestra el estado real del backend."""
+    back = payments.pop_return("visit")
+    if not back or not back.get("visit_id"):
         return
-
-    with st.expander("🛠️ ¿Hubo un problema? Abrir un reclamo de posventa"):
-        reason = st.text_area("Describe el problema", key=f"claim_reason_{rid}")
-
-        if st.button("Enviar reclamo", key=f"send_claim_{rid}"):
-            if not reason.strip():
-                st.warning("Debes describir el problema.")
-                return
-
-            conn = get_connection()
-            cur = conn.execute(
-                """
-                INSERT INTO claims
-                (request_id, client_id, professional_id, reason,
-                 status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 'Abierto', ?, ?)
-                """,
-                (
-                    rid,
-                    user["id"],
-                    request["professional_id"],
-                    reason.strip(),
-                    now_str(),
-                    now_str(),
-                ),
-            )
-            claim_id = cur.lastrowid
-            conn.commit()
-            conn.close()
-
-            audit(user["id"], "CREATE", "claims", claim_id,
-                  f"Reclamo de solicitud {rid}")
-            flash("Reclamo enviado. El profesional será notificado.")
-            st.rerun()
-
-
-def client_ratings(user):
-    section("⭐ Mis evaluaciones")
-
-    conn = get_connection()
-    ratings = conn.execute(
-        """
-        SELECT
-            r.*,
-            u.name AS professional_name
-        FROM ratings r
-        JOIN professionals p ON p.id = r.professional_id
-        JOIN users u ON u.id = p.user_id
-        WHERE r.client_id = ?
-        ORDER BY r.id DESC
-        """,
-        (user["id"],),
-    ).fetchall()
-    conn.close()
-
-    if not ratings:
-        empty_state(
-            "⭐",
-            "Todavía no has publicado evaluaciones",
-            "Cuando completes un servicio podrás evaluarlo desde «Mis solicitudes».",
-        )
+    st.session_state.pop(payments.PENDING_KEY, None)
+    try:
+        payment = api_client.get_visit_payment(back["visit_id"])
+    except api_client.ApiError as error:
+        st.error(f"No se pudo confirmar el pago de la solicitud #{back['visit_id']}. {error}")
         return
+    if payment.get("status") == "AUTHORIZED":
+        st.success(f"✅ Pago confirmado para la solicitud #{back['visit_id']} (${_money(payment.get('amount'))}).")
+    elif payment.get("status") == "PENDING":
+        st.info("Tu pago todavía figura pendiente. Revisa de nuevo en unos minutos.")
+    else:
+        st.error(
+            f"El pago de la solicitud #{back['visit_id']} no se completó "
+            f"(estado: {payments.payment_status_text(payment.get('status'))}). No se hizo ningún cargo."
+        )
 
-    for rating in ratings:
-        with st.container(border=True):
-            average = round(
-                (rating["quality"] + rating["punctuality"] + rating["treatment"]) / 3,
-                1,
-            )
 
-            st.markdown(f"### {rating['professional_name']} · {rating['trade'] or 'Servicio'}")
-            st.markdown(f"**{stars(average)}  {average}**")
-
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Calidad", f"{rating['quality']}/5")
-            m2.metric("Puntualidad", f"{rating['punctuality']}/5")
-            m3.metric("Trato", f"{rating['treatment']}/5")
-
-            st.write(rating["comment"] or "Sin comentario.")
+def _money(value):
+    try:
+        return f"{int(float(value)):,}".replace(",", ".")
+    except (TypeError, ValueError):
+        return str(value or "")
 
 
 def client_claims(user):
+    """Historia 009: reclamos del cliente (GET /api/claims/) y escalar a Overol."""
     section("🛠️ Mis reclamos")
 
-    claims = get_claims_for_client(user["id"])
+    try:
+        claims = requests_api.list_claims()
+    except api_client.ApiError as error:
+        st.error(f"No se pudieron cargar tus reclamos. {error}")
+        return
 
     if not claims:
         empty_state("🛠️", "No tienes reclamos registrados", "Si un servicio no salió bien, puedes abrir un reclamo desde «Mis solicitudes».")
@@ -587,22 +570,21 @@ def client_claims(user):
     for claim in claims:
         with st.container(border=True):
             status_badge(claim["status"])
-            st.markdown(
-                f"### Reclamo #{claim['id']}"
-            )
-            st.write(
-                f"**Profesional:** {claim['professional_name']}"
-            )
-            st.write(
-                f"**Motivo:** {claim['reason']}"
-            )
+            st.markdown(f"### Reclamo #{claim['id']}")
+            st.caption(f"Solicitud #{claim['visit']} · abierto el {claim['created_at']}")
+            st.write(f"**Motivo:** {claim['description']}")
 
             if claim["professional_response"]:
-                st.write(
-                    f"**Respuesta del profesional:** {claim['professional_response']}"
-                )
+                st.write(f"**Respuesta del profesional:** {claim['professional_response']}")
+            if claim["admin_resolution"]:
+                st.write(f"**Resolución de Overol:** {claim['admin_resolution']}")
 
-            if claim["response"]:
-                st.write(
-                    f"**Mediación de Overol:** {claim['response']}"
-                )
+            if claim["raw_status"] in ("OPEN", "PROFESSIONAL_RESPONDED"):
+                if st.button("Pedir mediación de Overol", key=f"escalate_claim_{claim['id']}"):
+                    try:
+                        requests_api.claim_action(claim["id"], "escalate")
+                    except api_client.ApiError as error:
+                        st.error(f"No se pudo escalar el reclamo. {error}")
+                    else:
+                        flash("Reclamo enviado a mediación de Overol.")
+                        st.rerun()
