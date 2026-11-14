@@ -63,6 +63,18 @@ class Respuesta:
         return self._data
 
 
+class Archivo:
+    """Respuesta binaria (FileResponse del backend) para la descarga de la cédula."""
+
+    def __init__(self, data, kind, name):
+        self.status_code = 200
+        self.content = data
+        self.headers = {"Content-Type": kind, "Content-Disposition": f'attachment; filename="{name}"'}
+
+    def json(self):
+        raise ValueError("respuesta binaria")
+
+
 class BackendSimulado:
     def __init__(self):
         self.ids = count(1)
@@ -263,6 +275,15 @@ class BackendSimulado:
                 return self._start_visit_payment(user, vid)
             if method == "GET" and not match.group(2):
                 return self._visit_payment(user, vid)
+        match = re.fullmatch(r"/auth/verification/(\d+)/(\w+)/", path)
+        if method == "POST" and match and user:
+            return self._decide_verification(user, int(match.group(1)), match.group(2), body)
+        match = re.fullmatch(r"/auth/admin/accounts/(\d+)/status/", path)
+        if method == "POST" and match and user:
+            return self._account_status(user, int(match.group(1)), body)
+        match = re.fullmatch(r"(?:/auth)?/admin/verifications/(\d+)/document/", path)
+        if method == "GET" and match and user:
+            return self._document(user, int(match.group(1)), query.get("side", "front"))
         match = re.fullmatch(r"(?:/catalog)?/professionals/me/trades/(\d+)/", path)
         if match and user and method in ("PATCH", "DELETE"):
             return self._change_trade(user, int(match.group(1)), method, body)
@@ -1071,6 +1092,67 @@ class BackendSimulado:
         self.progress.add(key)
         return Respuesta(201, {"id": len(self.progress), "content": body.get("content"),
                                "completed_at": datetime.now(timezone.utc).isoformat()})
+
+    # ---------------- Administración (authentication/views.py) ----------------
+    def _profile_by_pk(self, pk):
+        return next((u for u in self.users.values() if u["professional"] and u["professional"]["id"] == pk), None)
+
+    def _decide_verification(self, user, pk, decision, body):
+        if user["role"] != "ADMIN":
+            return Respuesta(403, {"detail": "Solo un administrador puede resolver verificaciones."})
+        owner = self._profile_by_pk(pk)
+        if not owner:
+            return Respuesta(404, {"detail": "No encontrado."})  # el backend real responde 500 (get sin 404)
+        pro = owner["professional"]
+        reason = (body.get("reason") or "").strip()
+        if decision not in ("approve", "reject") or (decision == "reject" and not reason):
+            return Respuesta(400, {"detail": "Una decisión inválida o un motivo faltante."})
+        if decision == "approve" and not (pro.get("id_front") and pro.get("id_back")):
+            return Respuesta(400, {"detail": "El profesional debe cargar ambos lados de su cédula antes de ser aprobado."})
+        pro["verification_status"] = "APPROVED" if decision == "approve" else "REJECTED"
+        self.notifications_add(owner["id"], "Resultado de verificación", reason or "Tu identidad fue aprobada.")
+        self.audit_log.append((f"verification_{decision}", user["id"], pk))
+        messages = pro.get("messages") or []
+        if messages:
+            messages[-1].update(admin_response=reason or "Verificación aprobada.",
+                                resolved_at=datetime.now(timezone.utc).isoformat())
+        return Respuesta(200, {"status": pro["verification_status"]})
+
+    def _account_status(self, user, pk, body):
+        if user["role"] != "ADMIN":
+            return Respuesta(403, {"detail": "Solo un administrador puede cambiar estados de cuenta."})
+        target = self.users.get(pk)
+        if not target:
+            return Respuesta(404, {"detail": "No encontrado."})  # el backend real responde 500
+        status, reason = body.get("status"), (body.get("reason") or "").strip()
+        if status not in ("ACTIVE", "SUSPENDED", "BLOCKED", "DEACTIVATED") or not reason:
+            return Respuesta(400, {"detail": "El estado y el motivo son obligatorios."})
+        target["account_status"] = status
+        self.audit_log.append(("account_status_change", user["id"], pk))
+        self.notifications_add(pk, "Estado de cuenta actualizado", reason)
+        return Respuesta(200, {"id": pk, "account_status": status})
+
+    def _document(self, user, pk, side):
+        if user["role"] != "ADMIN":
+            return Respuesta(403, {"detail": "Solo un administrador puede acceder a documentos de verificación."})
+        owner = self._profile_by_pk(pk)
+        name = (owner or {}).get("professional", {}).get("id_back" if side == "back" else "id_front") if owner else None
+        if side not in ("front", "back"):
+            return Respuesta(400, {"detail": "side debe ser front o back."})
+        if not name:
+            return Respuesta(404, {"detail": "El documento solicitado no existe."})
+        kind = "application/pdf" if name.endswith(".pdf") else "image/png"
+        if kind == "application/pdf":
+            data = b"%PDF-1.4 demo %%EOF"
+        else:
+            import io
+
+            from PIL import Image
+
+            buffer = io.BytesIO()
+            Image.new("RGB", (4, 4), "white").save(buffer, "PNG")
+            data = buffer.getvalue()
+        return Archivo(data, kind, name)
 
     # ---------------- Catálogo ----------------
     def _categories(self, *_):

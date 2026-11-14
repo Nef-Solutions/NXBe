@@ -8,7 +8,8 @@ Anota en cada caso ✅ o ❌ y lo que viste.
 **Etapa C2:** suscripción con Webpay, cédula, recuperación con código, oficios del backend y asistente (casos S1 a S12).
 **Etapa D:** valoraciones, reclamos y pago de visitas (casos D1 a D8).
 **Etapa E:** notificaciones y tickets de soporte (casos E1 a E5).
-**Etapa F:** perfil, reputación, oficios y desarrollo profesional (casos F1 a F6, al final).
+**Etapa F:** perfil, reputación, oficios y desarrollo profesional (casos F1 a F6).
+**Etapa G:** panel del admin (casos G1 a G6, al final).
 
 ## Preparación (una vez)
 
@@ -68,7 +69,7 @@ cd "C:\Users\benja\Documents\NXBe_repo\Overol Front"
 | 20 | Sin «Mantener sesión» | Entra con la casilla desmarcada → recarga la página | Al recargar vuelve a la vista de visitante |
 | 21 | Cuenta desactivada | Con un cliente adentro, en `/admin/` → Users desmarca **Active** (o `account_status` = DEACTIVATED con Active desmarcado) → espera 1 minuto y haz clic en cualquier sección | Se cierra la sesión con el aviso «Tu sesión terminó». Si intenta entrar: «Correo o contraseña incorrectos» |
 | 21b | Cuenta suspendida | Igual, pero solo `account_status` = SUSPENDED (Active marcado) | **Limitación conocida del backend:** la sesión abierta sigue funcionando hasta que vence el token de renovación, porque SimpleJWT solo revisa `is_active`. Un ingreso nuevo sí se rechaza. Está en el pedido a Nefi |
-| 22 | Admin | Entra con `admin@demo.overol.cl` | Solo aparece «Quiénes somos», con el aviso de usar `/admin/` de Django mientras se conecta el panel |
+| 22 | Admin | Entra con `admin@demo.overol.cl` | Ver la etapa G (casos G1 a G6) |
 | 23 | Backend apagado | Detén runserver y recarga el front | La portada abre sin cifras ni destacados. «Profesionales» muestra «No se pudo cargar el catálogo». Al intentar ingresar: «No se pudo conectar con el servidor de Overol» |
 | 24 | Sin SQLite | Al terminar todo lo anterior | La carpeta del front sigue **sin** `overol.db` |
 
@@ -148,4 +149,17 @@ Necesitas una solicitud **Finalizada** entre `cliente1` y `profesional1` (casos 
 | F4 | Agregar un oficio | «Agregar un oficio» → Electricidad con una especialidad | Aparece en la lista y el profesional sale al filtrar por Electricidad en el catálogo |
 | F5 | Desactivar un oficio | «Desactivar oficio» | Queda «⛔ desactivado» y deja de aparecer en ese filtro del catálogo. No se puede reactivar (falta en el backend) |
 | F6 | Desarrollo profesional | «🎓 Desarrollo profesional» → abre un contenido → «Marcar como completado» | Contenidos por módulo (Tributario, Seguridad, Gestión), con los 9 de seguridad que trae la migración. Queda ✅ y en `/admin/` → Content progress se registra |
+
+## Etapa G: panel del admin
+
+Entra con `admin@demo.overol.cl` (rol ADMIN y `is_staff`, lo deja así `seed_demo`).
+
+| # | Caso | Pasos | Resultado esperado |
+|---|---|---|---|
+| G1 | Barra | Entra como admin | Indicadores, Verificación, Usuarios, Reclamos, Soporte y Quiénes somos. **No** aparecen Moderación, Contenidos ni Trazabilidad (no tienen endpoint) |
+| G2 | Indicadores | «📊 Indicadores» | Totales de reclamos y tickets, y gráficos por estado, iguales a lo que muestra `/admin/` |
+| G3 | Verificación | «🪪 Verificación» → escribe el id del perfil del profesional del caso S7 (en `/admin/` → Professional profiles) → «Ver frente» y «Ver reverso» → «Aprobar» | Muestra o descarga la cédula. Sin los dos lados: «debe cargar ambos lados…». Al aprobar: el perfil pasa a APPROVED y el profesional recibe «Resultado de verificación». Rechazar exige motivo |
+| G4 | Estado de una cuenta | «👥 Usuarios» → id de `cliente2` → **Desactivada** con motivo | En `/admin/` → Users: DEACTIVATED. `cliente2` no puede ingresar y recibe la notificación. Vuelve a dejarla Activa |
+| G5 | Resolver un reclamo | «🛠️ Reclamos» → el reclamo del caso D4 → escribe la resolución → «Resolver reclamo» | Pasa a **Resuelto**. `cliente1` ve la «Resolución de Overol». En `/admin/` → Admin audit logs: `resolve_claim` |
+| G6 | Bandeja de soporte | «💬 Soporte» → «Abiertos» → el ticket del caso E3 → responde | Pasa a **Resuelto** y el cliente recibe «Ticket resuelto». Aparece en el filtro «Resueltos» |
 

@@ -17,7 +17,8 @@ ROLES = {
                     ["📋 Solicitudes", "🔔 Notificaciones", "👤 Mi perfil", "📍 Cobertura", "💳 Suscripción",
                      "🪪 Verificación", "🛠️ Reclamos", "🎓 Desarrollo profesional", "🤖 Asistente",
                      "ℹ️ Quiénes somos"]),
-    "admin": (ADMIN, "admin_navigation", ["ℹ️ Quiénes somos"]),
+    "admin": (ADMIN, "admin_navigation",
+              ["📊 Indicadores", "🪪 Verificación", "👥 Usuarios", "🛠️ Reclamos", "💬 Soporte", "ℹ️ Quiénes somos"]),
 }
 
 for role, (email, nav, options) in ROLES.items():
@@ -62,9 +63,9 @@ check("Tu identidad está verificada" in texts(at), "[profesional] aprobado: lo 
 at = new_app(front, "pendiente@demo.overol.cl", professional_navigation="👤 Mi perfil")
 check("pendiente de verificación" in texts(at), "[profesional] pendiente: aviso de revisión")
 
-# ---------- Admin: mientras el panel se conecta, se usa /admin/ de Django ----------
+# ---------- Admin: parte en Indicadores ----------
 at = new_app(front, ADMIN)
-check("/admin/" in texts(at) and not keys(at, "admin_approve_"), "[admin] aviso del administrador de Django")
+check("Indicadores de la plataforma" in md(at), "[admin] parte en Indicadores")
 
 # ---------- Cerrar sesión ----------
 at = new_app(front, CLIENTE)

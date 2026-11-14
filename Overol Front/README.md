@@ -16,7 +16,8 @@ La conexión a la API avanza por etapas. Las pantallas que todavía no están co
 | D · Valoraciones, calificación al cliente, reclamos de posventa y pago de visitas con Webpay | ✅ conectada |
 | E · Notificaciones y tickets de soporte | ✅ conectada |
 | F · Panel del profesional: vista pública y reputación, oficios y desarrollo profesional | ✅ conectada |
-| G · Panel del admin | ⏳ pendiente (oculto) |
+| G · Panel del admin: indicadores de reclamos y tickets, verificación con la cédula, estado de cuentas, reclamos y bandeja de soporte | ✅ conectada |
+| Moderación de reseñas, contenidos del centro profesional y bitácora | ⛔ ocultas: el backend no tiene endpoint (pedido a Nefi) |
 
 ---
 
@@ -92,7 +93,7 @@ Por defecto usan `python` del PATH para el front y `py -3.12` para crear el ento
 - **Nombres:** nombre y apellido solo admiten letras, espacios y apóstrofes («Ana María», no «Ana-María»).
 - **Solicitudes:** para solicitar, el profesional debe tener horario (se configura en «📍 Cobertura») y al menos una especialidad en el oficio elegido. Hoy `seed_demo` no carga horario.
 - **Vencimiento:** el front muestra el plazo que entrega el backend (`expires_at`). Hoy son 30 días, no 72 horas (pedido a Nefi).
-- **Administración:** mientras se conecta el panel (etapa G), el admin aprueba verificaciones y gestiona cuentas en `/admin/` de Django.
+- **Administración:** el backend no entrega la lista de verificaciones pendientes ni de usuarios: el panel pide el id (se ve en `/admin/` de Django). Moderación, contenidos y bitácora se hacen en `/admin/` hasta que existan sus endpoints.
 - **Pruebas:** automáticas en `tests/` (contra un backend simulado) y manuales en `tests/PRUEBAS_MANUALES.md`.
 
 ---
