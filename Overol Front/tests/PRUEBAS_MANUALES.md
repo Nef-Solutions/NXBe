@@ -6,7 +6,8 @@ Anota en cada caso ✅ o ❌ y lo que viste.
 **Etapa B:** login, bloqueo, registro, completar perfil, Mi perfil, contraseñas y sesión recordada (casos 1 a 24).
 **Etapa C:** Cobertura y solicitudes (casos C1 a C17).
 **Etapa C2:** suscripción con Webpay, cédula, recuperación con código, oficios del backend y asistente (casos S1 a S12).
-**Etapa D:** valoraciones, reclamos y pago de visitas (casos D1 a D8, al final).
+**Etapa D:** valoraciones, reclamos y pago de visitas (casos D1 a D8).
+**Etapa E:** notificaciones y tickets de soporte (casos E1 a E5, al final).
 
 ## Preparación (una vez)
 
@@ -125,4 +126,14 @@ Necesitas una solicitud **Finalizada** entre `cliente1` y `profesional1` (casos 
 | D6 | Mediación y resolución | `cliente1` → «Pedir mediación de Overol». Luego `admin@demo.overol.cl` lo resuelve: en esta etapa, desde `/admin/` o con `POST /api/claims/{id}/resolve/` | Pasa a **En mediación** y, al resolverse, a **Resuelto** con la «Resolución de Overol» |
 | D7 | Pagar una visita | Solicitud **Aceptada** de un profesional con tarifa → «💳 Pagar la visita con Webpay» → paga en Webpay (sandbox) | Vuelve a «Mis solicitudes» con «Pago confirmado para la solicitud #N» y la tarjeta dice «Visita pagada». En `/admin/` → Payment transactions: AUTHORIZED con `visit` |
 | D8 | Sin tarifa | Igual con un profesional de tarifa 0 | «El profesional no tiene una tarifa de visita válida.» |
+
+## Etapa E: notificaciones y tickets de soporte
+
+| # | Caso | Pasos | Resultado esperado |
+|---|---|---|---|
+| E1 | Aviso de una acción | `profesional1` acepta una solicitud de `cliente1` → `cliente1` mira su barra | «🔔 Notificaciones (1)». En la pantalla: «Solicitud aceptada», marcada como **Nueva**, con el número de la solicitud |
+| E2 | Marcar como leída | «Marcar como leída» en una y luego «Marcar todas como leídas» | El contador baja de inmediato. En `/admin/` → Notifications quedan con `is_read` |
+| E3 | Abrir un ticket | `cliente1` → «Mis solicitudes» → «💬 Contactar a soporte» → asunto y mensaje → «Abrir ticket» | «Ticket #N abierto». Aparece **Abierto** dentro de la solicitud. En `/admin/` → Support tickets: con la solicitud y el usuario |
+| E4 | Respuesta de soporte | Resuelve el ticket con `POST /api/tickets/{id}/resolve/` (o desde el panel del admin cuando esté la etapa G) | `cliente1` ve «Soporte Overol» con la respuesta, el ticket **Resuelto** y una notificación «Ticket resuelto» |
+| E5 | Cada uno lo suyo | `profesional1` revisa la misma solicitud | No ve el ticket del cliente. Puede abrir el suyo |
 

@@ -12,10 +12,10 @@ ROLES = {
     "visitante": (None, "visitor_navigation", ["🏠 Inicio", "🔎 Profesionales", "ℹ️ Quiénes somos"]),
     "cliente": (CLIENTE, "client_navigation",
                 ["🏠 Inicio", "🔎 Buscar profesionales", "📋 Mis solicitudes", "🤖 Asistente", "🛠️ Mis reclamos",
-                 "👤 Mi perfil", "ℹ️ Quiénes somos"]),
+                 "🔔 Notificaciones", "👤 Mi perfil", "ℹ️ Quiénes somos"]),
     "profesional": (PRO, "professional_navigation",
-                    ["📋 Solicitudes", "👤 Mi perfil", "📍 Cobertura", "💳 Suscripción", "🪪 Verificación",
-                     "🛠️ Reclamos", "🤖 Asistente", "ℹ️ Quiénes somos"]),
+                    ["📋 Solicitudes", "🔔 Notificaciones", "👤 Mi perfil", "📍 Cobertura", "💳 Suscripción",
+                     "🪪 Verificación", "🛠️ Reclamos", "🤖 Asistente", "ℹ️ Quiénes somos"]),
     "admin": (ADMIN, "admin_navigation", ["ℹ️ Quiénes somos"]),
 }
 

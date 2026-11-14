@@ -86,6 +86,7 @@ class BackendSimulado:
         self.ratings = []
         self.claims = {}
         self.notifications = []
+        self.tickets = {}
         self.audit_log = []
         self.caido = False
         self.page_size_max = 50
@@ -225,6 +226,8 @@ class BackendSimulado:
             ("POST", "/ratings/"): self._rate,
             ("GET", "/claims/"): self._list_claims,
             ("POST", "/claims/"): self._create_claim,
+            ("GET", "/notifications/"): self._list_notifications,
+            ("POST", "/tickets/"): self._create_ticket,
         }
         for prefix in ("/professionals/me/availability/", "/catalog/professionals/me/availability/"):
             protected[("GET", prefix)] = lambda u, b: self._availability(u, b, "GET")
@@ -246,6 +249,14 @@ class BackendSimulado:
                 return self._start_visit_payment(user, vid)
             if method == "GET" and not match.group(2):
                 return self._visit_payment(user, vid)
+        if method == "GET" and path == "/tickets/" and user:
+            return self._list_tickets(user, query)
+        match = re.fullmatch(r"/notifications/(\d+)/read/", path)
+        if method == "POST" and match and user:
+            return self._read_notification(user, int(match.group(1)))
+        match = re.fullmatch(r"/tickets/(\d+)/resolve/", path)
+        if method == "POST" and match and user:
+            return self._resolve_ticket(user, int(match.group(1)), body)
         match = re.fullmatch(r"/claims/(\d+)/(\w+)/", path)
         if method == "POST" and match and user:
             return self._claim_action(user, int(match.group(1)), match.group(2), body)
@@ -581,10 +592,12 @@ class BackendSimulado:
         if not only(pro_user["id"] if action in professional_actions else visit["client"]):
             return Respuesta(403, {"detail": "No tienes permisos para esta solicitud."})
 
+        client_id, pro_id = visit["client"], pro_user["id"]
         if action == "accept":
             if visit["status"] != "PENDING":
                 return conflict("Solo se pueden aceptar solicitudes pendientes.")
             visit["status"] = "ACCEPTED"
+            self.notifications_add(client_id, "Solicitud aceptada", "El profesional aceptó tu solicitud.", vid)
         elif action == "reject":
             reason = body.get("reason")
             if not reason or not str(reason).strip():
@@ -594,10 +607,12 @@ class BackendSimulado:
             if visit["status"] != "PENDING":
                 return conflict("Solo se pueden rechazar solicitudes pendientes.")
             visit["status"], visit["rejection_reason"] = "REJECTED", reason
+            self.notifications_add(client_id, "Solicitud rechazada", reason, vid)
         elif action == "cancel":
             if visit["status"] not in ("PENDING", "ACCEPTED"):
                 return conflict("Solo se pueden cancelar solicitudes pendientes o aceptadas.")
             visit.update(status="CANCELLED", cancelled_by="CLIENT", cancel_reason=(body.get("reason") or "").strip()[:500])
+            self.notifications_add(pro_id, "Solicitud cancelada", "El cliente canceló la solicitud.", vid)
         elif action == "cancel_professional":
             reason = (body.get("reason") or "").strip()
             if visit["status"] != "ACCEPTED":
@@ -605,16 +620,19 @@ class BackendSimulado:
             if not reason or len(reason) > 500:
                 return conflict("El motivo debe tener entre 1 y 500 caracteres.")
             visit.update(status="CANCELLED", cancelled_by="PROFESSIONAL", cancel_reason=reason)
+            self.notifications_add(client_id, "Solicitud cancelada por el profesional", reason, vid)
         elif action == "finish":
             if visit["status"] != "ACCEPTED":
                 return conflict("Solo se pueden finalizar servicios aceptados.")
             visit.update(status="PROFESSIONAL_FINISHED", professional_confirmed_at=now)
+            self.notifications_add(client_id, "Confirma la finalización", "El profesional informó que terminó el servicio.", vid)
             if visit["client_confirmed_at"]:
                 visit.update(status="COMPLETED", completed_at=now)
         elif action == "confirm":
             if visit["status"] not in ("ACCEPTED", "PROFESSIONAL_FINISHED"):
                 return conflict("El cliente solo puede confirmar un servicio activo.")
             visit["client_confirmed_at"] = now
+            self.notifications_add(pro_id, "Servicio confirmado", "El cliente confirmó la finalización.", vid)
             if visit["professional_confirmed_at"]:
                 visit.update(status="COMPLETED", completed_at=now)
         return Respuesta(200, self._visit_data(visit, user))
@@ -914,6 +932,69 @@ class BackendSimulado:
         self.notifications.append({"id": len(self.notifications) + 1, "recipient": user_id, "title": title,
                                    "message": message, "related_visit": visit, "is_read": False,
                                    "created_at": datetime.now(timezone.utc).isoformat()})
+
+    # ---------------- Notificaciones y tickets (apps/visits) ----------------
+    def _list_notifications(self, user, _):
+        mine = [n for n in self.notifications if n["recipient"] == user["id"]]
+        return Respuesta(200, [{k: n[k] for k in ("id", "title", "message", "related_visit", "is_read", "created_at")}
+                               for n in sorted(mine, key=lambda n: n["id"], reverse=True)])
+
+    def _read_notification(self, user, nid):
+        item = next((n for n in self.notifications if n["id"] == nid and n["recipient"] == user["id"]), None)
+        if not item:
+            return Respuesta(404, {"detail": "No encontrado."})
+        item["is_read"] = True
+        return Respuesta(200, {k: item[k] for k in ("id", "title", "message", "related_visit", "is_read", "created_at")})
+
+    def _ticket_data(self, ticket):
+        return {k: ticket[k] for k in ("id", "visit", "subject", "description", "response", "status", "created_at", "updated_at")}
+
+    def _list_tickets(self, user, query):
+        mine = list(self.tickets.values()) if user["role"] == "ADMIN" else [
+            t for t in self.tickets.values() if t["user"] == user["id"]]
+        if query.get("status"):
+            mine = [t for t in mine if t["status"] == query["status"]]
+        return Respuesta(200, [self._ticket_data(t) for t in sorted(mine, key=lambda t: t["id"], reverse=True)])
+
+    def _create_ticket(self, user, body):
+        errors = {}
+        if body.get("visit") in (None, ""):
+            errors["visit"] = ["Este campo es requerido."]
+        if not (body.get("subject") or "").strip():
+            errors["subject"] = ["Este campo no puede estar en blanco."]
+        elif len(body["subject"]) > 160:
+            errors["subject"] = ["Asegúrese de que este campo no tenga más de 160 caracteres."]
+        if not (body.get("description") or "").strip():
+            errors["description"] = ["Este campo no puede estar en blanco."]
+        elif len(body["description"]) > 500:
+            errors["description"] = ["Asegúrese de que este campo no tenga más de 500 caracteres."]
+        visit = self.visits.get(body.get("visit"))
+        if "visit" not in errors and not visit:
+            errors["visit"] = [f'Clave primaria "{body.get("visit")}" inválida - objeto no existe.']
+        if errors:
+            return Respuesta(400, errors)
+        if user["id"] not in (visit["client"], self._pro_user(visit["professional"])["id"]):
+            return Respuesta(400, {"visit": ["La solicitud no pertenece al usuario."]})
+        tid = len(self.tickets) + 1
+        now = datetime.now(timezone.utc).isoformat()
+        self.tickets[tid] = {"id": tid, "visit": visit["id"], "user": user["id"], "subject": body["subject"].strip(),
+                             "description": body["description"].strip(), "response": "", "status": "OPEN",
+                             "created_at": now, "updated_at": now}
+        return Respuesta(201, self._ticket_data(self.tickets[tid]))
+
+    def _resolve_ticket(self, user, tid, body):
+        if user["role"] != "ADMIN":
+            return Respuesta(403, {"detail": "Solo un administrador puede resolver tickets."})
+        ticket = self.tickets.get(tid)
+        if not ticket:
+            return Respuesta(404, {"detail": "No encontrado."})
+        if not (body.get("response") or "").strip():
+            return Respuesta(400, {"detail": "La respuesta es obligatoria."})
+        ticket.update(response=body["response"].strip(), status="RESOLVED",
+                      updated_at=datetime.now(timezone.utc).isoformat())
+        self.audit_log.append(("resolve_ticket", user["id"], tid))
+        self.notifications_add(ticket["user"], "Ticket resuelto", ticket["response"])
+        return Respuesta(200, self._ticket_data(ticket))
 
     # ---------------- Catálogo ----------------
     def _categories(self, *_):
