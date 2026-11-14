@@ -130,9 +130,9 @@ def personal_questions_screen(user):
     return True
 
 
-def _change_password_form():
+def _change_password_form(expanded=False):
     """Cambio de contraseña (POST /auth/password/change/)."""
-    with st.expander("🔑 Cambiar contraseña"):
+    with st.expander("🔑 Cambiar contraseña", expanded=expanded):
         with st.form("change_password_form", clear_on_submit=True):
             current = st.text_input("Contraseña actual", type="password", key="pwd_current")
             new = st.text_input(
@@ -171,8 +171,16 @@ def _change_password_form():
 
 
 def user_profile_page(user):
-    """Historia 006: el usuario modifica sus datos; nombre, RUT y correo quedan bloqueados."""
-    section("👤 Mi perfil personal")
+    """Historia 006: el usuario modifica sus datos; nombre, RUT y correo quedan bloqueados.
+    Desde el menú lateral se puede abrir solo «Editar datos» o solo «Cambiar contraseña»."""
+    focus = st.session_state.get(PROFILE_FOCUS_KEY, "perfil")
+
+    if focus == "contrasena":
+        section("🔑 Cambiar contraseña")
+        _change_password_form(expanded=True)
+        return
+
+    section("✏️ Editar mis datos" if focus == "editar" else "👤 Mi perfil personal")
 
     profile_user_header(user)
 
@@ -218,7 +226,8 @@ def user_profile_page(user):
             flash("Tus datos fueron actualizados.")
             st.rerun()
 
-    _change_password_form()
+    if focus != "editar":
+        _change_password_form()
 
 
 def open_professional(professional_id):
@@ -462,17 +471,56 @@ def _request_form(viewer, professional):
     st.rerun()
 
 
+PROFILE_FOCUS_KEY = "_profile_focus"
+
+# Opciones de la cuenta en el menú lateral: (etiqueta, destino)
+ACCOUNT_OPTIONS = [
+    ("👤 Mi perfil", "perfil"),
+    ("✏️ Editar datos", "editar"),
+    ("🔑 Cambiar contraseña", "contrasena"),
+]
+PROFESSIONAL_OPTIONS = [
+    ("💳 Suscripción", "💳 Suscripción"),
+    ("🪪 Verificación", "🪪 Verificación"),
+]
+NAV_KEYS = {"cliente": "client_navigation", "profesional": "professional_navigation", "admin": "admin_navigation"}
+PREV_KEYS = {"cliente": "_client_prev_menu", "profesional": "_pro_prev_menu", "admin": "_admin_prev_menu"}
+
+
+def _go_account(role, target):
+    """Callback del menú lateral: abre la pantalla elegida (antes de redibujar la barra)."""
+    nav, prev = NAV_KEYS[role], PREV_KEYS[role]
+    if target in ("perfil", "editar", "contrasena"):
+        st.session_state[PROFILE_FOCUS_KEY] = target
+        if role != "admin":  # el admin ve su perfil dentro de la sección en que está
+            st.session_state[nav] = "👤 Mi perfil"
+    else:
+        st.session_state.pop(PROFILE_FOCUS_KEY, None)
+        st.session_state[nav] = target
+    # Se marca como sección vigente para que el cambio de sección no descarte la elección
+    st.session_state[prev] = st.session_state.get(nav)
+    close_professional()
+
+
 def sidebar(user):
     with st.sidebar:
         st.markdown("## 🦺 Overol")
+        st.write(f"Hola, **{user['name']}**")
+        st.caption(f"Rol: {ROLES.get(user['role'], user['role'])}")
 
-        st.write(
-            f"Hola, **{user['name']}**"
-        )
+        st.divider()
+        st.markdown("##### Mi cuenta")
 
-        st.caption(
-            f"Rol: {ROLES.get(user['role'], user['role'])}"
-        )
+        options = ACCOUNT_OPTIONS + (PROFESSIONAL_OPTIONS if user["role"] == "profesional" else [])
+        with st.container(key="side_menu"):
+            for label, target in options:
+                st.button(
+                    label,
+                    key=f"side_{target.split(' ')[-1].lower()}",
+                    use_container_width=True,
+                    on_click=_go_account,
+                    args=(user["role"], target),
+                )
 
         st.divider()
 
@@ -486,30 +534,3 @@ def sidebar(user):
             flash("Sesión cerrada correctamente.", "info")
 
             st.rerun()
-
-        st.divider()
-
-        st.markdown("### 📌 Requisitos contemplados")
-
-        st.caption("RF/Epic 001 · Registro y verificación")
-        st.caption("RF/Epic 002 · Búsqueda")
-        st.caption("RF/Epic 003 · Chatbot")
-        st.caption("RF/Epic 004 · Solicitud de visita")
-        st.caption("RF/Epic 005 · Cobertura")
-        st.caption("RF/Epic 006 · Reputación")
-        st.caption("RF/Epic 007 · Capacitación")
-        st.caption("RF/Epic 008 · Administración")
-        st.caption("RF/Epic 009 · Posventa")
-
-        st.divider()
-
-        st.markdown("### 🔐 RNF contemplados")
-
-        st.caption("Autenticación")
-        st.caption("Roles")
-        st.caption("Protección de credenciales")
-        st.caption("Separación público/privado")
-        st.caption("Integridad")
-        st.caption("Persistencia")
-        st.caption("Trazabilidad")
-        st.caption("Modularidad")

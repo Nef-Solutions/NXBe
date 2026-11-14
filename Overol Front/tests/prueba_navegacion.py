@@ -78,4 +78,55 @@ check(any(b == {"refresh": refresh} for _, _, b in calls("POST", "/auth/logout/"
 check("api_access" not in at.session_state and "me" not in at.session_state, "[cliente] no quedan tokens ni datos en la sesión")
 check("Clara Pérez" not in md(at), "[cliente] tras cerrar sesión no se muestran datos de la cuenta")
 
+# ---------- Menú lateral: opciones de la cuenta según el rol ----------
+def side(at):
+    return [b.key for b in at.sidebar.button]
+
+
+def widget_keys(at):
+    return {w.key for w in list(at.text_input) + list(at.selectbox)}
+
+
+at = new_app(front)
+check(not [k for k in side(at) if (k or "").startswith("side_")] and "logout_button" not in side(at),
+      "[visitante] sin opciones de cuenta en el menú lateral")
+
+at = new_app(front, CLIENTE)
+sidebar_text = " ".join(m.value for m in at.sidebar.markdown) + " ".join(c.value for c in at.sidebar.caption)
+check(side(at) == ["side_perfil", "side_editar", "side_contrasena", "logout_button"],
+      "[cliente] menú lateral: Mi perfil, Editar datos, Cambiar contraseña y Cerrar sesión al final")
+check("Requisitos contemplados" not in sidebar_text and "RNF" not in sidebar_text, "[cliente] sin los bloques de requisitos")
+at.sidebar.button(key="side_contrasena").click().run()
+check(at.session_state["client_navigation"] == "👤 Mi perfil" and "pwd_current" in widget_keys(at)
+      and "edit_phone" not in widget_keys(at) and "Cambiar contraseña" in md(at),
+      "[cliente] «Cambiar contraseña» abre solo el cambio de contraseña")
+at.sidebar.button(key="side_editar").click().run()
+check("edit_phone" in widget_keys(at) and "pwd_current" not in widget_keys(at) and "Editar mis datos" in md(at),
+      "[cliente] «Editar datos» abre el formulario de datos")
+at.sidebar.button(key="side_perfil").click().run()
+check({"edit_phone", "pwd_current"} <= widget_keys(at) and "Mi perfil personal" in md(at), "[cliente] «Mi perfil» muestra todo")
+at.sidebar.button(key="side_contrasena").click().run()
+at.button(key="client_navigation_btn_0").click().run()
+at.button(key="client_navigation_btn_6").click().run()
+check({"edit_phone", "pwd_current"} <= widget_keys(at), "[cliente] al cambiar de sección se olvida la opción del menú")
+
+at = new_app(front, PRO)
+check(side(at) == ["side_perfil", "side_editar", "side_contrasena", "side_suscripción", "side_verificación", "logout_button"],
+      "[profesional] además Suscripción y Verificación")
+at.sidebar.button(key="side_suscripción").click().run()
+check(not at.exception and at.session_state["professional_navigation"] == "💳 Suscripción" and "Suscripción" in md(at),
+      "[profesional] «Suscripción» abre su pantalla")
+at.sidebar.button(key="side_verificación").click().run()
+check(not at.exception and at.session_state["professional_navigation"] == "🪪 Verificación", "[profesional] «Verificación» abre su pantalla")
+at.sidebar.button(key="side_contrasena").click().run()
+check(at.session_state["professional_navigation"] == "👤 Mi perfil" and "pwd_current" in widget_keys(at),
+      "[profesional] «Cambiar contraseña» abre su perfil en esa sección")
+
+at = new_app(front, ADMIN)
+check(side(at) == ["side_perfil", "side_editar", "side_contrasena", "logout_button"], "[admin] opciones de su cuenta")
+at.sidebar.button(key="side_contrasena").click().run()
+check(not at.exception and "pwd_current" in widget_keys(at), "[admin] «Cambiar contraseña» dentro de su panel")
+at.button(key="admin_account_back").click().run()
+check("pwd_current" not in widget_keys(at) and "Indicadores de la plataforma" in md(at), "[admin] «← Volver al panel»")
+
 terminar()

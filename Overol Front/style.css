@@ -83,6 +83,29 @@ header[data-testid="stHeader"] { background: var(--bg); }
 }
 [data-testid="stSidebar"] div.stButton > button:hover * { color: #0F2D52 !important; }
 
+/* Opciones de «Mi cuenta»: lista ordenada, alineada a la izquierda y más compacta */
+[data-testid="stSidebar"] h5 {
+    color: #9FB6D3;
+    font-size: 12px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin: 0 0 .25rem;
+}
+.st-key-side_menu { gap: .35rem; }
+.st-key-side_menu div.stButton > button {
+    justify-content: flex-start;
+    min-height: 2.4rem;
+    padding: .4rem .85rem;
+    border-color: rgba(255,255,255,.18);
+}
+.st-key-side_menu div.stButton > button > div { justify-content: flex-start; width: 100%; }
+.st-key-side_menu div.stButton > button p { text-align: left; }
+/* «Cerrar sesión» al final, como acción secundaria */
+.st-key-logout_button button {
+    background: transparent !important;
+    border: 1px solid rgba(255,255,255,.35) !important;
+}
+
 hr { border-color: var(--border) !important; }
 
 /* ---------- Barra superior ---------- */

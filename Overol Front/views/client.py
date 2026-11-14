@@ -26,6 +26,7 @@ from views.about import about_page
 from views.assistant import assistant_page
 from views.home import home_page
 from views.shared import (
+    PROFILE_FOCUS_KEY,
     apply_deeplink,
     close_professional,
     open_professional,
@@ -65,6 +66,7 @@ def client_dashboard(user):
     # "aparezca" solo en otra pantalla.
     if st.session_state.get("_client_prev_menu") != menu:
         close_professional()
+        st.session_state.pop(PROFILE_FOCUS_KEY, None)
         st.session_state["_client_prev_menu"] = menu
 
     if menu == "🏠 Inicio":

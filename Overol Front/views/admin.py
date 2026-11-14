@@ -14,6 +14,7 @@ from core import api_client, requests_api
 from core.constants import MAX_TEXTO, pantallas_visibles
 from ui.components import empty_state, flash, hero, metric_card, nav_bar, section, security_note, status_badge
 from views.about import about_page
+from views.shared import PROFILE_FOCUS_KEY, user_profile_page
 
 
 def admin_dashboard(user):
@@ -41,6 +42,18 @@ def admin_dashboard(user):
         "Panel de administración",
         "Gestiona verificaciones, cuentas, reclamos y la bandeja de soporte.",
     )
+
+    # Al cambiar de sección se olvida la opción elegida en el menú lateral
+    if st.session_state.get("_admin_prev_menu") != menu:
+        st.session_state.pop(PROFILE_FOCUS_KEY, None)
+        st.session_state["_admin_prev_menu"] = menu
+
+    # «Mi perfil», «Editar datos» y «Cambiar contraseña» del menú lateral (misma pantalla del resto)
+    if st.session_state.get(PROFILE_FOCUS_KEY):
+        st.button("← Volver al panel", key="admin_account_back", on_click=st.session_state.pop,
+                  args=(PROFILE_FOCUS_KEY, None))
+        user_profile_page(user)
+        return
 
     if menu == "📊 Indicadores":
         admin_summary()

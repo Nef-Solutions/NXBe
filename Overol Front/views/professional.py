@@ -31,7 +31,7 @@ from ui.profile import profile_header, profile_reviews, profile_sections
 from views import payments
 from views.about import about_page
 from views.assistant import assistant_page
-from views.shared import user_profile_page
+from views.shared import PROFILE_FOCUS_KEY, user_profile_page
 
 # Primeros bytes (firma) válidos para cada extensión permitida
 SIGNATURES = {
@@ -66,6 +66,11 @@ def professional_dashboard(user):
             pass
 
     menu = nav_bar("professional_navigation", options, badges=badges)
+
+    # Al cambiar de sección se olvida la opción elegida en el menú lateral
+    if st.session_state.get("_pro_prev_menu") != menu:
+        st.session_state.pop(PROFILE_FOCUS_KEY, None)
+        st.session_state["_pro_prev_menu"] = menu
 
     hero(
         "Panel del profesional",

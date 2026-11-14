@@ -17,7 +17,7 @@ from html import escape
 
 import streamlit as st
 
-from core.constants import DIAS_SEMANA, OFICIOS_INFO
+from core.constants import DIAS_SEMANA, OFICIOS_INFO, ROLES
 from core import api_client, catalog_api, requests_api
 from ui.components import _html, initials, stars
 
@@ -269,7 +269,7 @@ def profile_reviews(professional):
 def profile_user_header(user):
     """Cabecera del perfil personal con los datos de /auth/me/. Para el cliente, cifras
     de sus solicitudes (las evaluaciones hechas vuelven en la etapa D)."""
-    role = "Cliente" if user["role"] == "cliente" else "Profesional"
+    role = ROLES.get(user["role"], user["role"])
     place = f"📍 {escape(user['commune'])}" if user["commune"] else ""
 
     badges = f'<span class="pbadge">{role}</span>'
