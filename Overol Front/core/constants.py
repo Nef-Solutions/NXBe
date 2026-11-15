@@ -5,21 +5,35 @@ from pathlib import Path
 
 # Carpeta raíz del proyecto (proyecto_overol/), un nivel sobre core/
 APP_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = APP_DIR / "overol.db"
-UPLOAD_DIR = APP_DIR / "documentos_verificacion"
 
-# Origen de los datos de cuentas: "local" (SQLite) o "api" (backend Django).
-# Por defecto "local", para que la demo no dependa del backend.
-OVEROL_BACKEND = "api" if os.environ.get("OVEROL_BACKEND", "local").strip().lower() == "api" else "local"
+# Todo el front trabaja contra el backend Django (el modo local con SQLite se eliminó).
 API_BASE_URL = os.environ.get("OVEROL_API_URL", "http://127.0.0.1:8000/api/").rstrip("/") + "/"
 API_TIMEOUT = 10
 
 # Versión de la política de privacidad y términos de uso que acepta el usuario al registrarse
 PRIVACY_POLICY_VERSION = "2026-10"
 
+# Rol del backend → rol del front
+API_ROLES = {"CLIENT": "cliente", "PROFESSIONAL": "profesional", "ADMIN": "admin"}
 
-def use_api():
-    return OVEROL_BACKEND == "api"
+
+# Pantallas sin endpoint en el backend: se ocultan de la barra y se reactivan cuando
+# exista (PEDIDO_BACKEND_PARA_NEFI.md). Valor: «pedido».
+PANTALLAS_PENDIENTES_API = {
+    "cliente": {},
+    "profesional": {},
+    "admin": {
+        "⭐ Moderación": "pedido",
+        "🎓 Contenidos": "pedido",
+        "📜 Trazabilidad": "pedido",
+    },
+}
+
+
+def pantallas_visibles(role, options):
+    """Opciones de la barra sin las pantallas pendientes de conectar a la API."""
+    pending = PANTALLAS_PENDIENTES_API.get(role, {})
+    return [option for option in options if option not in pending]
 
 COMUNAS = [
     "Santiago",
@@ -40,11 +54,13 @@ ZONAS_HOGAR = [
     "Otra zona",
 ]
 
+# Oficios destacados en la portada: los nombres son los del catálogo oficial del backend.
+# La lista completa de oficios (66) sale de GET /api/catalog/categories/.
 CATEGORIAS = [
     ("🔧", "Gasfitería", "Reparaciones, fugas y cañerías"),
     ("⚡", "Electricidad", "Instalaciones y reparaciones eléctricas"),
-    ("🪚", "Carpintería", "Muebles, puertas y terminaciones"),
-    ("🎨", "Pintura", "Interior, exterior y terminaciones"),
+    ("🪚", "Carpintero", "Muebles, puertas y terminaciones"),
+    ("🎨", "Pintor", "Interior, exterior y terminaciones"),
 ]
 
 ROLES = {
@@ -53,67 +69,8 @@ ROLES = {
     "admin": "Administrador",
 }
 
-ESTADOS_SOLICITUD = [
-    "Pendiente",
-    "Aceptada",
-    "Rechazada",
-    "Vencida",
-    "Cancelada",
-    "Finalizada",
-]
-
-ESTADOS_RECLAMO = [
-    "Abierto",
-    "En mediación",
-    "Resuelto",
-    "Cerrado",
-]
-
-OFICIOS = [
-    "Gasfitería",
-    "Electricidad",
-    "Carpintería",
-    "Pintura",
-    "Maestro multipropósito",
-]
-
-ESPECIALIDADES = ["Gasfitería", "Electricidad", "Carpintería", "Pintura"]
-
-# Catálogo de especialidades por oficio (Historias 002, 008 y 018)
-ESPECIALIDADES_POR_OFICIO = {
-    "Gasfitería": [
-        "Fugas de agua",
-        "Destapes",
-        "Grifería y artefactos sanitarios",
-        "Calefont y termo",
-    ],
-    "Electricidad": [
-        "Enchufes e interruptores",
-        "Tableros eléctricos",
-        "Iluminación",
-        "Instalación de ventiladores",
-    ],
-    "Carpintería": [
-        "Muebles a medida",
-        "Reparación de puertas",
-        "Closets",
-        "Instalación de pisos",
-    ],
-    "Pintura": [
-        "Pintura interior",
-        "Pintura exterior",
-        "Empastes y reparaciones",
-        "Impermeabilización",
-    ],
-    "Maestro multipropósito": [
-        "Reparaciones generales",
-        "Instalaciones menores",
-        "Mantención del hogar",
-    ],
-}
-
-# Palabras clave por oficio: las usan el asistente (sugerir_especialidad) y la
-# búsqueda por palabra clave (Historia 4.16). El orden importa para el asistente.
+# Palabras clave extra por oficio para la búsqueda (Historia 4.16). Se suman a las
+# `keywords` que entrega el backend para cada oficio.
 PALABRAS_CLAVE_OFICIO = {
     "Gasfitería": [
         "agua",
@@ -144,7 +101,7 @@ PALABRAS_CLAVE_OFICIO = {
         "automático",
         "automatico",
     ],
-    "Carpintería": [
+    "Carpintero": [
         "mueble",
         "madera",
         "puerta",
@@ -154,7 +111,7 @@ PALABRAS_CLAVE_OFICIO = {
         "clóset",
         "estante",
     ],
-    "Pintura": [
+    "Pintor": [
         "pintar",
         "pintura",
         "pared",
@@ -175,13 +132,15 @@ MOTIVOS_RECHAZO = [
 
 # Historia 019: horario
 DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+# El backend espera los días con su nombre completo
+DIAS_COMPLETOS = dict(zip(DIAS_SEMANA, ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]))
 HORAS = [f"{h:02d}:00" for h in range(6, 24)]
 
 PREFERENCIAS_CONTACTO = ["WhatsApp", "Llamada telefónica", "Correo electrónico"]
 
 # Oficios con ícono y descripción (portada y botones de categorías)
 OFICIOS_INFO = list(CATEGORIAS) + [
-    ("🧰", "Maestro multipropósito", "Reparaciones generales y trabajos menores del hogar"),
+    ("🔑", "Cerrajería", "Cerraduras, llaves y apertura de puertas"),
 ]
 
 # Integrantes del equipo (Documento 01 – Product Vision)
@@ -206,9 +165,6 @@ EQUIPO = [
     ),
 ]
 
-# Una solicitud pendiente vence si el profesional no responde en este plazo
-HORAS_VENCIMIENTO = 72
-
 # Franjas horarias que el cliente puede pedir
 FRANJAS_HORARIAS = [
     "09:00 - 11:00",
@@ -220,11 +176,11 @@ FRANJAS_HORARIAS = [
 # Máximo de caracteres en motivos de cancelación y mensajes a soporte
 MAX_TEXTO = 500
 
-# Tickets de soporte (uno por solicitud y usuario, sobre el hilo de mensajes)
-ESTADOS_TICKET = ["Abierto", "Resuelto"]
+# Asunto de un ticket de soporte (el backend acepta hasta 160)
 MAX_ASUNTO = 100
 
-# Seguridad del inicio de sesión
-MAX_INTENTOS_LOGIN = 3
-MINUTOS_BLOQUEO = 5
+# Duración de la sesión persistente («Mantener mi sesión iniciada»)
 DIAS_SESION = 7
+
+# Overol solo cobra la suscripción del profesional: el servicio se paga directo al profesional.
+FEE_NOTE = "La tarifa se paga directamente al profesional; Overol no cobra comisión por los servicios."

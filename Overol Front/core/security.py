@@ -1,52 +1,7 @@
-"""Utilidades de seguridad: hash de contraseñas (PBKDF2) y validaciones de RUT/correo."""
+"""Validaciones del formulario (RUT, correo, teléfono y contraseña). Las contraseñas y los
+documentos los guarda el backend: el front ya no los procesa."""
 
-import base64
-import hashlib
-import hmac
 import re
-import secrets
-
-
-def hash_password(password: str) -> str:
-    """
-    Hash PBKDF2-HMAC-SHA256 con salt aleatorio.
-    Para producción se recomienda gestionar secretos y
-    credenciales con infraestructura segura.
-    """
-    salt = secrets.token_bytes(16)
-    derived = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt,
-        120_000,
-    )
-    return (
-        "pbkdf2_sha256$120000$"
-        + base64.b64encode(salt).decode()
-        + "$"
-        + base64.b64encode(derived).decode()
-    )
-
-
-def verify_password(password: str, stored: str) -> bool:
-    try:
-        algorithm, iterations, salt_b64, hash_b64 = stored.split("$")
-        if algorithm != "pbkdf2_sha256":
-            return False
-
-        salt = base64.b64decode(salt_b64)
-        expected = base64.b64decode(hash_b64)
-
-        actual = hashlib.pbkdf2_hmac(
-            "sha256",
-            password.encode("utf-8"),
-            salt,
-            int(iterations),
-        )
-
-        return hmac.compare_digest(actual, expected)
-    except Exception:
-        return False
 
 
 def normalize_rut(rut: str) -> str:

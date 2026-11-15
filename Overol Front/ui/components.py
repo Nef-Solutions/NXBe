@@ -8,7 +8,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from core.constants import APP_DIR
-from core.database import get_professional_rating, get_trades
+from core import catalog_api
 
 # Clase CSS del badge según el estado (ver style.css)
 BADGE_CLASSES = {
@@ -17,6 +17,7 @@ BADGE_CLASSES = {
     "Abierto": "badge-warn",
     "En mediación": "badge-info",
     "Aceptada": "badge-info",
+    "Esperando confirmación": "badge-info",
     "Aprobado": "badge-ok",
     "Finalizada": "badge-ok",
     "Resuelto": "badge-ok",
@@ -27,6 +28,7 @@ BADGE_CLASSES = {
     "Suspendido": "badge-bad",
     "Vencida": "badge-muted",
     "Cerrado": "badge-muted",
+    "Cerrada por Overol": "badge-muted",
 }
 
 
@@ -153,8 +155,8 @@ def format_professional_card(professional, anonymous=False):
     Tarjeta resumen del profesional (lista de resultados), con mini portada.
     anonymous=True (visitantes): no muestra nombre ni apellido (Historia 003).
     """
-    total, average = get_professional_rating(professional["id"])
-    trades = get_trades(professional["id"])
+    total, average = catalog_api.rating(professional)
+    trades = catalog_api.trades(professional)
 
     headline = " · ".join(t["trade"] for t in trades[:3])
     if len(trades) > 3:
@@ -180,6 +182,9 @@ def format_professional_card(professional, anonymous=False):
             f'<span class="stars">{stars(average)}</span> '
             f'<b>{average}</b> <span class="muted">· {total} opiniones</span>'
         )
+    elif total is None and average:
+        # Modo api: el listado trae el promedio, pero no la cantidad de opiniones
+        rating_html = f'<span class="stars">{stars(average)}</span> <b>{average}</b>'
     else:
         rating_html = '<span class="muted">Aún sin opiniones</span>'
 
@@ -223,30 +228,32 @@ def format_professional_card(professional, anonymous=False):
 
 
 def contact_box(contact, title):
-    """Datos de contacto habilitados tras aceptar la solicitud (Historias 011 y 022)."""
+    """Datos de contacto habilitados tras aceptar la solicitud (Historias 011 y 022).
+    `contact`: name, phone, address y commune (el backend los entrega solo a las partes
+    de una solicitud aceptada o finalizada)."""
     if not contact:
         return
 
-    phone = contact["phone"] or ""
+    phone = contact.get("phone") or ""
     digits = re.sub(r"\D", "", phone)
 
     links = ""
     if digits:
-        links += (
+        links = (
             f' · <a href="https://wa.me/{digits}" target="_blank">WhatsApp</a>'
             f' · <a href="tel:+{digits}">Llamar</a>'
         )
-    links += f' · <a href="mailto:{escape(contact["email"])}">Escribir correo</a>'
+
+    place = ", ".join(x for x in (contact.get("address"), contact.get("commune")) if x)
 
     st.markdown(
         _html(
             f"""
             <div class="contact-box">
                 <b>📇 {escape(title)}</b><br>
-                👤 {escape(contact["name"])}<br>
+                👤 {escape(contact.get("name") or "")}<br>
                 📱 {escape(phone) or "Teléfono no informado"}<br>
-                ✉️ {escape(contact["email"])}<br>
-                💬 Prefiere contacto por: {escape(contact["contact_preference"] or "no indicado")}<br>
+                📍 {escape(place) or "Dirección no informada"}<br>
                 <span class="muted">Coordinen directamente el servicio{links}</span>
             </div>
             """
@@ -357,13 +364,46 @@ def hold_to_confirm(key, label="Mantén presionado para confirmar", seconds=1.8)
 # Mensajes a soporte
 # ------------------------------------------------------------
 
+def _when(value):
+    """Fecha ISO del backend como dd-mm-aaaa HH:MM (hora local)."""
+    from datetime import datetime
+
+    if not value:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return str(value)
+    return (parsed.astimezone() if parsed.tzinfo else parsed).strftime("%d-%m-%Y %H:%M")
+
+
+def _read_notification(notification_id):
+    # Callback: marca antes de redibujar, así el contador de la barra se actualiza al tiro
+    from core import api_client
+
+    try:
+        api_client.read_notification(notification_id)
+    except api_client.ApiError as error:
+        flash(f"No se pudo marcar la notificación. {error}", "warning")
+
+
+def _read_all_notifications(ids):
+    # El backend no tiene «marcar todas»: se marca una por una
+    for notification_id in ids:
+        _read_notification(notification_id)
+
+
 def notifications_page(user):
-    """Lista de notificaciones del usuario (cliente o profesional) con «marcar como leída»."""
-    from core.database import get_notifications, mark_all_notifications_read, mark_notification_read
+    """Notificaciones del usuario (GET /api/notifications/) con «marcar como leída»."""
+    from core import api_client
 
     section("🔔 Notificaciones")
 
-    items = get_notifications(user["id"])
+    try:
+        items = api_client.list_notifications()
+    except api_client.ApiError as error:
+        st.error(f"No se pudieron cargar tus notificaciones. {error}")
+        return
 
     if not items:
         empty_state(
@@ -373,98 +413,98 @@ def notifications_page(user):
         )
         return
 
-    unread = sum(1 for item in items if not item["is_read"])
+    unread = [item["id"] for item in items if not item.get("is_read")]
 
     if unread:
-        # Los callbacks marcan antes de redibujar, así el contador de la barra se actualiza al tiro.
         st.button(
-            f"Marcar todas como leídas ({unread})",
+            f"Marcar todas como leídas ({len(unread)})",
             key="notif_read_all",
-            on_click=mark_all_notifications_read,
-            args=(user["id"],),
+            on_click=_read_all_notifications,
+            args=(unread,),
         )
 
     for item in items:
-        state = "notif-read" if item["is_read"] else "notif-unread"
-        new = "" if item["is_read"] else '<span class="badge badge-warn">Nueva</span> '
+        is_read = item.get("is_read")
+        state = "notif-read" if is_read else "notif-unread"
+        new = "" if is_read else '<span class="badge badge-warn">Nueva</span> '
+        visit = f" · Solicitud #{item['related_visit']}" if item.get("related_visit") else ""
 
         with st.container(border=True, key=f"notif_{item['id']}"):
             st.markdown(
                 _html(
                     f"""
                     <div class="notif {state}">
-                        <div class="notif-title">{new}{escape(item["title"])}</div>
-                        <div>{escape(item["message"])}</div>
-                        <div class="when">{escape(item["created_at"])}</div>
+                        <div class="notif-title">{new}{escape(item.get("title") or "")}</div>
+                        <div>{escape(item.get("message") or "")}</div>
+                        <div class="when">{escape(_when(item.get("created_at")))}{escape(visit)}</div>
                     </div>
                     """
                 ),
                 unsafe_allow_html=True,
             )
 
-            if not item["is_read"]:
+            if not is_read:
                 st.button(
                     "Marcar como leída",
                     key=f"notif_read_{item['id']}",
-                    on_click=mark_notification_read,
-                    args=(item["id"], user["id"]),
+                    on_click=_read_notification,
+                    args=(item["id"],),
                 )
 
 
-def support_box(user, request_id, role_label):
+def thread_message(who, created_at, body, from_admin):
+    """Un mensaje de un hilo con soporte o con el equipo de verificación."""
+    css = "support-admin" if from_admin else "support-user"
+    st.markdown(
+        _html(
+            f"""
+            <div class="support-msg {css}">
+                <div class="who">{escape(who)} · {escape(created_at)}</div>
+                <div>{escape(body)}</div>
+            </div>
+            """
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def support_box(user, request_id, role_label, tickets):
     """
-    Conversación con soporte (administrador) sobre una solicitud.
-    `role_label` distingue las claves de widgets entre cliente y profesional.
+    Tickets de soporte sobre una solicitud (GET/POST /api/tickets/). El backend guarda una
+    descripción y una respuesta del administrador por ticket (no hay hilo de mensajes).
+    `tickets`: los del usuario para esta solicitud. `role_label` distingue las claves.
     """
+    from core import api_client
     from core.constants import MAX_ASUNTO, MAX_TEXTO
-    from core.database import add_support_message, audit, get_support_thread, get_support_ticket
 
-    thread = get_support_thread(request_id, user["id"])
-    ticket = get_support_ticket(request_id, user["id"])
-
-    if ticket:
-        count = f"{len(thread)} mensaje" + ("" if len(thread) == 1 else "s")
-        title = f"💬 Ticket de soporte #{ticket['id']} · {ticket['status']} ({count})"
-    else:
-        title = "💬 Contactar a soporte"
+    open_tickets = [t for t in tickets if t.get("status") != "RESOLVED"]
+    title = (
+        f"💬 Soporte · {len(tickets)} ticket" + ("" if len(tickets) == 1 else "s")
+        + (f" ({len(open_tickets)} abierto" + ("" if len(open_tickets) == 1 else "s") + ")" if open_tickets else "")
+        if tickets else "💬 Contactar a soporte"
+    )
 
     with st.expander(title):
-        if not ticket:
-            st.caption(
-                "Abre un ticket si tienes un problema con esta solicitud. "
-                "El equipo de Overol te responderá en este mismo lugar."
-            )
-        else:
-            st.markdown(f"**Asunto:** {escape(ticket['subject'])}", unsafe_allow_html=True)
-            status_badge(ticket["status"])
+        for ticket in tickets:
+            with st.container(border=True):
+                st.markdown(f"**Ticket #{ticket['id']} · {escape(ticket.get('subject') or '')}**")
+                status_badge(api_client.ESTADOS_TICKET.get(ticket.get("status"), ticket.get("status")))
+                thread_message("Tú", _when(ticket.get("created_at")), ticket.get("description") or "", False)
+                if ticket.get("response"):
+                    thread_message("Soporte Overol", _when(ticket.get("updated_at")), ticket["response"], True)
 
-            if ticket["status"] == "Resuelto":
-                st.caption("Este ticket está resuelto. Si escribes otro mensaje, se vuelve a abrir.")
-
-        for message in thread:
-            who = "Soporte Overol" if message["from_admin"] else "Tú"
-            css = "support-admin" if message["from_admin"] else "support-user"
-            st.markdown(
-                _html(
-                    f"""
-                    <div class="support-msg {css}">
-                        <div class="who">{who} · {escape(message["created_at"])}</div>
-                        <div>{escape(message["body"])}</div>
-                    </div>
-                    """
-                ),
-                unsafe_allow_html=True,
-            )
+        st.caption(
+            "Abre un ticket si tienes un problema con esta solicitud. El equipo de Overol te "
+            "responderá aquí y te llegará una notificación."
+        )
 
         with st.form(f"support_form_{role_label}_{request_id}", clear_on_submit=True):
-            subject = None
-            if not ticket:
-                subject = st.text_input(
-                    "Asunto",
-                    max_chars=MAX_ASUNTO,
-                    placeholder="Ej.: El profesional no llegó a la visita",
-                    key=f"support_subject_{role_label}_{request_id}",
-                )
+            subject = st.text_input(
+                "Asunto",
+                max_chars=MAX_ASUNTO,
+                placeholder="Ej.: El profesional no llegó a la visita",
+                key=f"support_subject_{role_label}_{request_id}",
+            )
             body = st.text_area(
                 "Tu mensaje para soporte",
                 max_chars=MAX_TEXTO,
@@ -472,19 +512,21 @@ def support_box(user, request_id, role_label):
                 key=f"support_text_{role_label}_{request_id}",
             )
             sent = st.form_submit_button(
-                "Abrir ticket" if not ticket else "Enviar a soporte",
+                "Abrir ticket",
                 use_container_width=True,
                 key=f"support_send_{role_label}_{request_id}",
             )
 
         if sent:
-            ok, error = add_support_message(request_id, user["id"], body, subject=subject)
-
-            if not ok:
-                st.error(error)
+            if not subject.strip():
+                st.error("Escribe un asunto.")
+            elif not body.strip():
+                st.error("Escribe tu mensaje para soporte.")
             else:
-                audit(user["id"], "SUPPORT_MESSAGE", "requests", request_id,
-                      "Ticket de soporte abierto" if not ticket else "Mensaje enviado a soporte")
-                flash("Ticket abierto. Soporte te responderá aquí." if not ticket
-                      else "Mensaje enviado a soporte.")
-                st.rerun()
+                try:
+                    created = api_client.create_ticket(request_id, subject, body)
+                except api_client.ApiError as error:
+                    st.error(f"No se pudo abrir el ticket. {error}")
+                else:
+                    flash(f"Ticket #{created['id']} abierto. Soporte te responderá aquí.")
+                    st.rerun()

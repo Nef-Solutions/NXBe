@@ -1,56 +1,78 @@
-"""Vistas del rol Administrador (RF 001, 008, 009)."""
+"""Vistas del rol Administrador (RF 001, 008, 009) contra el backend.
 
-from html import escape
+Lo que tiene endpoint: indicadores de reclamos y tickets, verificación (aprobar o rechazar y
+ver la cédula), estado de una cuenta, reclamos (resolver) y la bandeja de soporte (resolver).
+Sin endpoint (ocultas, PANTALLAS_PENDIENTES_API y PEDIDO): moderación de reseñas, contenidos,
+bitácora, listado de usuarios y de verificaciones pendientes.
+"""
 
+from collections import Counter
+
+import altair as alt
 import streamlit as st
 
-from core.constants import ESTADOS_RECLAMO, MAX_TEXTO, ROLES, UPLOAD_DIR
-from core.database import (
-    add_support_message,
-    audit,
-    get_all_claims,
-    get_connection,
-    get_support_inbox,
-    get_support_thread,
-    get_verification_documents,
-    mark_support_thread_read,
-    now_str,
-    set_support_ticket_status,
-)
+from core import api_client, requests_api
+from core.constants import MAX_TEXTO, pantallas_visibles
+from ui.components import empty_state, flash, hero, metric_card, nav_bar, section, security_note, status_badge
 from views.about import about_page
-from ui.components import (
-    empty_state,
-    flash,
-    hero,
-    metric_card,
-    nav_bar,
-    section,
-    security_note,
-    status_badge,
-)
+from views.shared import PROFILE_FOCUS_KEY, user_profile_page
+
+
+def _state_chart(counts):
+    """Barras horizontales por estado. Con Altair (labelLimit=0) las etiquetas largas, como
+    «Respondido por el profesional», se leen completas; st.bar_chart las cortaba en celular."""
+    data = alt.Data(values=[{"Estado": state, "Cantidad": n} for state, n in counts.items()])
+    chart = (
+        alt.Chart(data)
+        .mark_bar(color="#1B4F8A", cornerRadiusEnd=4)
+        .encode(
+            x=alt.X("Cantidad:Q", title=None, axis=alt.Axis(tickMinStep=1, format="d")),
+            y=alt.Y("Estado:N", title=None, sort="-x",
+                    axis=alt.Axis(labelLimit=0, labelPadding=8, labelFontSize=12)),
+            tooltip=[alt.Tooltip("Estado:N"), alt.Tooltip("Cantidad:Q")],
+        )
+        .properties(height=alt.Step(38), padding={"left": 8, "right": 12, "top": 4, "bottom": 4})
+    )
+    st.altair_chart(chart, use_container_width=True)
 
 
 def admin_dashboard(user):
-    menu = nav_bar(
-        "admin_navigation",
-        [
-            "📊 Indicadores",
-            "🪪 Verificación",
-            "👥 Usuarios",
-            "⭐ Moderación",
-            "🛠️ Reclamos",
-            "🎓 Contenidos",
-            "📜 Trazabilidad",
-            "💬 Soporte",
-            "ℹ️ Quiénes somos",
-        ],
-    )
+    options = pantallas_visibles("admin", [
+        "📊 Indicadores",
+        "🪪 Verificación",
+        "👥 Usuarios",
+        "⭐ Moderación",
+        "🛠️ Reclamos",
+        "🎓 Contenidos",
+        "📜 Trazabilidad",
+        "💬 Soporte",
+        "ℹ️ Quiénes somos",
+    ])
+    badges = {}
+    try:
+        badges["💬 Soporte"] = sum(1 for t in api_client.list_tickets() if t.get("status") != "RESOLVED")
+        badges["🛠️ Reclamos"] = sum(1 for c in requests_api.list_claims() if c["raw_status"] == "ESCALATED")
+    except api_client.ApiError:
+        pass
+
+    menu = nav_bar("admin_navigation", options, badges=badges)
 
     hero(
         "Panel de administración",
-        "Gestiona verificaciones, usuarios, reputación, reclamos, contenidos "
-        "y trazabilidad de las acciones críticas.",
+        "Gestiona verificaciones, cuentas, reclamos y la bandeja de soporte.",
     )
+
+    # Al cambiar de sección se olvida la opción elegida en el menú lateral
+    if st.session_state.get("_admin_prev_menu") != menu:
+        st.session_state.pop(PROFILE_FOCUS_KEY, None)
+        st.session_state["_admin_prev_menu"] = menu
+
+    # «Mi perfil», «Editar datos» y «Cambiar contraseña» del menú lateral (misma pantalla del resto)
+    if st.session_state.get(PROFILE_FOCUS_KEY):
+        st.button("← Volver al panel", key="admin_account_back", on_click=st.session_state.pop,
+                  args=(PROFILE_FOCUS_KEY, None))
+        user_profile_page(user)
+        return
 
     if menu == "📊 Indicadores":
         admin_summary()
@@ -61,17 +83,8 @@ def admin_dashboard(user):
     elif menu == "👥 Usuarios":
         admin_users(user)
 
-    elif menu == "⭐ Moderación":
-        admin_moderation(user)
-
     elif menu == "🛠️ Reclamos":
         admin_claims(user)
-
-    elif menu == "🎓 Contenidos":
-        admin_training(user)
-
-    elif menu == "📜 Trazabilidad":
-        admin_audit(user)
 
     elif menu == "💬 Soporte":
         admin_support(user)
@@ -80,892 +93,249 @@ def admin_dashboard(user):
         about_page()
 
 
+def _django_admin_note(what):
+    st.caption(
+        f"{what} todavía no tiene endpoint en el backend: mientras tanto se hace en el administrador "
+        "de Django (**/admin/** del backend, por ejemplo http://127.0.0.1:8000/admin/)."
+    )
+
+
 def admin_summary():
+    """Indicadores con lo que el backend entrega al admin: reclamos y tickets (todos)."""
     section("📊 Indicadores de la plataforma")
 
-    conn = get_connection()
+    try:
+        claims = requests_api.list_claims()
+        tickets = api_client.list_tickets()
+    except api_client.ApiError as error:
+        st.error(f"No se pudieron cargar los indicadores. {error}")
+        return
 
-    def count(sql):
-        return conn.execute(sql).fetchone()["n"]
+    claim_states = Counter(c["status"] for c in claims)
+    ticket_states = Counter(api_client.ESTADOS_TICKET.get(t.get("status"), t.get("status")) for t in tickets)
 
-    metrics = [
-        ("👥", "Usuarios", count("SELECT COUNT(*) AS n FROM users")),
-        ("👷", "Profesionales", count("SELECT COUNT(*) AS n FROM professionals")),
-        ("✅", "Verificados", count("SELECT COUNT(*) AS n FROM professionals WHERE verified = 1")),
-        ("⏳", "Pendientes", count(
-            "SELECT COUNT(*) AS n FROM professionals WHERE verification_status = 'Pendiente'"
-        )),
-        ("📋", "Solicitudes", count("SELECT COUNT(*) AS n FROM requests")),
-        ("🛠️", "Reclamos", count("SELECT COUNT(*) AS n FROM claims")),
-    ]
-
-    request_rows = conn.execute(
-        """
-        SELECT status, COUNT(*) AS total
-        FROM requests
-        GROUP BY status
-        """
-    ).fetchall()
-
-    claim_rows = conn.execute(
-        """
-        SELECT status, COUNT(*) AS total
-        FROM claims
-        GROUP BY status
-        """
-    ).fetchall()
-
-    conn.close()
-
-    cols = st.columns(6)
-    for col, (icon, label, value) in zip(cols, metrics):
+    cols = st.columns(4)
+    for col, (icon, label, value) in zip(cols, [
+        ("🛠️", "Reclamos", len(claims)),
+        ("⚖️", "En mediación", claim_states.get("En mediación", 0)),
+        ("💬", "Tickets", len(tickets)),
+        ("📭", "Tickets abiertos", sum(v for k, v in ticket_states.items() if k != "Resuelto")),
+    ]):
         with col:
             metric_card(value, label, icon)
 
-    left, right = st.columns(2)
-
-    with left:
-        section("Estado de solicitudes")
-        if request_rows:
-            st.bar_chart(
-                {row["status"]: row["total"] for row in request_rows},
-                color="#F59E0B",
-            )
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("#### Estado de reclamos")
+        if claim_states:
+            _state_chart(claim_states)
         else:
-            empty_state("📋", "Aún no hay solicitudes")
-
-    with right:
-        section("Estado de reclamos")
-        if claim_rows:
-            st.bar_chart(
-                {row["status"]: row["total"] for row in claim_rows},
-                color="#111827",
-            )
+            st.caption("Sin reclamos.")
+    with c2:
+        st.markdown("#### Estado de tickets")
+        if ticket_states:
+            _state_chart(ticket_states)
         else:
-            empty_state("🛠️", "Aún no hay reclamos")
+            st.caption("Sin tickets.")
+
+    _django_admin_note("El conteo de usuarios, profesionales verificados y solicitudes")
 
 
 def admin_verification(user):
-    section("🪪 Verificación de identidad y certificaciones")
+    """Verificación de identidad: ver la cédula y aprobar o rechazar con motivo."""
+    section("🪪 Verificación de profesionales")
+    st.info(
+        "El backend todavía no entrega la lista de verificaciones pendientes. Escribe el **id del perfil "
+        "profesional** (lo ves en `/admin/` → Professional profiles) para revisar sus documentos."
+    )
 
-    conn = get_connection()
-    pending = conn.execute(
-        """
-        SELECT
-            p.*,
-            u.name,
-            u.rut,
-            u.email
-        FROM professionals p
-        JOIN users u ON u.id = p.user_id
-        WHERE p.verification_status = 'Pendiente'
-        ORDER BY p.id
-        """
-    ).fetchall()
-    conn.close()
-
-    if not pending:
-        st.success("No existen solicitudes de verificación pendientes.")
+    pid = st.number_input("Id del perfil profesional", min_value=1, step=1, value=None, key="verif_profile_id")
+    if not pid:
         return
+    pid = int(pid)
 
-    for professional in pending:
-        pid = professional["id"]
-        documents = get_verification_documents(pid)
-
-        with st.container(border=True):
-            top = st.columns([4, 1])
-            with top[0]:
-                st.markdown(f"### {professional['name']}")
-            with top[1]:
-                status_badge(professional["verification_status"])
-
-            d1, d2 = st.columns(2)
-            with d1:
-                st.write(f"**Oficio:** {professional['trade']}")
-                st.write(f"**RUT:** {professional['rut']}")
-                st.write(f"**Correo:** {professional['email']}")
-            with d2:
-                st.write(f"**Experiencia:** {professional['experience'] or 'No informada'}")
-                st.write(f"**Certificaciones:** {professional['certifications'] or 'No informadas'}")
-
-            st.markdown("**Documentos adjuntos**")
-
-            if not documents:
-                st.warning(
-                    "Este profesional aún no ha subido documentos. "
-                    "No debería aprobarse sin respaldo."
-                )
-
-            for doc in documents:
-                file_path = UPLOAD_DIR / doc["stored_name"]
-                row = st.columns([4, 1])
-                row[0].caption(
-                    f"📄 {doc['document_type']} — {doc['original_name']} · {doc['uploaded_at']}"
-                )
-                if file_path.exists():
-                    row[1].download_button(
-                        "Descargar",
-                        data=file_path.read_bytes(),
-                        file_name=doc["original_name"],
-                        key=f"download_doc_{doc['id']}",
-                    )
+    c1, c2 = st.columns(2)
+    for col, side, label in ((c1, "front", "Frente"), (c2, "back", "Reverso")):
+        with col:
+            st.markdown(f"**{label} de la cédula**")
+            if st.button(f"Ver {label.lower()}", key=f"view_doc_{side}_{pid}"):
+                try:
+                    data, kind, name = api_client.download_verification_document(pid, side)
+                except api_client.ApiError as error:
+                    st.error(str(error))
                 else:
-                    row[1].caption("Archivo no disponible")
+                    st.session_state[f"_doc_{side}_{pid}"] = (data, kind, name)
+            doc = st.session_state.get(f"_doc_{side}_{pid}")
+            if doc:
+                data, kind, name = doc
+                if kind.startswith("image/"):
+                    try:
+                        st.image(data)
+                    except Exception:
+                        st.caption("No se pudo mostrar la imagen: descárgala para revisarla.")
+                else:
+                    st.caption(f"Archivo {name}: descárgalo para revisarlo.")
+                st.download_button("Descargar", data, file_name=name, mime=kind, key=f"download_doc_{side}_{pid}")
 
-            security_note(
-                "Los documentos solo son visibles para administradores. "
-                "En una implementación real deben almacenarse con control de acceso."
-            )
-
-            c1, c2 = st.columns(2)
-
-            with c1:
-                if st.button(
-                    "✓ Aprobar verificación",
-                    type="primary",
-                    use_container_width=True,
-                    key=f"admin_approve_{pid}",
-                ):
-                    _set_verification(user, pid, True)
-
-            with c2:
-                if st.button(
-                    "✕ Rechazar verificación",
-                    use_container_width=True,
-                    key=f"admin_reject_{pid}",
-                ):
-                    _set_verification(user, pid, False)
-
-
-def _set_verification(user, professional_id, approved):
-    conn = get_connection()
-    conn.execute(
-        """
-        UPDATE professionals
-        SET verified = ?, verification_status = ?
-        WHERE id = ? AND verification_status = 'Pendiente'
-        """,
-        (1 if approved else 0, "Aprobado" if approved else "Rechazado", professional_id),
+    reason = st.text_area(
+        "Motivo de la decisión",
+        max_chars=MAX_TEXTO,
+        placeholder="Obligatorio al rechazar. Se le informa al profesional.",
+        key=f"verif_reason_{pid}",
     )
-    conn.commit()
-    conn.close()
+    a1, a2 = st.columns(2)
+    if a1.button("✓ Aprobar verificación", type="primary", key=f"admin_approve_{pid}"):
+        _decide(pid, "approve", reason)
+    if a2.button("✕ Rechazar verificación", key=f"admin_reject_{pid}"):
+        if not reason.strip():
+            st.warning("Escribe el motivo del rechazo.")
+        else:
+            _decide(pid, "reject", reason)
 
-    audit(
-        user["id"],
-        "VERIFY",
-        "professionals",
-        professional_id,
-        "Verificación aprobada" if approved else "Verificación rechazada",
-    )
+    security_note("Los documentos son privados: se descargan solo con una cuenta de administrador.")
 
-    flash(
-        "Profesional aprobado." if approved else "Profesional rechazado.",
-        "success" if approved else "warning",
-    )
+
+def _decide(pid, decision, reason):
+    try:
+        api_client.decide_verification(pid, decision, reason)
+    except api_client.ApiError as error:
+        st.error(f"No se pudo registrar la decisión. {error}")
+        return
+    for side in ("front", "back"):
+        st.session_state.pop(f"_doc_{side}_{pid}", None)
+    flash("Profesional aprobado." if decision == "approve" else "Profesional rechazado.",
+          "success" if decision == "approve" else "warning")
     st.rerun()
 
 
 def admin_users(user):
-    section("👥 Gestión de usuarios")
+    """Cambiar el estado de una cuenta (POST /auth/admin/accounts/{id}/status/) con motivo."""
+    section("👥 Estado de cuentas")
+    st.info(
+        "El backend todavía no entrega el listado de usuarios. Escribe el **id del usuario** "
+        "(lo ves en `/admin/` → Users) para cambiar el estado de su cuenta."
+    )
 
-    conn = get_connection()
-
-    users = conn.execute(
-        """
-        SELECT id, name, rut, email, role, active, created_at
-        FROM users
-        ORDER BY id DESC
-        """
-    ).fetchall()
-
-    conn.close()
-
-    for account in users:
-        with st.container(border=True):
-            c1, c2, c3, c4 = st.columns(
-                [2.3, 1, 2.5, 1]
-            )
-
-            with c1:
-                st.write(
-                    f"**{account['name']}**"
-                )
-                st.caption(
-                    account["rut"]
-                )
-
-            with c2:
-                st.write(
-                    ROLES.get(
-                        account["role"],
-                        account["role"],
-                    )
-                )
-
-            with c3:
-                st.write(
-                    account["email"]
-                )
-
-            with c4:
-                if account["active"]:
-                    status_badge("Activo")
-                else:
-                    status_badge("Suspendido")
-
-            if account["id"] == user["id"]:
-                st.caption(
-                    "No puedes suspender tu propia cuenta."
-                )
-                continue
-
-            action_label = (
-                "Suspender"
-                if account["active"]
-                else "Reactivar"
-            )
-
-            if st.button(
-                action_label,
-                key=f"toggle_user_{account['id']}",
-            ):
-                new_status = 0 if account["active"] else 1
-
-                conn = get_connection()
-
-                conn.execute(
-                    """
-                    UPDATE users
-                    SET active = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        new_status,
-                        account["id"],
-                    ),
-                )
-
-                conn.commit()
-                conn.close()
-
-                audit(
-                    user["id"],
-                    "UPDATE",
-                    "users",
-                    account["id"],
-                    (
-                        "Usuario suspendido"
-                        if new_status == 0
-                        else "Usuario reactivado"
-                    ),
-                )
-
-                flash(
-                    "Estado de usuario actualizado."
-                )
-                st.rerun()
-
-
-def admin_moderation(user):
-    section("⭐ Moderación de reseñas")
-
-    conn = get_connection()
-
-    ratings = conn.execute(
-        """
-        SELECT
-            r.*,
-            uc.name AS client_name,
-            up.name AS professional_name
-        FROM ratings r
-        JOIN users uc ON uc.id = r.client_id
-        JOIN professionals p ON p.id = r.professional_id
-        JOIN users up ON up.id = p.user_id
-        ORDER BY r.id DESC
-        """
-    ).fetchall()
-
-    reports = conn.execute(
-        """
-        SELECT
-            rp.*,
-            r.comment,
-            up.name AS professional_name
-        FROM reports rp
-        JOIN ratings r ON r.id = rp.rating_id
-        JOIN professionals p ON p.id = r.professional_id
-        JOIN users up ON up.id = p.user_id
-        ORDER BY rp.id DESC
-        """
-    ).fetchall()
-
-    conn.close()
-
-    if not ratings:
-        st.info(
-            "No existen evaluaciones."
+    with st.form("account_status_form", clear_on_submit=True):
+        uid = st.number_input("Id del usuario", min_value=1, step=1, value=None, key="account_user_id")
+        status = st.selectbox(
+            "Nuevo estado",
+            list(api_client.ESTADOS_CUENTA),
+            format_func=lambda s: api_client.ESTADOS_CUENTA[s],
+            key="account_status",
         )
-    else:
-        for rating in ratings:
-            average = round(
-                (
-                    rating["quality"]
-                    + rating["punctuality"]
-                    + rating["treatment"]
-                ) / 3,
-                1,
-            )
-
-            with st.container(border=True):
-                st.markdown(
-                    f"### {rating['professional_name']} · ★ {average}"
-                )
-                st.write(
-                    f"Cliente: {rating['client_name']}"
-                )
-                st.write(
-                    rating["comment"] or "Sin comentario"
-                )
-
-                c1, c2 = st.columns(2)
-
-                with c1:
-                    if st.button(
-                        "Mantener reseña",
-                        key=f"keep_rating_{rating['id']}",
-                    ):
-                        audit(
-                            user["id"],
-                            "MODERATE",
-                            "ratings",
-                            rating["id"],
-                            "Reseña mantenida",
-                        )
-                        st.success(
-                            "Reseña mantenida."
-                        )
-
-                with c2:
-                    if st.button(
-                        "Reportar reseña",
-                        key=f"report_rating_{rating['id']}",
-                    ):
-                        conn = get_connection()
-
-                        conn.execute(
-                            """
-                            INSERT INTO reports
-                            (rating_id, reason, status, created_at)
-                            VALUES (?, ?, 'Pendiente', ?)
-                            """,
-                            (
-                                rating["id"],
-                                "Reportada para revisión administrativa.",
-                                now_str(),
-                            ),
-                        )
-
-                        conn.commit()
-                        conn.close()
-
-                        audit(
-                            user["id"],
-                            "CREATE",
-                            "reports",
-                            rating["id"],
-                            "Reseña reportada",
-                        )
-
-                        flash(
-                            "Reseña reportada."
-                        , kind="warning")
-                        st.rerun()
-
-    section("Reportes pendientes")
-
-    if not reports:
-        st.info(
-            "No existen reportes registrados."
+        reason = st.text_area(
+            "Motivo",
+            max_chars=MAX_TEXTO,
+            placeholder="Se registra en la bitácora del backend y se le notifica al usuario.",
+            key="account_reason",
         )
+        sent = st.form_submit_button("Cambiar estado", type="primary")
+
+    if not sent:
+        return
+    if not uid:
+        st.warning("Escribe el id del usuario.")
+    elif not reason.strip():
+        st.warning("Escribe el motivo.")
+    elif int(uid) == user["id"]:
+        st.warning("No puedes cambiar el estado de tu propia cuenta.")
     else:
-        for report in reports:
-            with st.container(border=True):
-                status_badge(report["status"])
-                st.write(
-                    f"Profesional: {report['professional_name']}"
-                )
-                st.write(
-                    f"Motivo: {report['reason']}"
-                )
+        try:
+            result = api_client.set_account_status(int(uid), status, reason)
+        except api_client.ApiError as error:
+            st.error(f"No se pudo cambiar el estado. {error}")
+            return
+        flash(f"Cuenta #{result.get('id', uid)}: {api_client.ESTADOS_CUENTA.get(result.get('account_status'), status)}.")
+        st.rerun()
 
-                if report["status"] == "Pendiente":
-                    if st.button(
-                        "Cerrar revisión",
-                        key=f"close_report_{report['id']}",
-                    ):
-                        conn = get_connection()
-
-                        conn.execute(
-                            """
-                            UPDATE reports
-                            SET status = 'Revisado'
-                            WHERE id = ?
-                            """,
-                            (report["id"],),
-                        )
-
-                        conn.commit()
-                        conn.close()
-
-                        audit(
-                            user["id"],
-                            "MODERATE",
-                            "reports",
-                            report["id"],
-                            "Reporte revisado",
-                        )
-
-                        flash(
-                            "Reporte revisado."
-                        )
-                        st.rerun()
+    st.caption(
+        "Ojo: hoy una cuenta **suspendida** puede seguir usando una sesión ya abierta hasta que venza; "
+        "**desactivada** corta la sesión de inmediato (pedido al backend)."
+    )
 
 
 def admin_claims(user):
+    """Reclamos de posventa (GET /api/claims/: todos) y resolución con mediación."""
     section("🛠️ Reclamos y mediación")
 
-    claims = get_all_claims()
+    try:
+        claims = requests_api.list_claims()
+    except api_client.ApiError as error:
+        st.error(f"No se pudieron cargar los reclamos. {error}")
+        return
 
     if not claims:
-        st.info(
-            "No existen reclamos."
-        )
+        empty_state("🛠️", "No existen reclamos", "Aquí aparecerán los reclamos de posventa de los clientes.")
         return
 
     for claim in claims:
+        cid = claim["id"]
         with st.container(border=True):
-            st.markdown(
-                f"### Reclamo #{claim['id']}"
-            )
-
+            st.markdown(f"### Reclamo #{cid}")
             status_badge(claim["status"])
+            st.caption(f"Solicitud #{claim['visit']} · abierto el {claim['created_at']}")
+            st.write(f"**Motivo:** {claim['description']}")
+            if claim["professional_response"]:
+                st.write(f"**Respuesta del profesional:** {claim['professional_response']}")
+            if claim["admin_resolution"]:
+                st.write(f"**Resolución:** {claim['admin_resolution']}")
 
-            st.write(
-                f"**Cliente:** {claim['client_name']}"
-            )
-
-            st.write(
-                f"**Profesional:** {claim['professional_name']}"
-            )
-
-            st.write(
-                f"**Motivo:** {claim['reason']}"
-            )
-
-            if claim["response"]:
-                st.write(
-                    f"**Respuesta:** {claim['response']}"
-                )
-
-            if claim["status"] != "Cerrado":
-                new_status = st.selectbox(
-                    "Estado",
-                    ESTADOS_RECLAMO,
-                    index=(
-                        ESTADOS_RECLAMO.index(claim["status"])
-                        if claim["status"] in ESTADOS_RECLAMO
-                        else 0
-                    ),
-                    key=f"claim_status_{claim['id']}",
-                )
-
+            if claim["raw_status"] != "RESOLVED":
                 resolution = st.text_area(
-                    "Registro de resolución / mediación",
-                    key=f"claim_resolution_{claim['id']}",
+                    "Resolución / mediación",
+                    max_chars=MAX_TEXTO,
+                    key=f"claim_resolution_{cid}",
                 )
-
-                if st.button(
-                    "Guardar resolución",
-                    key=f"save_claim_{claim['id']}",
-                ):
-                    conn = get_connection()
-
-                    conn.execute(
-                        """
-                        UPDATE claims
-                        SET status = ?,
-                            response = CASE
-                                WHEN ? <> '' THEN ?
-                                ELSE response
-                            END,
-                            updated_at = ?
-                        WHERE id = ?
-                        """,
-                        (
-                            new_status,
-                            resolution.strip(),
-                            resolution.strip(),
-                            now_str(),
-                            claim["id"],
-                        ),
-                    )
-
-                    conn.commit()
-                    conn.close()
-
-                    audit(
-                        user["id"],
-                        "UPDATE",
-                        "claims",
-                        claim["id"],
-                        f"Estado={new_status}",
-                    )
-
-                    flash(
-                        "Resolución registrada."
-                    )
+                if st.button("Resolver reclamo", key=f"save_claim_{cid}"):
+                    if not resolution.strip():
+                        st.warning("Escribe la resolución.")
+                        continue
+                    try:
+                        requests_api.claim_action(cid, "resolve", resolution=resolution.strip())
+                    except api_client.ApiError as error:
+                        st.error(f"No se pudo resolver el reclamo. {error}")
+                        continue
+                    flash(f"Reclamo #{cid} resuelto.")
                     st.rerun()
-
-
-def admin_training(user):
-    section("🎓 Centro de Desarrollo Profesional")
-
-    conn = get_connection()
-
-    contents = conn.execute(
-        """
-        SELECT *
-        FROM training_content
-        ORDER BY id
-        """
-    ).fetchall()
-
-    conn.close()
-
-    for content in contents:
-        with st.container(border=True):
-            st.markdown(
-                f"### {content['title']}"
-            )
-
-            st.caption(
-                f"{content['content_type']} · "
-                f"{content['category']}"
-            )
-
-            st.write(
-                content["description"]
-            )
-
-            if content["external_url"]:
-                st.write(
-                    f"Recurso oficial: {content['external_url']}"
-                )
-
-            if content["active"]:
-                if st.button(
-                    "Desactivar contenido",
-                    key=f"disable_training_{content['id']}",
-                ):
-                    conn = get_connection()
-
-                    conn.execute(
-                        """
-                        UPDATE training_content
-                        SET active = 0
-                        WHERE id = ?
-                        """,
-                        (content["id"],),
-                    )
-
-                    conn.commit()
-                    conn.close()
-
-                    audit(
-                        user["id"],
-                        "UPDATE",
-                        "training_content",
-                        content["id"],
-                        "Contenido desactivado",
-                    )
-
-                    flash(
-                        "Contenido desactivado."
-                    )
-                    st.rerun()
-            else:
-                if st.button(
-                    "Activar contenido",
-                    key=f"enable_training_{content['id']}",
-                ):
-                    conn = get_connection()
-
-                    conn.execute(
-                        """
-                        UPDATE training_content
-                        SET active = 1
-                        WHERE id = ?
-                        """,
-                        (content["id"],),
-                    )
-
-                    conn.commit()
-                    conn.close()
-
-                    audit(
-                        user["id"],
-                        "UPDATE",
-                        "training_content",
-                        content["id"],
-                        "Contenido activado",
-                    )
-
-                    flash(
-                        "Contenido activado."
-                    )
-                    st.rerun()
-
-    st.markdown("---")
-    st.markdown("### ➕ Crear contenido")
-
-    title = st.text_input(
-        "Título",
-        key="new_training_title",
-    )
-
-    category = st.selectbox(
-        "Categoría",
-        ["Tributario", "Seguridad", "Gestión"],
-        key="new_training_category",
-    )
-
-    content_type = st.selectbox(
-        "Tipo",
-        ["Guía", "Video"],
-        key="new_training_type",
-    )
-
-    description = st.text_area(
-        "Descripción",
-        key="new_training_description",
-    )
-
-    external_url = st.text_input(
-        "URL externa opcional",
-        key="new_training_url",
-    )
-
-    if st.button(
-        "Crear contenido",
-        use_container_width=True,
-        key="create_training",
-    ):
-        if not title.strip() or not description.strip():
-            st.warning(
-                "Completa título y descripción."
-            )
-        else:
-            conn = get_connection()
-
-            cur = conn.execute(
-                """
-                INSERT INTO training_content
-                (title, category, content_type, description, external_url, active)
-                VALUES (?, ?, ?, ?, ?, 1)
-                """,
-                (
-                    title.strip(),
-                    category,
-                    content_type,
-                    description.strip(),
-                    external_url.strip(),
-                ),
-            )
-
-            content_id = cur.lastrowid
-
-            conn.commit()
-            conn.close()
-
-            audit(
-                user["id"],
-                "CREATE",
-                "training_content",
-                content_id,
-                "Contenido creado",
-            )
-
-            st.success(
-                "Contenido creado."
-            )
-            st.rerun()
-
-
-def admin_audit(user):
-    section("📜 Trazabilidad de información")
-
-    st.write(
-        "Registro de acciones relevantes realizadas dentro del prototipo."
-    )
-
-    conn = get_connection()
-
-    logs = conn.execute(
-        """
-        SELECT
-            a.*,
-            u.name AS user_name,
-            u.role AS user_role
-        FROM audit_log a
-        LEFT JOIN users u ON u.id = a.user_id
-        ORDER BY a.id DESC
-        LIMIT 200
-        """
-    ).fetchall()
-
-    conn.close()
-
-    if not logs:
-        st.info(
-            "Todavía no existen registros de trazabilidad."
-        )
-        return
-
-    for log in logs:
-        with st.container(border=True):
-            st.write(
-                f"**{log['created_at']}** · "
-                f"{log['action']} · "
-                f"{log['entity']}"
-            )
-
-            st.caption(
-                f"Usuario: {log['user_name'] or 'Sistema'} "
-                f"· Rol: {log['user_role'] or 'N/A'}"
-            )
-
-            if log["entity_id"]:
-                st.write(
-                    f"ID de entidad: {log['entity_id']}"
-                )
-
-            if log["details"]:
-                st.write(
-                    f"Detalle: {log['details']}"
-                )
-
-
-def _set_ticket_status(admin_id, request_id, user_id, status):
-    # Callback: cambia el estado del ticket antes de redibujar la bandeja.
-    if set_support_ticket_status(request_id, user_id, status):
-        audit(admin_id, "SUPPORT_TICKET_STATUS", "requests", request_id,
-              f"Ticket del usuario {user_id}: {status}")
-        flash(f"Ticket marcado como {status.lower()}." if status == "Resuelto" else "Ticket reabierto.")
 
 
 def admin_support(user):
-    """Bandeja de tickets de soporte que clientes y profesionales abren sobre sus solicitudes."""
-    section("💬 Tickets de soporte")
+    """Bandeja de soporte (GET /api/tickets/?status=) y respuesta (POST .../resolve/)."""
+    section("💬 Bandeja de soporte")
 
-    threads = get_support_inbox()
+    labels = {"Abiertos": "OPEN", "En revisión": "IN_REVIEW", "Resueltos": "RESOLVED", "Todos": None}
+    chosen = st.radio("Mostrar", list(labels), horizontal=True, key="support_filter")
 
-    if not threads:
-        empty_state(
-            "💬",
-            "No hay tickets de soporte",
-            "Aquí aparecerán los tickets que clientes y profesionales abran sobre sus solicitudes.",
-        )
+    try:
+        tickets = api_client.list_tickets(labels[chosen])
+    except api_client.ApiError as error:
+        st.error(f"No se pudo cargar la bandeja. {error}")
         return
 
-    open_total = sum(1 for t in threads if t["ticket_status"] == "Abierto")
-    unread_total = sum(t["unread"] or 0 for t in threads)
-    st.caption(
-        f"{open_total} abiertos · {len(threads) - open_total} resueltos · "
-        f"{unread_total} mensajes sin leer"
-    )
-
-    status_filter = st.radio(
-        "Mostrar",
-        ["Abiertos", "Resueltos", "Todos"],
-        horizontal=True,
-        key="support_filter",
-    )
-    wanted = {"Abiertos": "Abierto", "Resueltos": "Resuelto"}.get(status_filter)
-    threads = [t for t in threads if wanted is None or t["ticket_status"] == wanted]
-
-    if not threads:
-        st.info(f"No hay tickets {status_filter.lower()}.")
+    if not tickets:
+        empty_state("💬", "No hay tickets", "Cuando un usuario abra un ticket desde una solicitud, aparecerá aquí.")
         return
 
-    for thread in threads:
-        rid, uid = thread["request_id"], thread["user_id"]
-        unread = thread["unread"] or 0
-
-        label = (
-            f"Ticket #{thread['ticket_id']} · {thread['subject']} · {thread['ticket_status']}"
-            f" · Solicitud #{rid} · {thread['user_name']} ({ROLES.get(thread['user_role'], thread['user_role'])})"
-            f" · {thread['trade'] or 'Servicio'} · {thread['request_status']}"
-            + (f" · 🔴 {unread} sin leer" if unread else "")
-        )
-
-        with st.expander(label, expanded=bool(unread)):
-            st.markdown(f"**Asunto:** {escape(thread['subject'] or '')}", unsafe_allow_html=True)
-            status_badge(thread["ticket_status"])
-            for message in get_support_thread(rid, uid):
-                who = "Soporte Overol" if message["from_admin"] else thread["user_name"]
-                css = "support-admin" if message["from_admin"] else "support-user"
-                st.markdown(
-                    "".join(
-                        line.strip()
-                        for line in f"""
-                        <div class="support-msg {css}">
-                            <div class="who">{escape(who)} · {escape(message["created_at"])}</div>
-                            <div>{escape(message["body"])}</div>
-                        </div>
-                        """.splitlines()
-                    ),
-                    unsafe_allow_html=True,
-                )
-
-            with st.form(f"support_reply_form_{rid}_{uid}", clear_on_submit=True):
-                body = st.text_area(
-                    "Responder",
-                    max_chars=MAX_TEXTO,
-                    key=f"support_reply_text_{rid}_{uid}",
-                )
-                sent = st.form_submit_button(
-                    "Enviar respuesta",
-                    type="primary",
-                    key=f"support_reply_send_{rid}_{uid}",
-                )
-
-            if sent:
-                ok, error = add_support_message(rid, uid, body, from_admin=True)
-
-                if not ok:
-                    st.error(error)
-                else:
-                    mark_support_thread_read(rid, uid)
-                    audit(user["id"], "SUPPORT_REPLY", "requests", rid,
-                          f"Respuesta de soporte al usuario {uid}")
-                    flash("Respuesta enviada.")
+    for ticket in tickets:
+        tid = ticket["id"]
+        with st.container(border=True):
+            st.markdown(f"### Ticket #{tid} · {ticket.get('subject', '')}")
+            status_badge(api_client.ESTADOS_TICKET.get(ticket.get("status"), ticket.get("status")))
+            st.caption(f"Solicitud #{ticket.get('visit')}")
+            st.write(ticket.get("description", ""))
+            if ticket.get("response"):
+                st.write(f"**Respuesta de soporte:** {ticket['response']}")
+            if ticket.get("status") != "RESOLVED":
+                response = st.text_area("Respuesta al usuario", max_chars=MAX_TEXTO, key=f"support_reply_{tid}")
+                if st.button("Responder y resolver", type="primary", key=f"support_resolve_{tid}"):
+                    if not response.strip():
+                        st.warning("Escribe la respuesta.")
+                        continue
+                    try:
+                        api_client.resolve_ticket(tid, response)
+                    except api_client.ApiError as error:
+                        st.error(f"No se pudo responder el ticket. {error}")
+                        continue
+                    flash(f"Ticket #{tid} respondido y resuelto. El usuario recibe una notificación.")
                     st.rerun()
-
-            if unread and st.button("Marcar como leído", key=f"support_read_{rid}_{uid}"):
-                mark_support_thread_read(rid, uid)
-                st.rerun()
-
-            if thread["ticket_status"] == "Abierto":
-                st.button(
-                    "✓ Marcar como resuelto",
-                    key=f"support_resolve_{rid}_{uid}",
-                    on_click=_set_ticket_status,
-                    args=(user["id"], rid, uid, "Resuelto"),
-                )
-            else:
-                st.button(
-                    "Reabrir ticket",
-                    key=f"support_reopen_{rid}_{uid}",
-                    on_click=_set_ticket_status,
-                    args=(user["id"], rid, uid, "Abierto"),
-                )

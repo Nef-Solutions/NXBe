@@ -1,134 +1,194 @@
 """
-Sesiones persistentes: permiten mantener la sesión abierta aunque se recargue la página.
+Sesión del usuario contra el backend Django.
 
-Funcionamiento:
-  1. Al ingresar con «Mantener mi sesión iniciada» se crea un token aleatorio.
-     En la base de datos solo se guarda su HASH (SHA-256), nunca el token.
-  2. El token viaja en una cookie del navegador (overol_session).
-  3. Al abrir o recargar la página, si la cookie trae un token válido y no vencido,
-     la sesión se restaura sin pedir la contraseña.
-  4. Al cerrar sesión se elimina el token de la base y se borra la cookie.
+Usuario actual:
+  Sale de GET /api/auth/me/ y se guarda en st.session_state["me"] (current_user()).
+  Se vuelve a pedir cada SEGUNDOS_REVALIDAR para notar una cuenta suspendida.
 
-Requiere Streamlit 1.37 o superior (st.context.cookies). En versiones anteriores la
-función queda desactivada sin afectar al resto de la aplicación.
+Sesión persistente («Mantener mi sesión iniciada», 7 días):
+  1. La cookie del navegador (overol_session) lleva SOLO un identificador aleatorio
+     de 256 bits. No lleva tokens ni datos personales. SameSite=Lax (y Secure en https).
+  2. El token de renovación del backend vive en la MEMORIA del servidor de Streamlit
+     (st.cache_resource), indexado por el hash del identificador, con vencimiento a 7 días.
+  3. Al recargar la página, la cookie permite recuperar el token y pedir un acceso nuevo.
+  4. Cerrar sesión llama a POST /auth/logout/ (anula el token en el backend), borra la
+     entrada de memoria y la cookie.
+  Si el servidor de Streamlit se reinicia, la memoria se pierde y se pide ingresar de nuevo.
+
+Requiere Streamlit 1.37 o superior (st.context.cookies).
 """
 
 import hashlib
 import secrets
+import threading
+import time
 from datetime import datetime, timedelta
 
 import streamlit as st
 
-from core.constants import DIAS_SESION, use_api
-from core.database import get_connection, get_user
+from core import api_client
+from core.constants import API_ROLES, DIAS_SESION
 
 COOKIE_NAME = "overol_session"
+USER_KEY = "me"
+SEGUNDOS_REVALIDAR = 60
+
+
+# ------------------------------------------------------------
+# Sesiones persistentes en memoria del servidor
+# ------------------------------------------------------------
+
+@st.cache_resource
+def _store():
+    return {"lock": threading.Lock(), "sessions": {}}
 
 
 def _hash(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_session(user_id, days=DIAS_SESION, api_refresh=""):
-    """Crea una sesión persistente y devuelve el token (se entrega solo al navegador).
-    En modo api guarda también el token de renovación del backend (en texto plano:
-    limitación aceptada del prototipo, ver README)."""
+def create_session(refresh_token, days=DIAS_SESION):
+    """Guarda el token de renovación en memoria y devuelve el identificador para la cookie."""
     token = secrets.token_urlsafe(32)
     now = datetime.now()
-
-    conn = get_connection()
-    # Limpia sesiones vencidas de paso
-    conn.execute(
-        "DELETE FROM user_sessions WHERE expires_at < ?",
-        (now.strftime("%Y-%m-%d %H:%M:%S"),),
-    )
-    conn.execute(
-        """
-        INSERT INTO user_sessions (token_hash, user_id, created_at, expires_at, api_refresh)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            _hash(token),
-            user_id,
-            now.strftime("%Y-%m-%d %H:%M:%S"),
-            (now + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S"),
-            api_refresh or "",
-        ),
-    )
-    conn.commit()
-    conn.close()
+    store = _store()
+    with store["lock"]:
+        # Limpia de paso las sesiones vencidas
+        for key in [k for k, v in store["sessions"].items() if v["expires"] < now]:
+            del store["sessions"][key]
+        store["sessions"][_hash(token)] = {"refresh": refresh_token, "expires": now + timedelta(days=days)}
     return token
 
 
 def get_session_refresh(token):
-    """Token de renovación del backend guardado con la sesión persistente ('' si no hay)."""
+    """Token de renovación de una sesión vigente ('' si no existe o venció)."""
     if not token:
         return ""
+    store = _store()
+    with store["lock"]:
+        entry = store["sessions"].get(_hash(token))
+        if entry and entry["expires"] < datetime.now():
+            del store["sessions"][_hash(token)]
+            entry = None
+    return entry["refresh"] if entry else ""
 
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT api_refresh FROM user_sessions WHERE token_hash = ?",
-        (_hash(token),),
-    ).fetchone()
-    conn.close()
-    return (row["api_refresh"] or "") if row else ""
 
-
-def update_session_refresh(token, api_refresh):
-    """Guarda un token de renovación rotado por el backend."""
+def update_session_refresh(token, refresh_token):
+    """El backend rota el token de renovación: se reemplaza el guardado (sin alargar el plazo)."""
     if not token:
         return
-
-    conn = get_connection()
-    conn.execute(
-        "UPDATE user_sessions SET api_refresh = ? WHERE token_hash = ?",
-        (api_refresh, _hash(token)),
-    )
-    conn.commit()
-    conn.close()
-
-
-def validate_session(token):
-    """Devuelve el usuario dueño del token si la sesión es válida; si no, None."""
-    if not token:
-        return None
-
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT user_id, expires_at FROM user_sessions WHERE token_hash = ?",
-        (_hash(token),),
-    ).fetchone()
-
-    if not row:
-        conn.close()
-        return None
-
-    if row["expires_at"] < datetime.now().strftime("%Y-%m-%d %H:%M:%S"):
-        conn.execute("DELETE FROM user_sessions WHERE token_hash = ?", (_hash(token),))
-        conn.commit()
-        conn.close()
-        return None
-
-    conn.close()
-
-    user = get_user(row["user_id"])
-
-    # Una cuenta suspendida o eliminada no puede restaurar su sesión
-    if not user or not user["active"]:
-        return None
-
-    return user
+    store = _store()
+    with store["lock"]:
+        entry = store["sessions"].get(_hash(token))
+        if entry:
+            entry["refresh"] = refresh_token
 
 
 def delete_session(token):
     if not token:
         return
+    store = _store()
+    with store["lock"]:
+        store["sessions"].pop(_hash(token), None)
 
-    conn = get_connection()
-    conn.execute("DELETE FROM user_sessions WHERE token_hash = ?", (_hash(token),))
-    conn.commit()
-    conn.close()
 
+# ------------------------------------------------------------
+# Usuario actual
+# ------------------------------------------------------------
+
+def user_from_me(me):
+    """Respuesta de /auth/me/ con las claves que usan las pantallas."""
+    role = API_ROLES.get(me.get("role"))
+    if not role:
+        raise ValueError(f"Rol desconocido del backend: {me.get('role')!r}")
+
+    email = (me.get("email") or "").strip().lower()
+    name = f"{(me.get('first_name') or '').strip()} {(me.get('last_name') or '').strip()}".strip()
+    return {
+        "id": me["id"],
+        "email": email,
+        "name": name or email,
+        "first_name": me.get("first_name") or "",
+        "last_name": me.get("last_name") or "",
+        "rut": me.get("rut") or "",
+        "role": role,
+        "active": True,
+        "phone": me.get("phone") or "",
+        "address": me.get("address") or "",
+        "commune": me.get("commune") or "",
+        "contact_preference": me.get("contact_preference") or "",
+        "bio": me.get("bio") or "",
+        "headline": me.get("headline") or "",
+        "visit_fee": me.get("visit_fee"),
+        "verification_status": me.get("verification_status"),
+        "professional_profile_id": me.get("professional_profile_id"),
+    }
+
+
+def load_user():
+    """Pide /auth/me/ y deja el usuario en la sesión. Puede lanzar ApiError o ValueError."""
+    user = user_from_me(api_client.get_me())
+    st.session_state[USER_KEY] = user
+    st.session_state["_me_loaded_at"] = time.time()
+    return user
+
+
+def current_user():
+    """Usuario autenticado (o None). Se revalida con el backend cada SEGUNDOS_REVALIDAR."""
+    if not st.session_state.get("authenticated"):
+        return None
+
+    user = st.session_state.get(USER_KEY)
+    if user and time.time() - st.session_state.get("_me_loaded_at", 0) < SEGUNDOS_REVALIDAR:
+        return user
+
+    try:
+        return load_user()
+    except api_client.ApiError as error:
+        # 401: el token ya no sirve (sesión vencida, cuenta suspendida o desactivada)
+        if error.status == 401:
+            return None
+        # Backend caído: se sigue con los datos conocidos y se reintenta en la próxima ejecución
+        return user
+    except ValueError:
+        return None
+
+
+def is_profile_complete(user):
+    """Cliente y profesional deben tener teléfono, dirección y comuna antes de entrar."""
+    return user["role"] == "admin" or all(user[k] for k in ("phone", "address", "commune"))
+
+
+def start_session(remember):
+    """Tras un login exitoso (tokens ya guardados): carga el usuario y, si corresponde,
+    crea la sesión persistente. Puede lanzar ApiError o ValueError."""
+    load_user()
+    st.session_state["authenticated"] = True
+    st.session_state.pop("show_login", None)
+
+    if remember:
+        token = create_session(api_client.get_refresh_token())
+        st.session_state["session_token"] = token
+        st.session_state["_set_cookie"] = token
+    else:
+        st.session_state["_clear_cookie"] = True
+
+
+def end_session():
+    """Cierra la sesión en el backend, en la memoria del servidor y en el navegador."""
+    try:
+        api_client.logout()
+    except api_client.ApiError:
+        pass  # aunque el backend no responda, la sesión local se cierra igual
+
+    delete_session(st.session_state.get("session_token"))
+    st.session_state.clear()
+    st.session_state["_clear_cookie"] = True
+
+
+# ------------------------------------------------------------
+# Cookie
+# ------------------------------------------------------------
 
 def read_session_cookie():
     """Lee la cookie de sesión que envió el navegador (None si no existe o no es compatible)."""
@@ -137,7 +197,7 @@ def read_session_cookie():
     except Exception:
         return None
 
-    # Solo se aceptan textos con la forma de un token; cualquier otra cosa se ignora
+    # Solo se aceptan textos con la forma de un identificador; cualquier otra cosa se ignora
     if isinstance(value, str) and 20 <= len(value) <= 200:
         return value
 
@@ -145,37 +205,36 @@ def read_session_cookie():
 
 
 def restore_session():
-    """Si el navegador trae una sesión válida, deja al usuario autenticado."""
+    """Si el navegador trae el identificador de una sesión vigente, la restaura."""
     if st.session_state.get("authenticated") or st.session_state.get("_session_checked"):
         return
 
     st.session_state["_session_checked"] = True
 
     token = read_session_cookie()
+    refresh_token = get_session_refresh(token)
+
+    if not refresh_token:
+        if token:
+            st.session_state["_clear_cookie"] = True  # identificador desconocido o vencido
+        return
+
+    api_client.set_tokens(None, refresh_token)
+    st.session_state["session_token"] = token
 
     try:
-        user = validate_session(token)
-    except Exception:
-        user = None
+        restored = api_client.refresh() and load_user()
+    except (api_client.ApiError, ValueError):
+        restored = False
 
-    # Modo api: la sesión solo se restaura si el backend acepta el token de renovación
-    if user and use_api():
-        from core import api_client
+    if not restored:
+        api_client.clear_tokens()
+        delete_session(token)
+        st.session_state.pop("session_token", None)
+        st.session_state["_clear_cookie"] = True
+        return
 
-        api_client.set_tokens(None, get_session_refresh(token))
-        try:
-            restored = api_client.refresh()
-        except api_client.ApiError:
-            restored = False
-
-        if not restored:
-            api_client.clear_tokens()
-            return
-
-    if user:
-        st.session_state.user_id = user["id"]
-        st.session_state.authenticated = True
-        st.session_state["session_token"] = token
+    st.session_state["authenticated"] = True
 
 
 def render_cookie_script():

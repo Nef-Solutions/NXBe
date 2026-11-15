@@ -17,14 +17,8 @@ from html import escape
 
 import streamlit as st
 
-from core.constants import DIAS_SEMANA, OFICIOS_INFO
-from core.database import (
-    get_client_stats,
-    get_professional_rating,
-    get_professional_stats,
-    get_public_reviews,
-    get_trades,
-)
+from core.constants import DIAS_SEMANA, FEE_NOTE, OFICIOS_INFO, ROLES
+from core import api_client, catalog_api, requests_api
 from ui.components import _html, initials, stars
 
 TRADE_ICONS = {trade: icon for icon, trade, _ in OFICIOS_INFO}
@@ -57,8 +51,8 @@ def _section(title, icon, body_html):
 # ------------------------------------------------------------
 
 def profile_header(professional, anonymous=False):
-    stats = get_professional_stats(professional["id"])
-    trades = get_trades(professional["id"])
+    stats = catalog_api.stats(professional)
+    trades = catalog_api.trades(professional)
     coverage = _split(professional["coverage"])
 
     name = f'Profesional #{professional["id"]}' if anonymous else professional["name"]
@@ -129,7 +123,7 @@ def profile_header(professional, anonymous=False):
 
 def profile_sections(professional, owner=False):
     """Secciones del perfil. `owner=True` muestra textos guía en lo que aún está vacío."""
-    trades = get_trades(professional["id"])
+    trades = catalog_api.trades(professional)
 
     # ---------- Acerca de ----------
     about = (professional["about"] or "").strip()
@@ -145,18 +139,21 @@ def profile_sections(professional, owner=False):
     # ---------- Experiencia (una entrada por oficio) ----------
     entries = ""
     for trade in trades:
-        total, average = get_professional_rating(professional["id"], trade["trade"])
+        total, average = catalog_api.rating(professional, trade["trade"])
         years = (
             f'{trade["years_experience"]} años de experiencia'
             if trade["years_experience"] is not None
             else "Experiencia no informada"
         )
-        rating = (
-            f'<span class="stars">{stars(average)}</span> <b>{average}</b> '
-            f'<span class="muted">· {total} evaluaciones</span>'
-            if total
-            else '<span class="muted">Aún sin evaluaciones</span>'
-        )
+        if total is None:
+            rating = ""  # el backend aún no valora por oficio
+        elif total:
+            rating = (
+                f'<span class="stars">{stars(average)}</span> <b>{average}</b> '
+                f'<span class="muted">· {total} evaluaciones</span>'
+            )
+        else:
+            rating = '<span class="muted">Aún sin evaluaciones</span>'
         specs = _chips(_split(trade["specialties"]))
         entries += (
             '<div class="exp-item">'
@@ -228,7 +225,8 @@ def profile_sections(professional, owner=False):
         '<div class="plabel">Zona de cobertura</div>'
         f'<div class="chips">{_chips(coverage, "chip-trade") if coverage else "<span class=muted>Sin cobertura definida</span>"}</div>'
         '<div class="plabel">Tarifa de visita</div>'
-        f'<div><b>{escape(professional["visit_fee"] or "Por definir")}</b></div>',
+        f'<div><b>{escape(professional["visit_fee"] or "Por definir")}</b></div>'
+        f'<div class="muted">{escape(FEE_NOTE)}</div>',
     )
 
 
@@ -236,8 +234,9 @@ def profile_sections(professional, owner=False):
 # Opiniones (estilo «recomendaciones»)
 # ------------------------------------------------------------
 
-def profile_reviews(professional_id):
-    reviews = get_public_reviews(professional_id)
+def profile_reviews(professional):
+    """Opiniones con comentario (el perfil del backend ya trae sus opiniones)."""
+    reviews = catalog_api.reviews(professional)
 
     if not reviews:
         _section(
@@ -268,25 +267,27 @@ def profile_reviews(professional_id):
 # Cabecera del perfil personal (cliente / profesional)
 # ------------------------------------------------------------
 
-def profile_user_header(user, profile):
-    stats = get_client_stats(user["id"])
-    role = "Cliente" if user["role"] == "cliente" else "Profesional"
-    commune = profile["commune"] if profile and profile["commune"] else ""
-    place = f"📍 {escape(commune)}" if commune else ""
+def profile_user_header(user):
+    """Cabecera del perfil personal con los datos de /auth/me/. Para el cliente, cifras
+    de sus solicitudes (las evaluaciones hechas vuelven en la etapa D)."""
+    role = ROLES.get(user["role"], user["role"])
+    place = f"📍 {escape(user['commune'])}" if user["commune"] else ""
 
     badges = f'<span class="pbadge">{role}</span>'
-    if stats["member_since"]:
-        badges += f'<span class="pbadge">Miembro desde {escape(stats["member_since"])}</span>'
-
     stat_html = ""
     if user["role"] == "cliente":
-        stat_html = (
-            '<div class="profile-stats">'
-            f'<div class="pstat"><div class="pstat-n">{stats["requests"]}</div><div class="pstat-l">Solicitudes</div></div>'
-            f'<div class="pstat"><div class="pstat-n">{stats["finished"]}</div><div class="pstat-l">Servicios finalizados</div></div>'
-            f'<div class="pstat"><div class="pstat-n">{stats["rated"]}</div><div class="pstat-l">Evaluaciones realizadas</div></div>'
-            "</div>"
-        )
+        try:
+            requests = requests_api.list_requests()
+        except api_client.ApiError:
+            requests = None
+        if requests is not None:
+            finished = sum(1 for r in requests if r["raw_status"] == "COMPLETED")
+            stat_html = (
+                '<div class="profile-stats">'
+                f'<div class="pstat"><div class="pstat-n">{len(requests)}</div><div class="pstat-l">Solicitudes</div></div>'
+                f'<div class="pstat"><div class="pstat-n">{finished}</div><div class="pstat-l">Servicios finalizados</div></div>'
+                "</div>"
+            )
 
     st.markdown(
         _html(

@@ -1,30 +1,20 @@
 """Pantallas compartidas entre roles: perfil personal, perfil público del profesional y barra lateral."""
 
-from datetime import datetime
+from datetime import date
 
 import streamlit as st
 
-from core import api_client
+from core import api_client, catalog_api, requests_api
 from core.constants import (
     COMUNAS,
     FRANJAS_HORARIAS,
+    MAX_TEXTO,
     OFICIOS_INFO,
     PREFERENCIAS_CONTACTO,
     ROLES,
-    use_api,
 )
-from core.database import (
-    audit,
-    create_request,
-    get_professional_by_id,
-    get_trades,
-    get_user,
-    get_user_profile,
-    next_work_date,
-    save_user_profile,
-)
-from core.security import validate_phone
-from core.session import delete_session
+from core.security import validate_password_strength, validate_phone
+from core.session import end_session, load_user
 from ui.components import flash, section, security_note
 from ui.profile import (
     profile_header,
@@ -34,23 +24,52 @@ from ui.profile import (
 )
 
 
-def _update_profile_api(phone, address, commune):
-    """Modo api: envía teléfono, dirección y comuna al backend (lo único que acepta PATCH /me/).
-    Devuelve False si falló; en modo local no hace nada y devuelve True."""
-    if not use_api():
-        return True
-
+def _save_me(**fields):
+    """PATCH /auth/me/ y recarga el usuario de la sesión. Devuelve False si falló."""
     try:
-        api_client.update_me(phone, address, commune)
+        api_client.update_me(**fields)
+        load_user()
     except api_client.ApiError as error:
         st.error(f"No se pudieron guardar tus datos en el servidor. {error}")
         return False
-
     return True
 
 
+def _professional_fields(user, prefix):
+    """Preferencia de contacto, titular y presentación (solo profesionales: el backend
+    guarda estos datos en el perfil profesional e ignora los de un cliente)."""
+    preference = st.selectbox(
+        "💬 ¿Cómo prefieres que te contacten?",
+        PREFERENCIAS_CONTACTO,
+        index=PREFERENCIAS_CONTACTO.index(user["contact_preference"])
+        if user["contact_preference"] in PREFERENCIAS_CONTACTO
+        else 0,
+        key=f"{prefix}_contact_preference",
+    )
+    headline = st.text_input(
+        "🛠️ Titular",
+        value=user["headline"],
+        max_chars=160,
+        placeholder="Ej: Gasfiter certificado · Fugas y calefont",
+        key=f"{prefix}_headline",
+    )
+    bio = st.text_area(
+        "📝 Cuéntanos brevemente sobre ti y tu experiencia",
+        value=user["bio"],
+        max_chars=500,
+        placeholder="Ej: Trabajo hace 5 años realizando reparaciones domiciliarias...",
+        key=f"{prefix}_bio",
+    )
+    return {"contact_preference": preference, "headline": headline, "bio": bio}
+
+
+def _commune_options(current):
+    return COMUNAS if not current or current in COMUNAS else [current] + COMUNAS
+
+
 def personal_questions_screen(user):
-    """Formulario obligatorio inicial para completar el perfil personal."""
+    """Formulario obligatorio inicial: teléfono, dirección y comuna (y, para el profesional,
+    su presentación). Se guarda en el backend con PATCH /auth/me/."""
     section("👤 Completa tu perfil")
 
     role_label = ROLES.get(user["role"], user["role"])
@@ -62,46 +81,27 @@ def personal_questions_screen(user):
     with st.form("personal_profile_form", clear_on_submit=False):
         phone = st.text_input(
             "📱 Número de teléfono",
+            value=user["phone"],
             placeholder="Ej: +56 9 1234 5678",
             key="profile_phone",
         )
 
         address = st.text_input(
             "🏠 Dirección",
+            value=user["address"],
             placeholder="Ej: Av. Principal 1234",
             key="profile_address",
         )
 
+        communes = _commune_options(user["commune"])
         commune = st.selectbox(
             "📍 Comuna",
-            COMUNAS,
+            communes,
+            index=communes.index(user["commune"]) if user["commune"] in communes else 0,
             key="profile_commune",
         )
 
-        contact_preference = st.selectbox(
-            "💬 ¿Cómo prefieres que te contacten?",
-            PREFERENCIAS_CONTACTO,
-            key="profile_contact_preference",
-        )
-
-        if user["role"] == "cliente":
-            service_interest = st.text_input(
-                "🏠 ¿Qué tipo de ayuda buscas normalmente en Overol?",
-                placeholder="Ej: gasfitería, electricidad, reparaciones...",
-                key="profile_service_interest",
-            )
-            bio = ""
-        else:
-            service_interest = st.text_input(
-                "🛠️ ¿Qué servicios realizas?",
-                placeholder="Ej: instalaciones, reparaciones, mantención...",
-                key="profile_service_interest",
-            )
-            bio = st.text_area(
-                "📝 Cuéntanos brevemente sobre ti y tu experiencia",
-                placeholder="Ej: Trabajo hace 5 años realizando reparaciones domiciliarias...",
-                key="profile_bio",
-            )
+        extra = _professional_fields(user, "profile") if user["role"] == "profesional" else {}
 
         submitted = st.form_submit_button(
             "Guardar mis datos y entrar a Overol",
@@ -113,37 +113,16 @@ def personal_questions_screen(user):
         errors = []
         if not validate_phone(phone):
             errors.append("Ingresa un teléfono válido (8 a 15 dígitos).")
-
         if not address.strip():
             errors.append("Ingresa tu dirección.")
-        if not service_interest.strip():
-            errors.append("Cuéntanos qué necesitas o qué servicios realizas.")
 
         if errors:
             for error in errors:
                 st.error(error)
             return False
 
-        if not _update_profile_api(phone, address, commune):
+        if not _save_me(phone=phone, address=address, commune=commune, **extra):
             return False
-
-        save_user_profile(
-            user["id"],
-            phone,
-            commune,
-            contact_preference,
-            service_interest,
-            bio,
-            address,
-        )
-
-        audit(
-            user["id"],
-            "UPDATE_PROFILE",
-            "user_profiles",
-            user["id"],
-            "Datos personales iniciales guardados",
-        )
 
         flash("Datos guardados. Entrando a tu perfil...")
         st.rerun()
@@ -151,56 +130,82 @@ def personal_questions_screen(user):
     return True
 
 
+def _change_password_form(expanded=False):
+    """Cambio de contraseña (POST /auth/password/change/)."""
+    with st.expander("🔑 Cambiar contraseña", expanded=expanded):
+        with st.form("change_password_form", clear_on_submit=True):
+            current = st.text_input("Contraseña actual", type="password", key="pwd_current")
+            new = st.text_input(
+                "Nueva contraseña",
+                type="password",
+                help="Mínimo 8 caracteres, con al menos una letra y un número.",
+                key="pwd_new",
+            )
+            confirm = st.text_input("Confirmar nueva contraseña", type="password", key="pwd_confirm")
+            submitted = st.form_submit_button("Cambiar contraseña", use_container_width=True)
+
+        if not submitted:
+            return
+
+        problems = validate_password_strength(new)
+        if not current:
+            st.error("Ingresa tu contraseña actual.")
+        elif problems:
+            st.error("La nueva contraseña necesita " + ", ".join(problems) + ".")
+        elif new != confirm:
+            st.error("Las contraseñas no coinciden.")
+        else:
+            try:
+                api_client.change_password(current, new)
+            except api_client.ApiError as error:
+                messages = (
+                    api_client.field_messages(error.data, "current_password")
+                    + api_client.field_messages(error.data, "new_password")
+                )
+                st.error(
+                    "No se pudo cambiar la contraseña:\n\n" + "\n".join(f"- {m}" for m in messages)
+                    if messages else f"No se pudo cambiar la contraseña. {error}"
+                )
+                return
+            st.success("Contraseña actualizada. Úsala la próxima vez que ingreses.")
+
+
 def user_profile_page(user):
-    """Historia 006: el usuario modifica sus datos; nombre y RUT quedan bloqueados."""
-    section("👤 Mi perfil personal")
+    """Historia 006: el usuario modifica sus datos; nombre, RUT y correo quedan bloqueados.
+    Desde el menú lateral se puede abrir solo «Editar datos» o solo «Cambiar contraseña»."""
+    focus = st.session_state.get(PROFILE_FOCUS_KEY, "perfil")
 
-    profile = get_user_profile(user["id"])
-
-    if not profile:
-        st.warning("Todavía no has completado tus datos personales.")
+    if focus == "contrasena":
+        section("🔑 Cambiar contraseña")
+        _change_password_form(expanded=True)
         return
 
-    profile_user_header(user, profile)
+    section("✏️ Editar mis datos" if focus == "editar" else "👤 Mi perfil personal")
+
+    profile_user_header(user)
 
     c1, c2, c3 = st.columns(3)
     c1.text_input("Nombre", value=user["name"], disabled=True, key="ro_name")
-    c2.text_input("RUT", value=user["rut"] or "", disabled=True, key="ro_rut")
+    c2.text_input("RUT", value=user["rut"], disabled=True, key="ro_rut")
     c3.text_input("Correo", value=user["email"], disabled=True, key="ro_email")
     st.caption(
-        "El nombre y el RUT no se pueden modificar directamente. "
+        "El nombre, el RUT y el correo no se pueden modificar directamente. "
         "Si necesitas corregirlos, solicita una revisión a Overol."
     )
 
     with st.form("edit_personal_form"):
-        phone = st.text_input("📱 Teléfono", value=profile["phone"] or "")
-        address = st.text_input("🏠 Dirección", value=profile["address"] or "")
+        phone = st.text_input("📱 Teléfono", value=user["phone"], key="edit_phone")
+        address = st.text_input("🏠 Dirección", value=user["address"], key="edit_address")
 
-        communes = COMUNAS if profile["commune"] in COMUNAS else [profile["commune"]] + COMUNAS
+        communes = _commune_options(user["commune"])
         commune = st.selectbox(
             "📍 Comuna",
             communes,
-            index=communes.index(profile["commune"]) if profile["commune"] in communes else 0,
+            index=communes.index(user["commune"]) if user["commune"] in communes else 0,
+            key="edit_commune",
         )
 
-        preference = st.selectbox(
-            "💬 Preferencia de contacto",
-            PREFERENCIAS_CONTACTO,
-            index=PREFERENCIAS_CONTACTO.index(profile["contact_preference"])
-            if profile["contact_preference"] in PREFERENCIAS_CONTACTO
-            else 0,
-        )
-
-        interest_label = (
-            "🏠 Servicios o necesidades habituales"
-            if user["role"] == "cliente"
-            else "🛠️ Servicios que realizas"
-        )
-        interest = st.text_input(interest_label, value=profile["service_interest"] or "")
-
-        bio = ""
-        if user["role"] == "profesional":
-            bio = st.text_area("📝 Sobre mí", value=profile["bio"] or "")
+        extra = _professional_fields(user, "edit") if user["role"] == "profesional" else {}
 
         saved = st.form_submit_button(
             "Guardar cambios", type="primary", use_container_width=True
@@ -217,14 +222,12 @@ def user_profile_page(user):
         if errors:
             for error in errors:
                 st.error(error)
-        elif _update_profile_api(phone, address, commune):
-            save_user_profile(
-                user["id"], phone, commune, preference, interest, bio, address
-            )
-            audit(user["id"], "UPDATE_PROFILE", "user_profiles", user["id"],
-                  "Datos personales modificados")
+        elif _save_me(phone=phone, address=address, commune=commune, **extra):
             flash("Tus datos fueron actualizados.")
             st.rerun()
+
+    if focus != "editar":
+        _change_password_form()
 
 
 def open_professional(professional_id):
@@ -256,7 +259,12 @@ def apply_deeplink(nav_key, target, prev_key):
     except ValueError:
         return
 
-    if get_professional_by_id(professional_id):
+    try:
+        exists = catalog_api.get_professional(professional_id) is not None
+    except api_client.ApiError:
+        exists = False
+
+    if exists:
         st.session_state["selected_professional"] = professional_id
         st.session_state[nav_key] = target
         st.session_state[prev_key] = target
@@ -300,23 +308,24 @@ def go_login_button(key, label="🔑 Iniciar sesión o registrarme"):
         st.rerun()
 
 
-def render_profile_card(professional, anonymous, owner=False):
-    """Perfil completo tipo LinkedIn: cabecera con portada y secciones."""
-    profile_header(professional, anonymous)
-    profile_sections(professional, owner=owner)
+def _load_professional(professional_id, anonymous=False):
+    """Profesional del catálogo (base local o backend). Muestra el error y devuelve None."""
+    try:
+        professional = catalog_api.get_professional(professional_id, anonymous=anonymous)
+    except api_client.ApiError as error:
+        st.error(f"No se pudo cargar el perfil del profesional. {error}")
+        return None
 
-
-def render_reviews(professional_id):
-    """Opiniones de clientes (sin nombres)."""
-    profile_reviews(professional_id)
+    if not professional:
+        st.error("Profesional no encontrado.")
+    return professional
 
 
 def professional_profile_public(professional_id):
     """Historia 003: perfil público para visitantes (sin datos personales)."""
-    professional = get_professional_by_id(professional_id)
+    professional = _load_professional(professional_id, anonymous=True)
 
     if not professional:
-        st.error("Profesional no encontrado.")
         return
 
     profile_header(professional, anonymous=True)
@@ -325,7 +334,7 @@ def professional_profile_public(professional_id):
 
     with left:
         profile_sections(professional)
-        profile_reviews(professional_id)
+        profile_reviews(professional)
 
     with right:
         st.markdown(
@@ -340,18 +349,15 @@ def professional_profile_public(professional_id):
         )
 
 
-def professional_profile_client(user_id, professional_id):
+def professional_profile_client(viewer, professional_id):
     # Solo los clientes pueden ver perfiles individuales y agendar visitas
-    viewer = get_user(user_id)
-
     if not viewer or viewer["role"] != "cliente":
         st.error("Solo los clientes pueden ver perfiles de profesionales y agendar visitas.")
         return
 
-    professional = get_professional_by_id(professional_id)
+    professional = _load_professional(professional_id)
 
     if not professional:
-        st.error("Profesional no encontrado.")
         return
 
     profile_header(professional, anonymous=False)
@@ -360,94 +366,12 @@ def professional_profile_client(user_id, professional_id):
 
     with left:
         profile_sections(professional)
-        profile_reviews(professional_id)
+        profile_reviews(professional)
 
     with right:
         st.markdown("### 📅 Solicitar visita")
 
-        work_days = [d for d in (professional["work_days"] or "").split(",") if d]
-
-        if work_days:
-            st.caption(
-                f"📅 Trabaja: {', '.join(work_days)}"
-                + (
-                    f" · 🕘 {professional['work_start']}–{professional['work_end']}"
-                    if professional["work_start"]
-                    else ""
-                )
-            )
-
-        trade_names = [t["trade"] for t in get_trades(professional_id)]
-
-        trade = st.selectbox(
-            "Oficio requerido",
-            trade_names,
-            key=f"request_trade_{professional_id}",
-        )
-
-        coverage = [x for x in COMUNAS if x in professional["coverage"].split(",")]
-        commune = st.selectbox(
-            "Comuna del servicio",
-            coverage or COMUNAS,
-            key=f"request_commune_{professional_id}",
-        )
-
-        # La fecha propuesta por defecto es el próximo día en que el profesional trabaja
-        date = st.date_input(
-            "Fecha tentativa",
-            value=next_work_date(professional["work_days"]),
-            min_value=datetime.today().date(),
-            key=f"request_date_{professional_id}",
-        )
-
-        slots = [
-            s for s in FRANJAS_HORARIAS
-            if not professional["work_start"]
-            or (
-                professional["work_start"] <= s.split(" - ")[0]
-                and s.split(" - ")[1] <= professional["work_end"]
-            )
-        ]
-
-        if not slots:
-            st.warning("Ninguna franja horaria disponible coincide con el horario del profesional.")
-
-        time = st.selectbox(
-            "Horario tentativo",
-            slots or FRANJAS_HORARIAS,
-            key=f"request_time_{professional_id}",
-        )
-
-        description = st.text_area(
-            "Descripción del trabajo",
-            placeholder="Describe el problema o trabajo que necesitas realizar.",
-            key=f"request_description_{professional_id}",
-        )
-
-        if st.button(
-            "Solicitar visita",
-            type="primary",
-            use_container_width=True,
-            key=f"send_request_{professional_id}",
-        ):
-            ok, result = create_request(
-                user_id, professional_id, trade, "", commune, date, time, description
-            )
-
-            if not ok:
-                st.warning(result)
-            else:
-                audit(
-                    user_id,
-                    "CREATE",
-                    "requests",
-                    result,
-                    f"Solicitud para profesional {professional_id} ({trade})",
-                )
-
-                flash("Solicitud enviada. Puedes revisarla en «Mis solicitudes».")
-                close_professional()
-                st.rerun()
+        _request_form(viewer, professional)
 
         security_note(
             "Los datos de contacto del profesional se habilitan cuando "
@@ -456,17 +380,147 @@ def professional_profile_client(user_id, professional_id):
         )
 
 
+def _request_form(viewer, professional):
+    """Historia 010: solicitud de visita (POST /api/requests/). El backend valida días,
+    horario, cobertura y duplicados; aquí se ofrecen solo opciones válidas."""
+    pid = professional["id"]
+
+    if professional["work_days"]:
+        st.caption(
+            f"📅 Trabaja: {professional['work_days'].replace(',', ', ')}"
+            + (f" · 🕘 {professional['work_start']}–{professional['work_end']}" if professional["work_start"] else "")
+        )
+
+    if not professional["work_start"] or not professional["work_end"]:
+        st.warning("Este profesional todavía no configuró su horario de atención, así que aún no recibe solicitudes.")
+        return
+
+    trades = catalog_api.trades(professional)
+    trade = st.selectbox("Oficio requerido", [t["trade"] for t in trades], key=f"request_trade_{pid}")
+    specialties = next((t["specialty_list"] for t in trades if t["trade"] == trade), [])
+
+    if not specialties:
+        st.warning(f"Este profesional aún no registra especialidades de {trade}, así que no se puede solicitar ese oficio.")
+        return
+
+    names = [s["name"] for s in specialties]
+    specialty = st.selectbox("Especialidad", names, key=f"request_specialty_{trade}_{pid}")
+
+    coverage = [c for c in professional["coverage"].split(",") if c]
+    commune = st.selectbox("Comuna del servicio", coverage or COMUNAS, key=f"request_commune_{pid}")
+
+    work_days = [d for d in professional["work_days"].split(",") if d]
+    visit_date = st.date_input(
+        "Fecha tentativa",
+        value=requests_api.next_work_date(work_days),
+        min_value=date.today(),
+        format="DD-MM-YYYY",
+        key=f"request_date_{pid}",
+    )
+
+    slots = [
+        s for s in FRANJAS_HORARIAS
+        if professional["work_start"] <= s.split(" - ")[0] and s.split(" - ")[1] <= professional["work_end"]
+    ]
+    if not slots:
+        st.warning("Ninguna franja horaria coincide con el horario de este profesional.")
+        return
+    visit_time = st.selectbox("Horario tentativo", slots, key=f"request_time_{pid}")
+
+    st.text_input(
+        "Dirección de la visita",
+        value=viewer["address"],
+        disabled=True,
+        key=f"request_address_{pid}",
+        help="Se usa la dirección de tu cuenta. Puedes cambiarla en «Mi perfil».",
+    )
+
+    description = st.text_area(
+        "Descripción del trabajo",
+        max_chars=MAX_TEXTO,
+        placeholder="Describe el problema o trabajo que necesitas realizar.",
+        key=f"request_description_{pid}",
+    )
+
+    if not st.button("Solicitar visita", type="primary", use_container_width=True, key=f"send_request_{pid}"):
+        return
+
+    if not description.strip():
+        st.warning("Describe el trabajo que necesitas.")
+        return
+    if not viewer["address"]:
+        st.warning("Agrega tu dirección en «Mi perfil» para solicitar una visita.")
+        return
+
+    try:
+        requests_api.create_request(
+            pid,
+            specialties[names.index(specialty)]["id"],
+            description,
+            visit_date,
+            visit_time,
+            commune,
+            viewer["address"],
+        )
+    except api_client.ApiError as error:
+        st.error(f"No se pudo enviar la solicitud. {error}")
+        return
+
+    flash("Solicitud enviada. Puedes revisarla en «Mis solicitudes».")
+    close_professional()
+    st.rerun()
+
+
+PROFILE_FOCUS_KEY = "_profile_focus"
+
+# Opciones de la cuenta en el menú lateral: (etiqueta, destino)
+ACCOUNT_OPTIONS = [
+    ("👤 Mi perfil", "perfil"),
+    ("✏️ Editar datos", "editar"),
+    ("🔑 Cambiar contraseña", "contrasena"),
+]
+PROFESSIONAL_OPTIONS = [
+    ("💳 Suscripción", "💳 Suscripción"),
+    ("🪪 Verificación", "🪪 Verificación"),
+]
+NAV_KEYS = {"cliente": "client_navigation", "profesional": "professional_navigation", "admin": "admin_navigation"}
+PREV_KEYS = {"cliente": "_client_prev_menu", "profesional": "_pro_prev_menu", "admin": "_admin_prev_menu"}
+
+
+def _go_account(role, target):
+    """Callback del menú lateral: abre la pantalla elegida (antes de redibujar la barra)."""
+    nav, prev = NAV_KEYS[role], PREV_KEYS[role]
+    if target in ("perfil", "editar", "contrasena"):
+        st.session_state[PROFILE_FOCUS_KEY] = target
+        if role != "admin":  # el admin ve su perfil dentro de la sección en que está
+            st.session_state[nav] = "👤 Mi perfil"
+    else:
+        st.session_state.pop(PROFILE_FOCUS_KEY, None)
+        st.session_state[nav] = target
+    # Se marca como sección vigente para que el cambio de sección no descarte la elección
+    st.session_state[prev] = st.session_state.get(nav)
+    close_professional()
+
+
 def sidebar(user):
     with st.sidebar:
         st.markdown("## 🦺 Overol")
+        st.write(f"Hola, **{user['name']}**")
+        st.caption(f"Rol: {ROLES.get(user['role'], user['role'])}")
 
-        st.write(
-            f"Hola, **{user['name']}**"
-        )
+        st.divider()
+        st.markdown("##### Mi cuenta")
 
-        st.caption(
-            f"Rol: {ROLES.get(user['role'], user['role'])}"
-        )
+        options = ACCOUNT_OPTIONS + (PROFESSIONAL_OPTIONS if user["role"] == "profesional" else [])
+        with st.container(key="side_menu"):
+            for label, target in options:
+                st.button(
+                    label,
+                    key=f"side_{target.split(' ')[-1].lower()}",
+                    use_container_width=True,
+                    on_click=_go_account,
+                    args=(user["role"], target),
+                )
 
         st.divider()
 
@@ -475,46 +529,8 @@ def sidebar(user):
             use_container_width=True,
             key="logout_button",
         ):
-            audit(
-                user["id"],
-                "LOGOUT",
-                "users",
-                user["id"],
-                "Cierre de sesión",
-            )
-
-            # Se elimina la sesión persistente (base de datos + cookie del navegador)
-            delete_session(st.session_state.get("session_token"))
-
-            st.session_state.clear()
-            st.session_state["_clear_cookie"] = True
+            # Anula el token en el backend y borra la sesión del servidor y la cookie
+            end_session()
             flash("Sesión cerrada correctamente.", "info")
 
             st.rerun()
-
-        st.divider()
-
-        st.markdown("### 📌 Requisitos contemplados")
-
-        st.caption("RF/Epic 001 · Registro y verificación")
-        st.caption("RF/Epic 002 · Búsqueda")
-        st.caption("RF/Epic 003 · Chatbot")
-        st.caption("RF/Epic 004 · Solicitud de visita")
-        st.caption("RF/Epic 005 · Cobertura")
-        st.caption("RF/Epic 006 · Reputación")
-        st.caption("RF/Epic 007 · Capacitación")
-        st.caption("RF/Epic 008 · Administración")
-        st.caption("RF/Epic 009 · Posventa")
-
-        st.divider()
-
-        st.markdown("### 🔐 RNF contemplados")
-
-        st.caption("Autenticación")
-        st.caption("Roles")
-        st.caption("Protección de credenciales")
-        st.caption("Separación público/privado")
-        st.caption("Integridad")
-        st.caption("Persistencia")
-        st.caption("Trazabilidad")
-        st.caption("Modularidad")

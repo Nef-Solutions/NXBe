@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from core.database import get_all_professionals, get_platform_stats, get_professional_rating
+from core import api_client, catalog_api
 from ui.components import format_professional_card, hero, metric_card, section
 from views.shared import (
     category_buttons,
@@ -28,7 +28,11 @@ def _open_from_home(nav_key, prev_key, target, professional_id):
 def home_page(role, nav_key, prev_key, search_target, show_hero=True):
     """`role` es None para visitantes."""
     anonymous = role is None
-    stats = get_platform_stats()
+
+    try:
+        professionals = catalog_api.list_professionals(anonymous=anonymous)
+    except api_client.ApiError:
+        professionals = []  # sin backend, la portada se muestra sin cifras ni destacados
 
     # ---------------- Portada ----------------
     if show_hero:
@@ -38,19 +42,22 @@ def home_page(role, nav_key, prev_key, search_target, show_hero=True):
             "por Overol. Compara perfiles, solicita una visita y evalúa el servicio.",
         )
 
-    # ---------------- Cifras reales ----------------
-    cols = st.columns(4)
-    for col, (icon, label, value) in zip(
-        cols,
-        [
-            ("👷", "Profesionales verificados", stats["professionals"]),
-            ("🧰", "Oficios disponibles", stats["trades"]),
-            ("📍", "Comunas con cobertura", stats["communes"]),
-            ("⭐", "Opiniones de clientes", stats["reviews"]),
-        ],
-    ):
-        with col:
-            metric_card(value, label, icon)
+    # ---------------- Cifras reales (del catálogo del backend) ----------------
+    # «Opiniones de clientes» vuelve cuando el backend entregue la cantidad (PEDIDO 5.3)
+    if professionals:
+        trades = {t["trade"] for p in professionals for t in catalog_api.trades(p)}
+        communes = {c for p in professionals for c in p["coverage"].split(",") if c}
+        cols = st.columns(3)
+        for col, (icon, label, value) in zip(
+            cols,
+            [
+                ("👷", "Profesionales verificados", len(professionals)),
+                ("🧰", "Oficios disponibles", len(trades)),
+                ("📍", "Comunas con cobertura", len(communes)),
+            ],
+        ):
+            with col:
+                metric_card(value, label, icon)
 
     # ---------------- Categorías ----------------
     section("🧰 ¿Qué necesitas arreglar?")
@@ -68,16 +75,13 @@ def home_page(role, nav_key, prev_key, search_target, show_hero=True):
             )
 
     # ---------------- Destacados ----------------
-    featured = sorted(
-        get_all_professionals(),
-        key=lambda p: get_professional_rating(p["id"])[1],
-        reverse=True,
-    )[:3]
+    featured = sorted(professionals, key=lambda p: catalog_api.rating(p)[1], reverse=True)[:3]
 
     if featured:
         section("⭐ Profesionales destacados")
 
-        cols = st.columns(3)
+        with st.container(key=f"pro_grid_home_{nav_key}"):
+            cols = st.columns(3)
         for col, professional in zip(cols, featured):
             with col:
                 format_professional_card(professional, anonymous=anonymous)
