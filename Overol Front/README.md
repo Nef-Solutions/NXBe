@@ -115,10 +115,13 @@ Lo que falta en el backend está detallado en `PEDIDO_BACKEND_PARA_NEFI.md`, un 
 Overol Front/
 ├── app.py                  Arranque, sesión, vuelta de Webpay y enrutamiento por rol
 ├── style.css               Estilos
-├── requirements.txt        Dependencias del front
-├── .streamlit/config.toml  Tema claro, color principal ámbar
+├── requirements.txt        Dependencias del front (versiones fijas)
+├── Dockerfile · .dockerignore  Imagen para publicar el front (ver DESPLIEGUE.md)
+├── DESPLIEGUE.md           Variables de entorno, contenedor, https y checklist de publicación
+├── .streamlit/config.toml  Tema claro y ajustes de producción
 ├── core/
-│   ├── constants.py        Configuración, comunas, oficios destacados, roles y pantallas sin endpoint
+│   ├── config.py           Variables de entorno del front (único lugar que las lee)
+│   ├── constants.py        Comunas, oficios destacados, roles y pantallas sin endpoint
 │   ├── api_client.py       Cliente HTTP del backend (JWT con renovación, errores legibles, archivos)
 │   ├── session.py          Usuario actual (/auth/me/) y sesión persistente de 7 días
 │   ├── catalog_api.py      Catálogo, perfiles públicos y búsqueda por palabra clave
