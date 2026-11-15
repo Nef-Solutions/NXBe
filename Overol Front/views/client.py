@@ -10,6 +10,7 @@ from core.constants import (
     pantallas_visibles,
 )
 from ui.components import (
+    _when,
     contact_box,
     empty_state,
     flash,
@@ -387,7 +388,7 @@ def _client_request_card(user, request, claims, tickets):
             _claim_block(request, claims.get(rid))
 
         # ---------- Tickets de soporte sobre esta solicitud ----------
-        support_box(user, rid, "cliente", tickets)
+        support_box(user, rid, "cliente", tickets, after_create=_ticket_created)
 
 
 def _client_action(rid, name, success, kind="success"):
@@ -491,9 +492,58 @@ def _claim_block(request, claim):
             st.rerun()
 
 
+NEW_TICKET_KEY = "_client_new_ticket"
+
+
+def _ticket_created(ticket):
+    """Tras abrir un ticket desde una solicitud: lleva al cliente a «Mis reclamos», donde lo ve."""
+    st.session_state["client_navigation"] = "🛠️ Mis reclamos"
+    st.session_state[NEW_TICKET_KEY] = ticket.get("id")
+    return f"Ticket #{ticket.get('id')} enviado a soporte (solicitud #{ticket.get('visit')})."
+
+
+def _go_to_requests():
+    # Callback: vuelve a «Mis solicitudes» desde un ticket o un reclamo
+    st.session_state["client_navigation"] = "📋 Mis solicitudes"
+
+
+def _client_tickets():
+    """Tickets de soporte del cliente (GET /api/tickets/), con su solicitud de origen."""
+    try:
+        tickets = api_client.list_tickets()
+    except api_client.ApiError as error:
+        st.error(f"No se pudieron cargar tus tickets de soporte. {error}")
+        return
+
+    if not tickets:
+        return
+
+    new_id = st.session_state.pop(NEW_TICKET_KEY, None)
+    st.markdown("#### 💬 Tickets de soporte")
+    for ticket in tickets:
+        tid = ticket.get("id")
+        with st.container(border=True, key=f"client_ticket_{tid}"):
+            top = st.columns([4, 1])
+            with top[0]:
+                st.markdown(f"**Ticket #{tid} · {ticket.get('subject') or ''}**"
+                            + ("  ·  🆕 recién enviado" if tid == new_id else ""))
+                st.caption(f"Solicitud #{ticket.get('visit')} · {_when(ticket.get('created_at'))}")
+            with top[1]:
+                status_badge(api_client.ESTADOS_TICKET.get(ticket.get("status"), ticket.get("status")))
+            st.write(ticket.get("description") or "")
+            if ticket.get("response"):
+                st.write(f"**Respuesta de soporte:** {ticket['response']}")
+            st.button(f"Ver solicitud #{ticket.get('visit')} en «Mis solicitudes»", key=f"ticket_to_request_{tid}",
+                      on_click=_go_to_requests)
+
+
 def client_claims(user):
-    """Historia 009: reclamos del cliente (GET /api/claims/) y escalar a Overol."""
+    """Historia 009: reclamos del cliente (GET /api/claims/) y escalar a Overol. También muestra
+    sus tickets de soporte (GET /api/tickets/): se abren desde cualquier solicitud, mientras que
+    un reclamo solo se puede abrir sobre un servicio finalizado."""
     section("🛠️ Mis reclamos")
+
+    _client_tickets()
 
     try:
         claims = requests_api.list_claims()
@@ -501,6 +551,7 @@ def client_claims(user):
         st.error(f"No se pudieron cargar tus reclamos. {error}")
         return
 
+    st.markdown("#### 🛠️ Reclamos de posventa")
     if not claims:
         empty_state("🛠️", "No tienes reclamos registrados", "Si un servicio no salió bien, puedes abrir un reclamo desde «Mis solicitudes».")
         return

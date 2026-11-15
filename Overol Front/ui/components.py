@@ -514,11 +514,13 @@ def thread_message(who, created_at, body, from_admin):
     )
 
 
-def support_box(user, request_id, role_label, tickets):
+def support_box(user, request_id, role_label, tickets, after_create=None):
     """
     Tickets de soporte sobre una solicitud (GET/POST /api/tickets/). El backend guarda una
     descripción y una respuesta del administrador por ticket (no hay hilo de mensajes).
     `tickets`: los del usuario para esta solicitud. `role_label` distingue las claves.
+    `after_create(ticket)`: opcional; se llama tras crear el ticket y devuelve el aviso a mostrar
+    (el cliente lo usa para ir a «Mis reclamos», donde ve sus tickets).
     """
     from core import api_client
     from core.constants import MAX_ASUNTO, MAX_TEXTO
@@ -574,5 +576,6 @@ def support_box(user, request_id, role_label, tickets):
                 except api_client.ApiError as error:
                     st.error(f"No se pudo abrir el ticket. {error}")
                 else:
-                    flash(f"Ticket #{created['id']} abierto. Soporte te responderá aquí.")
+                    message = after_create(created) if after_create else None
+                    flash(message or f"Ticket #{created['id']} abierto. Soporte te responderá aquí.")
                     st.rerun()

@@ -1,5 +1,7 @@
 """Etapa E: notificaciones (GET /notifications/, marcar una o todas, contador, escape, cada uno
-las suyas) y tickets de soporte por solicitud (GET/POST /tickets/ y la respuesta del admin)."""
+las suyas) y tickets de soporte por solicitud (GET/POST /tickets/ y la respuesta del admin). Al abrir
+un ticket, el cliente pasa a «Mis reclamos», donde ve sus tickets con la solicitud de origen, sea la
+solicitud aceptada, rechazada o vencida."""
 
 from comun import backend, calls, check, errors, md, new_app, preparar, terminar, texts, toasts
 
@@ -54,7 +56,7 @@ at.text_area(key=f"support_text_cliente_{VID}").input("Lo esperé toda la mañan
 next(b for b in at.button if b.key == f"support_send_cliente_{VID}").click().run()
 ticket = backend.tickets[max(backend.tickets)]
 check(ticket["visit"] == VID and ticket["user"] == CID and ticket["status"] == "OPEN"
-      and f"Ticket #{ticket['id']} abierto" in toasts(at), "abre el ticket (POST /tickets/)")
+      and f"Ticket #{ticket['id']} enviado a soporte" in toasts(at), "abre el ticket (POST /tickets/)")
 at = new_app(front, CLIENTE, client_navigation="📋 Mis solicitudes")
 check("El profesional no llegó" in md(at) and "Lo esperé toda la mañana" in md(at) and "Abierto" in md(at),
       "el ticket aparece en la solicitud")
@@ -65,6 +67,50 @@ at.text_input(key=f"support_subject_profesional_{VID}").input("Dirección incorr
 at.text_area(key=f"support_text_profesional_{VID}").input("La dirección no existe")
 next(b for b in at.button if b.key == f"support_send_profesional_{VID}").click().run()
 check(backend.tickets[max(backend.tickets)]["user"] == backend.by_email(PRO)["id"], "el profesional abre su propio ticket")
+
+# ---------- Tras abrir el ticket, el cliente va a «Mis reclamos» (aceptada, rechazada y vencida) ----------
+NAV = "client_navigation"
+
+
+def marked(at):
+    """Etiqueta destacada (primary) en la barra superior y en el menú lateral."""
+    top = [b.label for b in at.button if (b.key or "").startswith(f"{NAV}_btn_") and b.proto.type == "primary"]
+    side = [b.label for b in at.sidebar.button if (b.key or "").startswith(f"side_{NAV}_btn_") and b.proto.type == "primary"]
+    return top, side
+
+
+for state, name in [("ACCEPTED", "aceptada"), ("REJECTED", "rechazada"), ("EXPIRED", "vencida")]:
+    vid = backend.add_visit(CLIENTE, PRO, status=state)
+    at = new_app(front, CLIENTE, client_navigation="📋 Mis solicitudes")
+    subject = f"Consulta por la solicitud {name}"
+    at.text_input(key=f"support_subject_cliente_{vid}").input(subject)
+    at.text_area(key=f"support_text_cliente_{vid}").input(f"Necesito ayuda con la solicitud {name}")
+    next(b for b in at.button if b.key == f"support_send_cliente_{vid}").click().run()
+    created = backend.tickets[max(backend.tickets)]
+    check(not at.exception and created["visit"] == vid and created["subject"] == subject,
+          f"[{name}] crea el ticket asociado a la solicitud #{vid} (POST /tickets/)")
+    check(at.session_state[NAV] == "🛠️ Mis reclamos" and marked(at) == (["🛠️ Mis reclamos"], ["🛠️ Mis reclamos"]),
+          f"[{name}] pasa a «Mis reclamos», marcada en la barra y en el menú lateral")
+    check(at.session_state[f"_nav_shown_{NAV}"][0] == "🛠️ Mis reclamos",
+          f"[{name}] cuenta como cambio de sección (la página vuelve arriba)")
+    check(f"Ticket #{created['id']} enviado a soporte (solicitud #{vid})" in toasts(at),
+          f"[{name}] aviso corto de éxito con el ticket y la solicitud")
+    check(subject in md(at) and "recién enviado" in md(at) and f"Solicitud #{vid}" in texts(at),
+          f"[{name}] el ticket aparece en «Mis reclamos», destacado y con su solicitud de origen")
+    at.button(key=f"ticket_to_request_{created['id']}").click().run()
+    check(at.session_state[NAV] == "📋 Mis solicitudes" and marked(at)[0] == ["📋 Mis solicitudes"],
+          f"[{name}] «Ver solicitud» vuelve a «Mis solicitudes»")
+
+at = new_app(front, CLIENTE, client_navigation="🛠️ Mis reclamos")
+check(not at.exception and "recién enviado" not in md(at) and "Tickets de soporte" in md(at),
+      "al volver a «Mis reclamos», los tickets siguen ahí sin la marca de recién enviado")
+pro_vid = backend.add_visit(CLIENTE, PRO, status="ACCEPTED")
+at = new_app(front, PRO, professional_navigation="📋 Solicitudes")
+at.text_input(key=f"support_subject_profesional_{pro_vid}").input("Consulta del profesional")
+at.text_area(key=f"support_text_profesional_{pro_vid}").input("Detalle")
+next(b for b in at.button if b.key == f"support_send_profesional_{pro_vid}").click().run()
+check(at.session_state["professional_navigation"] == "📋 Solicitudes" and "abierto. Soporte te responderá" in toasts(at),
+      "el profesional se queda en «Solicitudes» con su aviso de siempre (su flujo no cambia)")
 
 # ---------- El admin responde (en esta etapa, desde la API) ----------
 admin = backend.by_email("admin@demo.overol.cl")
