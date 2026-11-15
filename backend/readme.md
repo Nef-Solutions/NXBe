@@ -98,6 +98,14 @@ fotos y certificaciones en un bucket público y cédulas en uno privado. Con
 publicación gratuita (Render + Supabase + Streamlit Cloud) está descrita paso a
 paso en [`HOSTING.md`](../HOSTING.md).
 
+**Publicado en:** <https://overol-backend.onrender.com> (API en `/api/`, admin
+en `/admin/`), servicio `overol-backend` de Render, con la base y los archivos
+en el proyecto `overol` de Supabase. Cada push a `main` que toque `backend/`
+vuelve a desplegar y aplica las migraciones al arrancar. El plan gratuito no
+tiene consola: los comandos de Django contra producción (por ejemplo
+`createsuperuser`) se ejecutan desde un PC con
+`docker compose run --rm --no-deps -e DATABASE_URL="..." backend python manage.py <comando>`.
+
 ## Pruebas y verificaciones
 
 Desde `backend/` (con Docker, antepón `docker compose exec backend` a cada
