@@ -60,6 +60,8 @@ python app.py
 
 `app.py` levanta Streamlit por sí mismo. Si prefieres `streamlit run app.py`, define antes `OVEROL_STREAMLIT_STARTED=1`. El front busca la API en `http://127.0.0.1:8000/api/`; se cambia con `OVEROL_API_URL`.
 
+La configuración del front sale de variables de entorno, leídas en `core/config.py` (`OVEROL_API_URL`, `OVEROL_API_TIMEOUT`, `OVEROL_MODO_DEMO`, `OVEROL_COOKIE_SECURE`). `.streamlit/config.toml` viene preparado para producción (sin abrir el navegador, sin menú de desarrollador ni botón «Deploy»). Para publicarlo en un servidor, ver `DESPLIEGUE.md`.
+
 ### Variables del backend que importan al front (`backend/.env`)
 
 - **`PAYMENT_RESULT_URL=http://localhost:8501/`:** es la dirección a la que vuelve Webpay después de pagar la suscripción. El valor por defecto apunta a otro front.
@@ -69,7 +71,7 @@ python app.py
 
 ## Usuarios de demostración
 
-Los crea `python manage.py seed_demo`. La contraseña de todos es `OverolDemo123!`. En la pantalla de ingreso hay botones que completan estos datos.
+Los crea `python manage.py seed_demo`. La contraseña de todos es `OverolDemo123!`. Con `OVEROL_MODO_DEMO=1` (lo define `scripts\demo_api.ps1`), la pantalla de ingreso muestra botones que completan estos datos. Sin esa variable (producción) no aparecen ni la lista ni la clave.
 
 | Rol | Correo |
 |---|---|
@@ -113,10 +115,13 @@ Lo que falta en el backend está detallado en `PEDIDO_BACKEND_PARA_NEFI.md`, un 
 Overol Front/
 ├── app.py                  Arranque, sesión, vuelta de Webpay y enrutamiento por rol
 ├── style.css               Estilos
-├── requirements.txt        Dependencias del front
-├── .streamlit/config.toml  Tema claro, color principal ámbar
+├── requirements.txt        Dependencias del front (versiones fijas)
+├── Dockerfile · .dockerignore  Imagen para publicar el front (ver DESPLIEGUE.md)
+├── DESPLIEGUE.md           Variables de entorno, contenedor, https y checklist de publicación
+├── .streamlit/config.toml  Tema claro y ajustes de producción
 ├── core/
-│   ├── constants.py        Configuración, comunas, oficios destacados, roles y pantallas sin endpoint
+│   ├── config.py           Variables de entorno del front (único lugar que las lee)
+│   ├── constants.py        Comunas, oficios destacados, roles y pantallas sin endpoint
 │   ├── api_client.py       Cliente HTTP del backend (JWT con renovación, errores legibles, archivos)
 │   ├── session.py          Usuario actual (/auth/me/) y sesión persistente de 7 días
 │   ├── catalog_api.py      Catálogo, perfiles públicos y búsqueda por palabra clave

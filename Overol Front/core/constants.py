@@ -1,14 +1,14 @@
 """Constantes y configuración general de Overol."""
 
-import os
 from pathlib import Path
+
+from core.config import API_BASE_URL, API_TIMEOUT  # noqa: F401  (se leen de variables de entorno)
 
 # Carpeta raíz del proyecto (proyecto_overol/), un nivel sobre core/
 APP_DIR = Path(__file__).resolve().parent.parent
 
 # Todo el front trabaja contra el backend Django (el modo local con SQLite se eliminó).
-API_BASE_URL = os.environ.get("OVEROL_API_URL", "http://127.0.0.1:8000/api/").rstrip("/") + "/"
-API_TIMEOUT = 10
+# La URL de la API y el resto de la configuración por entorno están en core/config.py.
 
 # Versión de la política de privacidad y términos de uso que acepta el usuario al registrarse
 PRIVACY_POLICY_VERSION = "2026-10"

@@ -7,7 +7,8 @@ Usuario actual:
 
 Sesión persistente («Mantener mi sesión iniciada», 7 días):
   1. La cookie del navegador (overol_session) lleva SOLO un identificador aleatorio
-     de 256 bits. No lleva tokens ni datos personales. SameSite=Lax (y Secure en https).
+     de 256 bits. No lleva tokens ni datos personales. SameSite=Lax, y Secure si la página
+     carga por https o si OVEROL_COOKIE_SECURE=1 (app publicada tras https).
   2. El token de renovación del backend vive en la MEMORIA del servidor de Streamlit
      (st.cache_resource), indexado por el hash del identificador, con vencimiento a 7 días.
   3. Al recargar la página, la cookie permite recuperar el token y pedir un acceso nuevo.
@@ -27,6 +28,7 @@ from datetime import datetime, timedelta
 import streamlit as st
 
 from core import api_client
+from core.config import cookie_secure
 from core.constants import API_ROLES, DIAS_SESION
 
 COOKIE_NAME = "overol_session"
@@ -248,15 +250,21 @@ def render_cookie_script():
     if not set_token and not clear:
         return
 
+    # Secure: siempre con OVEROL_COOKIE_SECURE=1; si no, solo cuando la página carga por https
+    secure = (
+        "const s = '; Secure';" if cookie_secure()
+        else "const s = window.parent.location.protocol === 'https:' ? '; Secure' : '';"
+    )
     if set_token:
         script = (
-            "const s = window.parent.location.protocol === 'https:' ? '; Secure' : '';"
-            f"window.parent.document.cookie = '{COOKIE_NAME}={set_token}; "
+            secure
+            + f"window.parent.document.cookie = '{COOKIE_NAME}={set_token}; "
             f"max-age={DIAS_SESION * 86400}; path=/; SameSite=Lax' + s;"
         )
     else:
         script = (
-            f"window.parent.document.cookie = '{COOKIE_NAME}=; max-age=0; path=/; SameSite=Lax';"
+            secure
+            + f"window.parent.document.cookie = '{COOKIE_NAME}=; max-age=0; path=/; SameSite=Lax' + s;"
         )
 
     html = f"<script>try {{ {script} }} catch (e) {{}}</script>"

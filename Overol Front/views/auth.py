@@ -6,6 +6,7 @@ import unicodedata
 import streamlit as st
 
 from core import api_client
+from core.config import modo_demo
 from core.constants import COMUNAS, PRIVACY_POLICY_VERSION
 from core.security import (
     normalize_rut,
@@ -27,7 +28,8 @@ NOMBRE_VALIDO = re.compile(r"[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s']+")
 BLOQUEO_AVISO = "Tras 3 intentos fallidos, la cuenta se bloquea por seguridad durante 5 minutos."
 MINUTOS_BLOQUEO = 5
 
-# Usuarios que crea `python manage.py seed_demo` en el backend
+# Usuarios que crea `python manage.py seed_demo` en el backend. Solo se muestran con
+# OVEROL_MODO_DEMO=1 (core.config.modo_demo); en producción no aparecen en ninguna pantalla.
 DEMO_PASSWORD = "OverolDemo123!"
 DEMO_USERS = [
     ("🏠 Cliente", "cliente1@demo.overol.cl", "demo_cliente"),
@@ -62,6 +64,31 @@ REGISTER_KEYS = [
     "register_coverage",
     "register_privacy",
 ]
+
+
+def _demo_accounts():
+    """Botones y listado de las cuentas de demostración (solo con OVEROL_MODO_DEMO=1)."""
+    st.markdown("---")
+    st.caption(
+        "Usuarios de demostración del backend (`python manage.py seed_demo`): "
+        "elige uno y pulsa «Ingresar»."
+    )
+
+    cols = st.columns(len(DEMO_USERS))
+    for col, (label, demo_email, key) in zip(cols, DEMO_USERS):
+        with col:
+            st.button(
+                label,
+                key=key,
+                use_container_width=True,
+                on_click=_fill_demo,
+                args=(demo_email, DEMO_PASSWORD),
+            )
+
+    st.code(
+        "\n".join(f"{label.split(' ', 1)[1]:<15}{demo_email}" for label, demo_email, _ in DEMO_USERS)
+        + f"\nContraseña     {DEMO_PASSWORD}"
+    )
 
 
 def _fill_demo(email, password):
@@ -131,27 +158,8 @@ def login_screen():
 
         _password_recovery()
 
-        st.markdown("---")
-        st.caption(
-            "Usuarios de demostración del backend (`python manage.py seed_demo`): "
-            "elige uno y pulsa «Ingresar»."
-        )
-
-        cols = st.columns(len(DEMO_USERS))
-        for col, (label, demo_email, key) in zip(cols, DEMO_USERS):
-            with col:
-                st.button(
-                    label,
-                    key=key,
-                    use_container_width=True,
-                    on_click=_fill_demo,
-                    args=(demo_email, DEMO_PASSWORD),
-                )
-
-        st.code(
-            "\n".join(f"{label.split(' ', 1)[1]:<15}{demo_email}" for label, demo_email, _ in DEMO_USERS)
-            + f"\nContraseña     {DEMO_PASSWORD}"
-        )
+        if modo_demo():
+            _demo_accounts()
 
     with register_tab:
         _register_form()

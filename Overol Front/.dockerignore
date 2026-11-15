@@ -1,0 +1,48 @@
+# Solo entra a la imagen el código del front (app.py, core/, ui/, views/, style.css,
+# .streamlit/ y requirements.txt).
+
+# Control de versiones y editores
+.git
+.gitignore
+.vscode
+.idea
+
+# Pruebas, scripts de demo y documentación interna
+tests
+scripts
+CLAUDE.md
+PEDIDO_BACKEND_PARA_NEFI.md
+RESUMEN_PROYECTO_OVEROL.md
+
+# Datos locales y documentos subidos
+**/overol.db
+**/*.db
+**/*.sqlite3
+**/documentos_verificacion
+**/private_media
+
+# Variables de entorno, claves y certificados
+**/.env
+**/.env.*
+**/*.env
+**/*.key
+**/*.pem
+**/*.crt
+**/*.p12
+**/overol_clave_documentos*
+.streamlit/secrets.toml
+
+# Python
+**/__pycache__
+**/*.py[cod]
+.venv
+venv
+env
+*_venv
+
+# Respaldos y la propia receta (no hacen falta dentro)
+*.zip
+*.bak
+*.sql
+Dockerfile
+.dockerignore

@@ -295,6 +295,28 @@ def _set_section(nav_key, option):
     st.session_state[nav_key] = option
 
 
+# sidebar() deja aquí un espacio del menú lateral; nav_bar dibuja en él los mismos botones
+SIDE_SECTIONS_SLOT = "_side_sections_slot"
+
+
+def _scroll_to_top():
+    """Lleva la página arriba: al cambiar de sección con la página desplazada, Streamlit conserva
+    el desplazamiento y el comienzo de la sección nueva quedaba tapado por la barra fija."""
+    html = (
+        "<script>try { const d = window.parent.document;"
+        " const m = d.querySelector('[data-testid=\"stMain\"]'); if (m) m.scrollTo(0, 0);"
+        " window.parent.scrollTo(0, 0); } catch (e) {}</script>"
+    )
+    with st.container(key="scroll_top"):
+        try:
+            if hasattr(st, "iframe"):
+                st.iframe(html, height=1)
+            else:
+                components.html(html, height=0)
+        except Exception:
+            pass
+
+
 def nav_bar(nav_key, options, extra=None, badges=None):
     """
     Barra de secciones fija bajo la cabecera (estilo en style.css, «st-key-nav_bar_»).
@@ -311,16 +333,18 @@ def nav_bar(nav_key, options, extra=None, badges=None):
 
     current = st.session_state[nav_key]
 
+    def label_for(option):
+        count = (badges or {}).get(option)
+        # Con contador, espacios no separables: «🔔 Notificaciones (2)» queda en una línea
+        return f"{option} ({count})".replace(" ", "\u00a0") if count else option
+
     with st.container(key=f"nav_bar_{nav_key}"):
         cols = st.columns(len(options) + (1 if extra else 0))
 
         for i, (col, option) in enumerate(zip(cols, options)):
             with col:
-                count = (badges or {}).get(option)
-                # Con contador, espacios no separables: «🔔 Notificaciones (2)» queda en una línea
-                label = f"{option} ({count})".replace(" ", "\u00a0") if count else option
                 st.button(
-                    label,
+                    label_for(option),
                     key=f"{nav_key}_btn_{i}",
                     type="primary" if option == current else "secondary",
                     on_click=_set_section,
@@ -331,6 +355,28 @@ def nav_bar(nav_key, options, extra=None, badges=None):
         if extra:
             with cols[-1]:
                 extra()
+
+    # Las mismas secciones en el menú lateral (espacio que deja sidebar() bajo el saludo):
+    # mismo callback y keys propias. El visitante no tiene ese espacio.
+    slot = st.session_state.pop(SIDE_SECTIONS_SLOT, None)
+    if slot is not None:
+        with slot:
+            for i, option in enumerate(options):
+                st.button(
+                    label_for(option),
+                    key=f"side_{nav_key}_btn_{i}",
+                    type="primary" if option == current else "secondary",
+                    on_click=_set_section,
+                    args=(nav_key, option),
+                    use_container_width=True,
+                )
+
+    # Al cambiar de sección (o de pantalla de la cuenta), la página vuelve arriba
+    shown = (current, st.session_state.get("_profile_focus"))
+    previous = st.session_state.get(f"_nav_shown_{nav_key}")
+    st.session_state[f"_nav_shown_{nav_key}"] = shown
+    if previous is not None and previous != shown:
+        _scroll_to_top()
 
     return current
 

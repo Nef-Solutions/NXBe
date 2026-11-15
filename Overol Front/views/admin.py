@@ -12,6 +12,7 @@ import altair as alt
 import streamlit as st
 
 from core import api_client, requests_api
+from core.config import ADMIN_URL
 from core.constants import MAX_TEXTO, pantallas_visibles
 from ui.components import empty_state, flash, hero, metric_card, nav_bar, section, security_note, status_badge
 from views.about import about_page
@@ -96,7 +97,7 @@ def admin_dashboard(user):
 def _django_admin_note(what):
     st.caption(
         f"{what} todavía no tiene endpoint en el backend: mientras tanto se hace en el administrador "
-        "de Django (**/admin/** del backend, por ejemplo http://127.0.0.1:8000/admin/)."
+        f"de Django (**/admin/** del backend: {ADMIN_URL})."
     )
 
 
