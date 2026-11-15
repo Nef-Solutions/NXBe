@@ -113,13 +113,34 @@ Ninguno de los servicios pidió tarjeta de crédito, y en todos se entra con la 
 
 ### Crear el administrador
 
-El plan gratuito de Render no tiene consola. El superusuario se crea desde tu PC, conectándote a la base de Supabase con Docker. Desde la raíz del repositorio, con Docker Desktop abierto:
+El plan gratuito de Render no tiene consola. El superusuario se crea **una sola vez** desde un PC, conectándote a la base de Supabase con Docker. Queda guardado en Supabase y sirve desde cualquier computador.
 
-```powershell
-docker compose run --rm --no-deps -e DATABASE_URL="<cadena del paso 1.4>" backend python manage.py createsuperuser
-```
+Desde la raíz del repositorio, con Docker Desktop abierto:
+
+1. **Guardar la conexión solo en esa ventana**, para que la contraseña no quede en los comandos. Reemplaza `TU-CONTRASEÑA`:
+   - En **PowerShell** (el prompt empieza con `PS`):
+     ```powershell
+     $env:DATABASE_URL = "postgresql://postgres.<ref>:TU-CONTRASEÑA@aws-1-us-east-1.pooler.supabase.com:5432/postgres"
+     ```
+   - En **CMD** (Símbolo del sistema):
+     ```bat
+     set "DATABASE_URL=postgresql://postgres.<ref>:TU-CONTRASEÑA@aws-1-us-east-1.pooler.supabase.com:5432/postgres"
+     ```
+2. **Crear el superusuario.** `-e DATABASE_URL` sin valor pasa la variable del paso 1. El comando pide, en este orden: correo, *username*, nombre, apellido y contraseña (dos veces).
+   ```powershell
+   docker compose run --rm --no-deps -e DATABASE_URL backend python manage.py createsuperuser
+   ```
+3. **Darle el rol Administrador.** Django crea los superusuarios con el rol *Cliente*, y el panel de administración del front exige *Administrador*. Este comando se lo asigna a todos los superusuarios:
+   ```powershell
+   docker compose run --rm --no-deps -e DATABASE_URL backend python manage.py shell -c "from apps.authentication.models import User; n = User.objects.filter(is_superuser=True).update(role=User.Role.ADMIN); print('Administradores actualizados:', n)"
+   ```
+4. Probar en `https://overol-backend.onrender.com/admin/` y en el front, con "Ingresar".
 
 Con `DATABASE_URL`, el contenedor ignora la base local y escribe en la de Supabase. Así se ejecuta cualquier comando de Django contra producción, así que hazlo con cuidado.
+
+**Más administradores:** no hace falta repetir los comandos. En `/admin/` → **Usuarios**, abre o crea el usuario y, en **Permisos y Rol**, cambia **Rol** a *Administrador*. Si además debe entrar al admin de Django, marca **Es staff** (y **Es superusuario** si corresponde).
+
+**En local es distinto:** cada PC tiene su propia base en Docker, sin el superusuario de producción. Ahí se usa `docker compose exec backend python manage.py seed_demo`, que crea `admin@demo.overol.cl` con la contraseña `OverolDemo123!`, o `docker compose exec backend python manage.py createsuperuser`.
 
 **Datos de demostración:** `seed_demo` crea cuentas con una contraseña que es pública, porque está en el repositorio. Para una demo académica se pueden cargar con el mismo comando, cambiando `createsuperuser` por `seed_demo`. Si el sitio va a recibir usuarios reales, no lo hagas.
 
@@ -194,9 +215,11 @@ Ya comprobado al publicar:
 - [x] Las migraciones, incluida PostGIS, se aplicaron en Supabase.
 - [x] La tarea de GitHub Actions termina en verde.
 
+- [x] Superusuario creado en producción y con el rol Administrador.
+
 Pendiente de probar:
 
-- [ ] Entrar a `/admin/` con el superusuario (primero hay que crearlo).
+- [ ] Entrar a `/admin/` y al panel de administración del front con el superusuario.
 - [ ] El login **no** muestra cuentas de demostración.
 - [ ] Registrar un profesional y subir la cédula. El archivo debe aparecer en el bucket `private-media` y el administrador debe poder verlo.
 - [ ] «Mantener mi sesión iniciada» conserva la sesión al recargar. La cookie de sesión no se ha probado en Streamlit Cloud.
@@ -225,6 +248,8 @@ Pendiente de probar:
 | Streamlit: "Error installing requirements" | Espacio en la ruta del front | Carpeta sin espacios (`overol-front`) y crear la app de nuevo |
 | Streamlit: la app no aparece después de Deploy | Se presionó Deploy con el cuadro de Advanced settings abierto | Guardar, esperar a que se cierre el cuadro y volver a presionar Deploy |
 | Actions: `No such file or directory` en `backend` | El flujo entraba a `backend/` antes de descargar el código | Ya corregido: el primer paso descarga el código |
+| `$env:DATABASE_URL = ...` da "La sintaxis … no es correcta" | La ventana es CMD, no PowerShell | En CMD se usa `set "DATABASE_URL=..."` |
+| `User matching query does not exist` al asignar el rol | El comando tenía un correo de ejemplo | Usar el comando que actualiza a todos los superusuarios (paso 3 de "Crear el administrador") |
 
 ---
 
