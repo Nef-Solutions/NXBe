@@ -646,6 +646,12 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
     /* Bloques de código (usuarios de demostración): en celular el texto pasa a la línea siguiente */
     [data-testid="stCode"] pre, [data-testid="stCode"] code { white-space: pre-wrap !important; word-break: break-word; }
 }
+/* Celular angosto: letra más chica para que rol y correo de las cuentas de demo quepan en una línea
+   (la más larga tiene 41 caracteres) y queden alineados en columnas */
+@media (max-width: 480px) {
+    [data-testid="stCode"] pre { padding-left: 12px !important; padding-right: 12px !important; }
+    [data-testid="stCode"] pre, [data-testid="stCode"] code { font-size: 12px !important; }
+}
 
 /* ---------- Tarjetas de profesionales: mismo alto por fila, botones alineados ---------- */
 [class*="st-key-pro_grid_"] [data-testid="stColumn"] > [data-testid="stVerticalBlock"] { height: 100%; }
@@ -653,6 +659,12 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
 [class*="st-key-pro_grid_"] [data-testid="stElementContainer"]:has(.pro-card) [data-testid="stMarkdown"],
 [class*="st-key-pro_grid_"] [data-testid="stElementContainer"]:has(.pro-card) [data-testid="stMarkdownContainer"],
 [class*="st-key-pro_grid_"] .pro-card { height: 100%; }
+/* Streamlit envuelve el markdown en un div flex centrado que impedía estirar la tarjeta */
+[class*="st-key-pro_grid_"] [data-testid="stElementContainer"]:has(.pro-card) [data-testid="stMarkdown"] > div {
+    height: 100%;
+    align-items: stretch;
+}
+[class*="st-key-pro_grid_"] .pro-card { margin-bottom: 0; }
 
 
 /* ============================================================
