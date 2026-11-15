@@ -6,6 +6,10 @@ primaryColor = "#F59E0B"
 backgroundColor = "#F6F7F9"
 secondaryBackgroundColor = "#FFFFFF"
 textColor = "#111827"
+# Borde de campos, selectores, fecha, números, expanders y contenedores: gris azulado con
+# contraste 3,6:1 sobre blanco (antes casi blanco); el foco sigue usando primaryColor.
+borderColor = "#7C8899"
+showWidgetBorder = true
 font = "sans serif"
 
 [browser]

@@ -80,7 +80,8 @@ def home_page(role, nav_key, prev_key, search_target, show_hero=True):
     if featured:
         section("⭐ Profesionales destacados")
 
-        cols = st.columns(3)
+        with st.container(key=f"pro_grid_home_{nav_key}"):
+            cols = st.columns(3)
         for col, professional in zip(cols, featured):
             with col:
                 format_professional_card(professional, anonymous=anonymous)

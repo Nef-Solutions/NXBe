@@ -109,13 +109,13 @@ def admin_summary():
     with c1:
         st.markdown("#### Estado de reclamos")
         if claim_states:
-            st.bar_chart(dict(claim_states))
+            st.bar_chart(dict(claim_states), horizontal=True, height=220)
         else:
             st.caption("Sin reclamos.")
     with c2:
         st.markdown("#### Estado de tickets")
         if ticket_states:
-            st.bar_chart(dict(ticket_states))
+            st.bar_chart(dict(ticket_states), horizontal=True, height=220)
         else:
             st.caption("Sin tickets.")
 

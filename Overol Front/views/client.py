@@ -126,20 +126,23 @@ def _show_selected_profile(user):
 
 
 def _professional_grid(professionals, key_prefix, anonymous=False):
-    """Muestra tarjetas en 3 columnas con botón «Ver perfil»."""
-    cols = st.columns(3)
+    """Muestra tarjetas en filas de 3 columnas con botón «Ver perfil». Cada fila va en su
+    propio contenedor para que las tarjetas tengan el mismo alto (estilo «st-key-pro_grid_»)."""
+    for start in range(0, len(professionals), 3):
+        with st.container(key=f"pro_grid_{key_prefix}_{start}"):
+            cols = st.columns(3)
 
-    for i, professional in enumerate(professionals):
-        with cols[i % 3]:
-            format_professional_card(professional, anonymous=anonymous)
+            for col, professional in zip(cols, professionals[start:start + 3]):
+                with col:
+                    format_professional_card(professional, anonymous=anonymous)
 
-            if st.button(
-                "Ver perfil" if anonymous else "Ver perfil y solicitar visita",
-                key=f"{key_prefix}_{professional['id']}",
-                use_container_width=True,
-            ):
-                open_professional(professional["id"])
-                st.rerun()
+                    if st.button(
+                        "Ver perfil" if anonymous else "Ver perfil y solicitar visita",
+                        key=f"{key_prefix}_{professional['id']}",
+                        use_container_width=True,
+                    ):
+                        open_professional(professional["id"])
+                        st.rerun()
 
 
 def _clear_search():
