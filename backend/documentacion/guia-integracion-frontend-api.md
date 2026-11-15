@@ -786,9 +786,11 @@ considerar la query string prueba definitiva del pago**. Al volver, consultar
 persistida. La suscripción se renueva manualmente por un mes tras confirmación
 exitosa; no hay cobro recurrente.
 
-El callback que recibe Transbank es
-`POST /api/payments/transbank/return/`; es público y no debe invocarlo el
-frontend. El backend procesa la confirmación y redirige al `PAYMENT_RESULT_URL`.
+El callback público que recibe Transbank es
+`GET` o `POST /api/payments/transbank/return/`; no debe invocarlo el frontend.
+El backend lee los campos `token_ws`, `TBK_TOKEN` y `TBK_ORDEN_COMPRA` desde la
+query string o el body, procesa la confirmación o cancelación y redirige al
+`PAYMENT_RESULT_URL`.
 
 ### Pago de visita
 

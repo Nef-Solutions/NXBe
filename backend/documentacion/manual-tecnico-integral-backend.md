@@ -689,16 +689,18 @@ El pago de visita es distinto a la suscripción y no la reemplaza:
 
 No se recibe el importe desde el cliente. No se acepta visita no aceptada,
 profesional sin tarifa válida o pago ya autorizado. El retorno es el mismo
-`POST /api/payments/transbank/return/` que se usa para la suscripción.
+`GET` o `POST /api/payments/transbank/return/` que se usa para la suscripción.
 
 ### Callback común
 
-`POST /api/payments/transbank/return/` es público porque lo invoca Transbank:
+`GET` y `POST /api/payments/transbank/return/` son públicos porque los invoca
+Transbank:
 
 - Con `token_ws`, confirma el pago con el SDK y valida `buy_order`, `session_id`
   e importe contra la transacción local.
-- Sin `token_ws`, toma `TBK_ORDEN_COMPRA` como retorno cancelado y actualiza la
-  transacción pendiente correspondiente.
+- Los campos `token_ws`, `TBK_TOKEN` y `TBK_ORDEN_COMPRA` se aceptan desde la
+  query string o el body. Sin `token_ws`, toma `TBK_ORDEN_COMPRA` como retorno
+  cancelado y actualiza la transacción pendiente correspondiente.
 - Redirige a `PAYMENT_RESULT_URL` con `status`; pagos de visita agregan
   `visit_id`, pagos de suscripción agregan `professional_profile_id`.
 - Respuesta de error/cancelación también se expresa como query string; el

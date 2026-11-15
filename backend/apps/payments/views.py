@@ -160,8 +160,14 @@ class TransbankReturnView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
+    def get(self, request):
+        return self._handle_return(request)
+
     def post(self, request):
-        token = request.data.get('token_ws')
+        return self._handle_return(request)
+
+    def _handle_return(self, request):
+        token = self._get_parameter(request, 'token_ws')
         if token:
             if not isinstance(token, str) or len(token) > 64:
                 return self._redirect('error')
@@ -178,12 +184,23 @@ class TransbankReturnView(APIView):
                 payment.professional_id,
             )
 
-        payment = cancel_visit_payment(request.data.get('TBK_ORDEN_COMPRA'))
+        cancel_token = self._get_parameter(request, 'TBK_TOKEN')
+        buy_order = self._get_parameter(request, 'TBK_ORDEN_COMPRA')
+        payment = (
+            cancel_visit_payment(buy_order)
+            if cancel_token or buy_order
+            else None
+        )
         return self._redirect(
             'cancelled',
             payment.visit_id if payment else None,
             payment.professional_id if payment else None,
         )
+
+    @staticmethod
+    def _get_parameter(request, name):
+        value = request.data.get(name)
+        return value if value not in (None, '') else request.query_params.get(name)
 
     def _redirect(self, outcome, visit_id=None, professional_id=None):
         query = {'status': outcome}
