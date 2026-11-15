@@ -117,7 +117,7 @@ con `python-dotenv`.
 
 Los límites diarios de Overil y la cantidad máxima de tokens se definen en
 `core/settings.py`, no en variables de entorno: 10 consultas por usuario/día,
-50 globales/día y 300 tokens de salida. Los endpoints de recuperación limitan
+50 globales/día y 30 tokens para clasificar el oficio. Los endpoints de recuperación limitan
 el inicio a 5 y la confirmación a 10 solicitudes por hora y dirección IP.
 
 ### Persistencia local
@@ -540,41 +540,36 @@ El mensaje debe tener entre 1 y 1500 caracteres. Respuesta normal:
 }
 ```
 
-Overil solo responde sobre mantenimiento/reparación del hogar, oficios y
-funcionamiento de Overol. No atiende recetas, tareas escolares, programación,
+Overil está enfocado en recomendar el oficio del catálogo que puede ayudar con
+un problema del hogar. No atiende recetas, tareas escolares, programación,
 política, deportes, matemáticas ni temas ajenos; rechaza intentos reconocidos de
-cambiar su rol o ignorar instrucciones.
+cambiar su tarea o ignorar instrucciones.
 
 ### Defensas en capas
 
 1. **Filtro de entrada:** normaliza acentos y mayúsculas; identifica patrones de
-   jailbreak, solicitudes fuera de dominio, emergencias de gas/electricidad e
-   instrucciones técnicas riesgosas. Los rechazos se responden sin llamar a Gemini.
-2. **Instrucción de sistema:** fija identidad y propósito de Overil, límites de
-   dominio, límites de seguridad, tono chileno, no divulgar instrucciones y no
-   inventar políticas o datos.
-3. **Filtro de salida:** inspecciona el texto generado para rechazar contenido
-   fuera de dominio o instrucciones peligrosas. Además, elimina una presentación
-   inicial repetida (“Hola, soy Overil…”) porque la bienvenida corresponde al
-   inicio de la conversación/interfaz, no a cada respuesta.
-
-Ante olor a gas, fuego, explosión, chispas o descarga, la política prioriza
-alejarse, no manipular la instalación, evacuar si existe riesgo y contactar
-emergencias/proveedor o profesional certificado. No se deben tratar respuestas
-de IA como diagnóstico profesional.
+   jailbreak, solicitudes fuera de dominio y temas ajenos. Los rechazos se
+   responden sin llamar a Gemini.
+2. **Clasificación restringida:** Gemini recibe los oficios y palabras clave
+   guardados en `TradeCategory`. Solo se acepta como resultado el nombre exacto
+   de un oficio de ese catálogo.
+3. **Respuesta fija:** el backend genera la recomendación a partir del oficio
+   validado. No devuelve texto libre del modelo, diagnósticos, pasos de
+   reparación, medidas de contención ni afirmaciones de precios o garantías.
+   Si no se identifica un oficio, pide una descripción más clara.
 
 ### Modelo, cuota y privacidad
 
 - Proveedor: Google Gemini a través de `google-genai`; no se usa OpenAI.
 - Modelo configurado por defecto: `gemini-3.5-flash-lite`.
-- Máximo de salida: 300 tokens.
+- Máximo de salida para la clasificación: 30 tokens.
 - Throttle DRF: 5 solicitudes por hora por usuario autenticado.
 - Límite persistente adicional: 10 llamadas por usuario por día y 50 llamadas
   globales por día.
 - La reserva de cuota se serializa con transacciones/bloqueos en base de datos.
 - El texto del usuario se transmite a Google. No se conserva historial de chat en
   la base de datos; sí se guarda el contador diario de uso.
-- Una solicitud fuera de tema o de seguridad no consume cuota diaria de Gemini,
+- Una solicitud fuera de tema no consume cuota diaria de Gemini,
   aunque está sujeta al throttle por hora del endpoint.
 - La cuota global limita todo el entorno/base de datos que comparta esos
   registros; no equivale a una cuota por navegador.
@@ -779,8 +774,8 @@ Cobertura automatizada existente:
   de edición de oficio/disponibilidad.
 - Reglas de fecha/horario, ciclo de solicitudes, vencimiento, contacto privado,
   rating, reclamo, ticket y contenido profesional.
-- Overil fuera de tema, jailbreak, emergencias, filtros de salida, cuota diaria,
-  configuración del modelo y eliminación de saludos repetidos.
+- Overil fuera de tema, jailbreak, selección estricta de oficios del catálogo,
+  descarte de respuestas libres del modelo y cuota diaria.
 - Inicio de pago, ownership, vencimiento de pendientes, verificación del callback,
   monto discrepante, activación y renovación de suscripción.
 

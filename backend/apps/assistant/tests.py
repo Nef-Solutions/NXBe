@@ -5,12 +5,12 @@ from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from apps.authentication.models import User
+from apps.catalog.models import TradeCategory
 from .models import AssistantDailyUsage
 from .quota import AssistantQuotaExceeded, reserve_daily_request
 from .policy import (
     OUT_OF_SCOPE_RESPONSE,
-    SAFETY_RESPONSE,
-    validate_assistant_response,
+    UNIDENTIFIED_TRADE_RESPONSE,
 )
 
 
@@ -24,6 +24,18 @@ class AssistantPolicyTests(APITestCase):
             role=User.Role.CLIENT,
         )
         self.client.force_authenticate(self.user)
+        self.electricity, _ = TradeCategory.objects.get_or_create(
+            name='Electricidad',
+            defaults={'keywords': 'enchufe, electricidad, interruptor'},
+        )
+        self.gasfiteria, _ = TradeCategory.objects.get_or_create(
+            name='Gasfitería',
+            defaults={'keywords': 'fuga, gotera, cañería'},
+        )
+        self.mason, _ = TradeCategory.objects.get_or_create(
+            name='Albañil',
+            defaults={'keywords': 'piso, grieta, radier'},
+        )
 
     def test_off_topic_request_is_rejected_without_calling_model(self):
         with patch('apps.assistant.views.answer_message') as answer:
@@ -52,13 +64,35 @@ class AssistantPolicyTests(APITestCase):
         )
         self.assertEqual(response.data['reply'], OUT_OF_SCOPE_RESPONSE)
 
-    def test_gas_emergency_gets_safety_response(self):
-        response = self.client.post(
-            '/api/assistant/chat/',
-            {'message': 'Siento olor a gas cerca del calefont'},
-            format='json',
-        )
-        self.assertEqual(response.data['reply'], SAFETY_RESPONSE)
+    def test_electrical_problem_is_routed_to_a_trade_without_containment_steps(self):
+        recommendation = 'El oficio del catálogo que puede ayudarte es **Electricidad**.'
+        with patch(
+            'apps.assistant.views.answer_message',
+            return_value=recommendation,
+        ) as answer:
+            response = self.client.post(
+                '/api/assistant/chat/',
+                {'message': 'No me funciona un enchufe'},
+                format='json',
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['reply'], recommendation)
+        answer.assert_called_once()
+
+    def test_home_issue_recommends_only_the_catalog_trade(self):
+        recommendation = 'El oficio del catálogo que puede ayudarte es **Gasfitería**.'
+        with patch(
+            'apps.assistant.views.answer_message',
+            return_value=recommendation,
+        ) as answer:
+            response = self.client.post(
+                '/api/assistant/chat/',
+                {'message': 'Tengo una gotera en mi baño'},
+                format='json',
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['reply'], recommendation)
+        answer.assert_called_once()
 
     @override_settings(GEMINI_API_KEY='test-key')
     def test_allowed_home_repair_reaches_model(self):
@@ -71,33 +105,47 @@ class AssistantPolicyTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         answer.assert_called_once()
 
-    def test_model_response_must_remain_in_domain(self):
-        self.assertEqual(
-            validate_assistant_response('Aquí tienes una receta de torta.'),
-            OUT_OF_SCOPE_RESPONSE,
-        )
-        self.assertEqual(
-            validate_assistant_response('Conecta el cable del tablero eléctrico.'),
-            SAFETY_RESPONSE,
-        )
-        self.assertIsNone(validate_assistant_response('Contacta a un gasfíter de Overol.'))
+    @override_settings(
+        GEMINI_API_KEY='test-key',
+        GEMINI_MODEL='gemini-3.5-flash-lite',
+        ASSISTANT_MAX_OUTPUT_TOKENS=30,
+    )
+    @patch('apps.assistant.services.genai.Client')
+    def test_model_can_only_select_a_saved_trade(self, client_factory):
+        client_factory.return_value.models.generate_content.return_value = type(
+            'Response',
+            (),
+            {'text': 'Electricidad'},
+        )()
 
-    def test_assistant_does_not_repeat_its_welcome(self):
-        from .services import remove_repeated_greeting
+        from .services import answer_message
+
+        answer = answer_message(self.user, 'No me funciona un enchufe')
 
         self.assertEqual(
-            remove_repeated_greeting(
-                '¡Hola! Soy Overil, tu asistente en OVEROL. Para una filtración, '
-                'contacta a un gasfíter.'
-            ),
-            'Para una filtración, contacta a un gasfíter.',
+            answer,
+            'El oficio del catálogo que puede ayudarte es **Electricidad**.',
         )
-        self.assertEqual(
-            remove_repeated_greeting(
-                'Hola, soy Overil, tu asistente en OVEROL. Contacta a un gasfíter.'
-            ),
-            'Contacta a un gasfíter.',
-        )
+        config = client_factory.return_value.models.generate_content.call_args.kwargs['config']
+        self.assertIn('- Electricidad:', config.system_instruction)
+        self.assertIn('enchufe', config.system_instruction)
+        self.assertEqual(config.temperature, 0)
+        self.assertEqual(config.max_output_tokens, 30)
+
+    @override_settings(GEMINI_API_KEY='test-key')
+    @patch('apps.assistant.services.genai.Client')
+    def test_model_explanation_is_discarded_instead_of_returned(self, client_factory):
+        client_factory.return_value.models.generate_content.return_value = type(
+            'Response',
+            (),
+            {'text': 'Electricidad. Desconecta el enchufe antes de revisarlo.'},
+        )()
+
+        from .services import answer_message
+
+        answer = answer_message(self.user, 'No me funciona un enchufe')
+
+        self.assertEqual(answer, UNIDENTIFIED_TRADE_RESPONSE)
 
     @override_settings(GEMINI_API_KEY='')
     def test_missing_api_key_returns_service_unavailable(self):
@@ -111,12 +159,12 @@ class AssistantPolicyTests(APITestCase):
     @override_settings(
         GEMINI_API_KEY='test-key',
         GEMINI_MODEL='gemini-3.5-flash-lite',
-        ASSISTANT_MAX_OUTPUT_TOKENS=300,
+        ASSISTANT_MAX_OUTPUT_TOKENS=30,
     )
     @patch('apps.assistant.services.genai.Client')
     def test_calls_configured_gemini_model_with_system_instructions(self, client_factory):
         response_data = type('Response', (), {
-            'text': '¡Hola! Soy Overil, tu asistente en OVEROL. Contacta a un gasfíter de Overol.'
+            'text': 'Gasfitería'
         })()
         client = client_factory.return_value
         client.models.generate_content.return_value = response_data
@@ -125,12 +173,15 @@ class AssistantPolicyTests(APITestCase):
 
         answer = answer_message(self.user, 'Tengo una filtración bajo el lavaplatos')
 
-        self.assertEqual(answer, 'Contacta a un gasfíter de Overol.')
+        self.assertEqual(
+            answer,
+            'El oficio del catálogo que puede ayudarte es **Gasfitería**.',
+        )
         client.models.generate_content.assert_called_once()
         call = client.models.generate_content.call_args
         self.assertEqual(call.kwargs['model'], 'gemini-3.5-flash-lite')
-        self.assertIn('OVEROL', call.kwargs['config'].system_instruction)
-        self.assertEqual(call.kwargs['config'].max_output_tokens, 300)
+        self.assertIn('Overol', call.kwargs['config'].system_instruction)
+        self.assertEqual(call.kwargs['config'].max_output_tokens, 30)
         self.assertEqual(
             AssistantDailyUsage.objects.get(user=self.user).request_count,
             1,
@@ -143,7 +194,7 @@ class AssistantPolicyTests(APITestCase):
     )
     @patch('apps.assistant.services.genai.Client')
     def test_daily_user_quota_stops_paid_model_calls(self, client_factory):
-        response_data = type('Response', (), {'text': 'Contacta a un gasfíter de Overol.'})()
+        response_data = type('Response', (), {'text': 'Gasfitería'})()
         client_factory.return_value.models.generate_content.return_value = response_data
         payload = {'message': 'Tengo una filtración bajo el lavaplatos'}
 

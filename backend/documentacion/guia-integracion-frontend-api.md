@@ -677,18 +677,22 @@ profesional). Respuesta contiene `id`, `visit`, `subject`, `description`,
 `message` requerido, entre 1 y 1500 caracteres. Respuesta normal o rechazo:
 
 ```json
-{"reply":"..."}
+{"reply":"El oficio del catálogo que puede ayudarte es **Gasfitería**."}
 ```
 
-No hay endpoint para recuperar historial; el backend no almacena mensajes.
-Límite DRF: 5 solicitudes por hora por usuario; además, 10 respuestas Gemini
-por usuario/día y 50 globales/día. Los rechazos fuera de tema o de seguridad no
-usan cuota diaria de Gemini, pero sí pasan por el throttle horario.
+Overil recomienda únicamente un oficio existente en el catálogo, según la
+descripción del problema. No entrega diagnósticos, pasos de reparación,
+medidas de contención ni afirmaciones de precios o garantías. Si la descripción
+es insuficiente o no corresponde a un oficio, solicita más detalles. No hay
+endpoint para recuperar historial; el backend no almacena mensajes.
+
+Límite DRF: 5 solicitudes por hora por usuario; además, 10 clasificaciones Gemini
+por usuario/día y 50 globales/día. Los rechazos fuera de tema no usan cuota diaria
+de Gemini, pero sí pasan por el throttle horario.
 
 - `429`: throttle o cuota excedida. Mostrar mensaje y no reintentar en bucle.
 - `503`: clave/proveedor Gemini no disponible.
-- Los límites de respuesta son del servidor (300 tokens); no hay configuración
-  de tokens desde frontend.
+- La clasificación se limita a 30 tokens; no hay configuración desde frontend.
 
 ## 9. Pagos Webpay Plus (sandbox)
 

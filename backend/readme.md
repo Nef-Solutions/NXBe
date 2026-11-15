@@ -53,8 +53,10 @@ visibles del centro profesional desde `GET /api/professional-center/content/`.
 - La recuperación de contraseña envía un código de seis dígitos por correo.
   En desarrollo, el backend de correo predeterminado imprime el mensaje en la
   consola.
-- Overil usa Gemini, no guarda el historial y limita el uso a 10 consultas por
-  usuario/día, 50 globales/día, 5 por hora y 300 tokens de salida.
+- Overil usa Gemini para recomendar un oficio del catálogo según el problema
+  descrito; no guarda historial ni entrega diagnósticos o pasos de reparación.
+  Limita el uso a 10 consultas por usuario/día, 50 globales/día, 5 por hora
+  y 30 tokens para clasificar.
 - Webpay Plus está configurado para sandbox. El plan profesional inicial cuesta
   $10.000 CLP por un mes; su valor y duración se administran en Django Admin.
   La renovación es manual y no hay cobro recurrente.

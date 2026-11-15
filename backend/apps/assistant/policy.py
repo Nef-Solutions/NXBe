@@ -3,31 +3,29 @@ import unicodedata
 
 
 OUT_OF_SCOPE_RESPONSE = (
-    'Soy el asistente exclusivo de Overol. Solo puedo ayudarte con diagnósticos '
-    'de fallas en tu hogar, búsqueda de especialistas (gasfitería, electricidad, '
-    'etc.) o dudas sobre nuestra plataforma. ¿En qué reparación te puedo orientar hoy?'
+    'Cuéntame qué problema del hogar tienes y te recomiendo el oficio del catálogo '
+    'que puede ayudarte.'
 )
 
-SAFETY_RESPONSE = (
-    'Eso puede ser peligroso. Aléjate del área y no manipules instalaciones de gas '
-    'ni eléctricas. Si hay olor a gas, humo, fuego o riesgo inmediato, evacúa y '
-    'contacta a los servicios de emergencia o a tu proveedor de gas. Para revisarlo, '
-    'solicita un profesional certificado de Overol.'
+UNIDENTIFIED_TRADE_RESPONSE = (
+    'No logro identificar el oficio adecuado con esa descripción. '
+    '¿Puedes contarme brevemente qué elemento necesita reparación?'
 )
 
 _DOMAIN_TERMS = (
     'overol', 'hogar', 'casa', 'departamento', 'domicilio', 'mantencion',
     'reparacion', 'arreglo', 'falla', 'averia', 'filtracion', 'humedad',
-    'fuga', 'caneria', 'desague', 'wc', 'inodoro', 'lavaplatos', 'lavamanos',
-    'llave de paso', 'calefont', 'caldera', 'agua caliente', 'gasfiter',
-    'gasfiteria', 'gas', 'enchufe', 'interruptor', 'tablero electrico',
-    'cableado', 'electricidad', 'electrico', 'luz', 'cortocircuito',
-    'cerrajeria', 'cerradura', 'llave', 'puerta', 'ventana', 'carpinteria',
-    'mueble', 'pintura', 'pintor', 'climatizacion', 'aire acondicionado',
-    'techo', 'canaleta', 'piso', 'pared', 'profesional', 'especialista',
-    'tecnico', 'visita', 'tarifa', 'garantia', 'verificacion', 'rut',
-    'cedula', 'solicitud de servicio', 'contratar', 'oficio', 'certificado',
-    'sec',
+    'fuga', 'gotera', 'gotea', 'goteo', 'bano', 'ducha', 'grifo', 'grifos',
+    'banera', 'caneria', 'desague', 'wc', 'inodoro',
+    'lavaplatos', 'lavamanos', 'lavatorio', 'llave de paso', 'calefont',
+    'caldera', 'agua caliente', 'gasfiter', 'gasfiteria', 'gas', 'enchufe',
+    'interruptor', 'tablero electrico', 'cableado', 'electricidad', 'electrico',
+    'luz', 'cortocircuito', 'cerrajeria', 'cerradura', 'llave', 'puerta',
+    'ventana', 'carpinteria', 'mueble', 'pintura', 'pintor', 'climatizacion',
+    'aire acondicionado', 'techo', 'canaleta', 'piso', 'grieta', 'pared', 'profesional',
+    'especialista', 'tecnico', 'visita', 'tarifa', 'garantia', 'verificacion',
+    'rut', 'cedula', 'solicitud de servicio', 'contratar', 'oficio',
+    'certificado', 'sec',
 )
 
 _INJECTION_PATTERNS = (
@@ -46,53 +44,20 @@ _OFF_TOPIC_PATTERNS = (
     r'\b(?:programacion|escribir codigo|depurar codigo|cultura general)\b',
 )
 
-_GAS_EMERGENCY = re.compile(
-    r'\b(?:olor|huele|fuga|escape)\b.{0,35}\b(?:gas|calefont)\b'
-    r'|\b(?:gas|calefont)\b.{0,35}\b(?:fuga|escapando|se escapa)\b'
-    r'|\b(?:incendio|fuego|explosion|exploto)\b'
-)
-_ELECTRICAL_EMERGENCY = re.compile(
-    r'\b(?:chispa|chispas|arco electrico|cable pelado|electrocut|descarga electrica)\b'
-)
-_DANGEROUS_INSTRUCTIONS = re.compile(
-    r'\b(?:puentea|puentear|anula|anular|desactiva|desactivar|manipula|manipular|'
-    r'repara|reparar|conecta|conectar|desconecta|desconectar|empalma|empalmar|'
-    r'cambia|cambiar|reemplaza|reemplazar|instala|instalar|abre|abrir|desarma|'
-    r'desarmar|desmonta|desmontar|interviene|intervenir|ajusta|ajustar|purga|purgar)\b'
-    r'.{0,55}\b(?:gas|calefont|caldera|medidor|tablero|cable|circuito|enchufe|'
-    r'valvula|regulador|instalacion electrica)\b'
-)
-
-
-def _normalize(text):
+def normalize_text(text):
     normalized = unicodedata.normalize('NFKD', text.casefold())
     return ''.join(char for char in normalized if not unicodedata.combining(char))
 
 
 def is_in_domain(text):
-    normalized = _normalize(text)
+    normalized = normalize_text(text)
     return any(term in normalized for term in _DOMAIN_TERMS)
 
 
 def inspect_message(text):
-    normalized = _normalize(text)
+    normalized = normalize_text(text)
     if any(re.search(pattern, normalized) for pattern in _INJECTION_PATTERNS):
         return OUT_OF_SCOPE_RESPONSE
-    if _GAS_EMERGENCY.search(normalized) or _ELECTRICAL_EMERGENCY.search(normalized):
-        return SAFETY_RESPONSE
-    if _DANGEROUS_INSTRUCTIONS.search(normalized):
-        return SAFETY_RESPONSE
-    if any(re.search(pattern, normalized) for pattern in _OFF_TOPIC_PATTERNS):
-        return OUT_OF_SCOPE_RESPONSE
-    if not is_in_domain(text):
-        return OUT_OF_SCOPE_RESPONSE
-    return None
-
-
-def validate_assistant_response(text):
-    normalized = _normalize(text)
-    if _DANGEROUS_INSTRUCTIONS.search(normalized):
-        return SAFETY_RESPONSE
     if any(re.search(pattern, normalized) for pattern in _OFF_TOPIC_PATTERNS):
         return OUT_OF_SCOPE_RESPONSE
     if not is_in_domain(text):
