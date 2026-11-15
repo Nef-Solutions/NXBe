@@ -101,15 +101,25 @@ header[data-testid="stHeader"] { background: var(--bg); }
     text-transform: uppercase;
     margin: 0 0 .25rem;
 }
-.st-key-side_menu { gap: .35rem; }
-.st-key-side_menu div.stButton > button {
+.st-key-side_menu, .st-key-side_sections { gap: .35rem; }
+.st-key-side_menu div.stButton > button,
+.st-key-side_sections div.stButton > button {
     justify-content: flex-start;
     min-height: 2.4rem;
     padding: .4rem .85rem;
     border-color: rgba(255,255,255,.30);
 }
-.st-key-side_menu div.stButton > button > div { justify-content: flex-start; width: 100%; }
-.st-key-side_menu div.stButton > button p { text-align: left; }
+.st-key-side_menu div.stButton > button > div,
+.st-key-side_sections div.stButton > button > div { justify-content: flex-start; width: 100%; }
+.st-key-side_menu div.stButton > button p,
+.st-key-side_sections div.stButton > button p { text-align: left; }
+/* Secciones en el menú lateral: la actual en ámbar con texto oscuro, igual que en la barra */
+.st-key-side_sections button[kind="primary"],
+.st-key-side_sections [data-testid="stBaseButton-primary"] { border-color: var(--amber-dark) !important; }
+.st-key-side_sections button[kind="primary"] *,
+.st-key-side_sections [data-testid="stBaseButton-primary"] * { color: var(--navy) !important; font-weight: 700; }
+/* Script que lleva la página arriba al cambiar de sección: no ocupa espacio */
+.st-key-scroll_top { display: none; }
 /* «Cerrar sesión» al final, como acción secundaria */
 .st-key-logout_button button {
     background: transparent !important;

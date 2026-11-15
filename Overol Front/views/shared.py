@@ -15,7 +15,7 @@ from core.constants import (
 )
 from core.security import validate_password_strength, validate_phone
 from core.session import end_session, load_user
-from ui.components import flash, section, security_note
+from ui.components import SIDE_SECTIONS_SLOT, flash, section, security_note
 from ui.profile import (
     profile_header,
     profile_reviews,
@@ -473,10 +473,12 @@ def _request_form(viewer, professional):
 
 PROFILE_FOCUS_KEY = "_profile_focus"
 
-# Opciones de la cuenta en el menú lateral: (etiqueta, destino)
-ACCOUNT_OPTIONS = [
+# Opciones de «Mi cuenta» en el menú lateral: (etiqueta, destino). «Mi perfil» ya está en
+# los botones de sección; solo el admin, que no lo tiene en su barra, lo ve aquí.
+ADMIN_ACCOUNT_OPTIONS = [
     ("👤 Mi perfil", "perfil"),
-    ("✏️ Editar datos", "editar"),
+]
+ACCOUNT_OPTIONS = [
     ("🔑 Cambiar contraseña", "contrasena"),
 ]
 PROFESSIONAL_OPTIONS = [
@@ -506,12 +508,18 @@ def sidebar(user):
     with st.sidebar:
         st.markdown("## 🦺 Overol")
         st.write(f"Hola, **{user['name']}**")
-        st.caption(f"Rol: {ROLES.get(user['role'], user['role'])}")
+
+        # Botones de sección: los dibuja nav_bar aquí (los mismos de la barra superior)
+        st.session_state[SIDE_SECTIONS_SLOT] = st.container(key="side_sections")
 
         st.divider()
         st.markdown("##### Mi cuenta")
 
-        options = ACCOUNT_OPTIONS + (PROFESSIONAL_OPTIONS if user["role"] == "profesional" else [])
+        options = (
+            (ADMIN_ACCOUNT_OPTIONS if user["role"] == "admin" else [])
+            + ACCOUNT_OPTIONS
+            + (PROFESSIONAL_OPTIONS if user["role"] == "profesional" else [])
+        )
         with st.container(key="side_menu"):
             for label, target in options:
                 st.button(
