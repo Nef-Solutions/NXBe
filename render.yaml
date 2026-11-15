@@ -1,0 +1,55 @@
+# Blueprint de Render para el backend de Overol (plan gratuito).
+# Render lo lee al crear el servicio con "New > Blueprint". Guía completa: HOSTING.md
+#
+# - Se construye con backend/Dockerfile y se vuelve a publicar solo con cada push a main
+#   que toque la carpeta backend/.
+# - Los valores marcados con sync: false se escriben a mano en el panel de Render
+#   (nunca en este archivo): Render los pide al crear el Blueprint.
+services:
+  - type: web
+    name: overol-backend
+    runtime: docker
+    plan: free
+    region: virginia   # misma zona que la base de Supabase (East US) para menor latencia
+    branch: main
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/catalog/categories/
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: WEB_CONCURRENCY
+        value: "2"
+      # Base de datos: cadena "Session pooler" de Supabase (postgresql://...:5432/postgres)
+      - key: DATABASE_URL
+        sync: false
+      # Almacenamiento de archivos (Supabase Storage, compatible con S3)
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_MEDIA_BUCKET
+        value: media
+      - key: S3_PRIVATE_BUCKET
+        value: private-media
+      - key: S3_MEDIA_PUBLIC_URL
+        sync: false
+      # Integraciones
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: TRANSBANK_RETURN_URL
+        sync: false
+      - key: PAYMENT_RESULT_URL
+        sync: false

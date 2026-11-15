@@ -1,3 +1,11 @@
+# Base de datos de Overol (PostgreSQL + PostGIS).
+#
+# - Solo la base, para trabajar el backend con su venv:   docker compose up -d   (desde backend/)
+# - Todo el proyecto (base + backend + front):           docker compose up      (desde la raíz)
+#   El docker-compose.yml de la raíz incluye este archivo, así que ambos usan la misma
+#   base y los mismos datos. Ver DOCKER.md en la raíz del repositorio.
+#
+# Las credenciales se leen de backend/.env (copiado desde .env.example).
 name: overol-backend
 
 services:
@@ -6,13 +14,19 @@ services:
     container_name: overol_db
     restart: always
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-overol_db}
+      POSTGRES_USER: ${POSTGRES_USER:-overol_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-overol_password}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Permite que el backend espere a que la base acepte conexiones antes de migrar
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   postgres_data:

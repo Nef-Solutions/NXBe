@@ -1,0 +1,52 @@
+# Tarea diaria: marca como vencidas las solicitudes de visita pendientes con más de 30 días
+# (python manage.py expire_visit_requests) en la base de producción.
+# De paso mantiene activa la base gratuita de Supabase, que se pausa tras 7 días sin uso.
+#
+# Necesita el secret DATABASE_URL en el repositorio (Settings > Secrets and variables > Actions).
+# Sin ese secret, el trabajo termina sin hacer nada. Ver HOSTING.md.
+name: Vencer solicitudes pendientes
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # todos los días a las 09:00 UTC (madrugada en Chile)
+  workflow_dispatch:       # también se puede ejecutar a mano desde la pestaña Actions
+
+jobs:
+  expirar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DEBUG: "False"
+      SECRET_KEY: solo-para-comandos-de-mantenimiento
+    steps:
+      - name: Revisar configuración
+        id: config
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Falta el secret DATABASE_URL: no se hace nada."
+            echo "listo=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "listo=si" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.listo == 'si'
+
+      - uses: actions/setup-python@v5
+        if: steps.config.outputs.listo == 'si'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/documentacion/requirements.txt
+
+      - name: Instalar dependencias
+        if: steps.config.outputs.listo == 'si'
+        run: pip install -r documentacion/requirements.txt
+
+      - name: Vencer solicitudes
+        if: steps.config.outputs.listo == 'si'
+        run: python manage.py expire_visit_requests

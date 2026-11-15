@@ -6,3 +6,8 @@ db.sqlite3
 media/
 staticfiles/
 .pytest_cache/
+# Archivos subidos por usuarios (cédulas, fotos, certificaciones)
+private_media/
+
+# Secrets de Streamlit (en Streamlit Community Cloud se escriben en el panel)
+.streamlit/secrets.toml

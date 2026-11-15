@@ -7,6 +7,14 @@ djangorestframework==3.18.3
 djangorestframework-simplejwt==5.5.1
 django-cors-headers==4.9.0
 
+# Servidor de producción y archivos estáticos (usados por la imagen Docker)
+gunicorn==23.0.0
+whitenoise==6.9.0
+
+# Producción: base de datos por URL y archivos en almacenamiento compatible con S3
+dj-database-url==3.0.1
+django-storages[s3]==1.14.6
+
 # PostgreSQL driver and image validation (PostGIS is provided by the database image)
 psycopg2-binary==2.9.13
 Pillow==13.0.0

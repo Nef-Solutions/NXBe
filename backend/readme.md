@@ -7,20 +7,42 @@ Webpay Plus exclusivamente en sandbox.
 
 ## Requisitos
 
-- CPython 3.14.8 es el entorno usado para la validación actual.
 - Docker Desktop con Docker Compose.
-- PostgreSQL/PostGIS se puede iniciar con Docker Compose.
+- Solo si trabajas sin Docker para el código: CPython 3.14 (la validación
+  actual se hizo con 3.14.8).
 - La clave `GEMINI_API_KEY` es necesaria para respuestas reales de Overil.
 - Para enviar códigos de recuperación fuera de desarrollo, configura un
   backend de correo saliente.
 
 Las dependencias Python están en
 [`documentacion/requirements.txt`](documentacion/requirements.txt). Ese archivo
-fija las versiones de paquetes, pero no instala Python ni los servicios Docker.
+fija las versiones de paquetes (incluidos Gunicorn y WhiteNoise, que usa la
+imagen Docker), pero no instala Python ni los servicios Docker.
 
-## Puesta en marcha local
+## Puesta en marcha con Docker (recomendado)
 
-Ejecuta estos comandos desde la carpeta `backend/` en PowerShell:
+Desde la **raíz** del repositorio:
+
+```powershell
+Copy-Item backend\.env.example backend\.env
+docker compose up --build
+docker compose exec backend python manage.py seed_demo
+```
+
+El contenedor aplica las migraciones al arrancar y recarga el servidor al
+guardar un archivo. Los comandos de Django se ejecutan con
+`docker compose exec backend python manage.py <comando>`. La guía completa está
+en [`DOCKER.md`](../DOCKER.md).
+
+La imagen se define en [`Dockerfile`](Dockerfile): Python 3.14, Gunicorn,
+archivos estáticos servidos con WhiteNoise y migraciones al iniciar. Respeta la
+variable `PORT` si el proveedor la define (por ejemplo Render).
+
+## Puesta en marcha local (sin Docker para el código)
+
+Ejecuta estos comandos desde la carpeta `backend/` en PowerShell. Aquí Docker
+solo levanta la base de datos ([`docker-compose.yml`](docker-compose.yml)), y
+`POSTGRES_HOST` debe quedar en `localhost`:
 
 ```powershell
 Copy-Item .env.example .env
@@ -33,6 +55,9 @@ python manage.py migrate
 python manage.py check
 python manage.py runserver 127.0.0.1:8000
 ```
+
+Las dos formas comparten el mismo contenedor de base (`overol_db`) y los mismos
+datos.
 
 La API queda en `http://127.0.0.1:8000/api/` y Django Admin en
 `http://127.0.0.1:8000/admin/`. La raíz y el panel local de prueba están en
@@ -66,9 +91,17 @@ incluyas credenciales privadas en el frontend ni en el repositorio. Antes de
 desplegar, reemplaza secretos, desactiva `DEBUG`, restringe CORS y configura
 correo, HTTPS, persistencia y acceso al almacenamiento privado.
 
+Para producción, el backend acepta `DATABASE_URL` (tiene prioridad sobre
+`POSTGRES_*`) y almacenamiento compatible con S3 mediante las variables `S3_*`:
+fotos y certificaciones en un bucket público y cédulas en uno privado. Con
+`DEBUG=False` activa cookies seguras y confía en el https del proxy. La
+publicación gratuita (Render + Supabase + Streamlit Cloud) está descrita paso a
+paso en [`HOSTING.md`](../HOSTING.md).
+
 ## Pruebas y verificaciones
 
-Desde `backend/`:
+Desde `backend/` (con Docker, antepón `docker compose exec backend` a cada
+comando, desde la raíz):
 
 ```powershell
 python manage.py test
@@ -78,7 +111,7 @@ python manage.py makemigrations --check --dry-run
 
 Las pruebas Django usan una base temporal y simulan las llamadas externas a
 Gemini y Transbank. No equivalen a una llamada real al modelo ni a una compra
-sandbox. La última ejecución registrada obtuvo 76 pruebas aprobadas.
+sandbox. La última ejecución registrada (dentro de Docker) obtuvo 79 pruebas aprobadas.
 
 Las solicitudes pendientes de visita se pueden expirar al ejecutar:
 

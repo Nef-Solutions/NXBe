@@ -1,0 +1,34 @@
+# Solo entra a la imagen el código del backend (apps/, core/, manage.py y requirements).
+
+# Control de versiones y editores
+.git
+.gitignore
+.vscode
+.idea
+
+# Variables de entorno y claves: se entregan al contenedor, nunca se copian a la imagen
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Archivos subidos por usuarios (cédulas, fotos, certificaciones) y datos locales
+media
+private_media
+staticfiles
+*.sqlite3
+db.sqlite3
+
+# Python
+**/__pycache__
+**/*.py[cod]
+.venv
+venv
+.pytest_cache
+
+# Herramientas locales y la propia receta
+local-api-tester
+docker-compose.yml
+Dockerfile
+.dockerignore

@@ -18,19 +18,38 @@ import os
 _API_URL_LOCAL = "http://127.0.0.1:8000/api/"
 
 
+def _get(name, default=""):
+    """Valor de una variable de entorno o, si no existe, de los *secrets* de Streamlit.
+
+    Streamlit Community Cloud entrega la configuración como secrets (.streamlit/secrets.toml),
+    no como variables de entorno; Docker y Render usan variables de entorno.
+    """
+    value = os.environ.get(name)
+    if value is not None:
+        return value
+    try:
+        import streamlit as st
+
+        if st.secrets.load_if_toml_exists() and name in st.secrets:
+            return str(st.secrets[name])
+    except Exception:
+        pass
+    return default
+
+
 def _flag(name):
     """True solo si la variable vale exactamente "1" (cualquier otro valor o ausencia: False)."""
-    return os.environ.get(name, "0").strip() == "1"
+    return _get(name, "0").strip() == "1"
 
 
 def _int(name, default, minimum=1):
     try:
-        return max(minimum, int(os.environ.get(name, default)))
+        return max(minimum, int(_get(name, default)))
     except (TypeError, ValueError):
         return default
 
 
-API_BASE_URL = (os.environ.get("OVEROL_API_URL", "").strip() or _API_URL_LOCAL).rstrip("/") + "/"
+API_BASE_URL = (_get("OVEROL_API_URL", "").strip() or _API_URL_LOCAL).rstrip("/") + "/"
 API_TIMEOUT = _int("OVEROL_API_TIMEOUT", 10)
 
 # Administrador de Django del mismo backend (se muestra al admin como referencia)
