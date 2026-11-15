@@ -36,7 +36,7 @@ pip install -r requirements.txt
 ### Con el script (Windows)
 
 ```powershell
-cd "Overol Front"
+cd "overol-front"
 powershell -ExecutionPolicy Bypass -File scripts\demo_api.ps1             # backend + front
 powershell -ExecutionPolicy Bypass -File scripts\demo_api.ps1 -DemoListo  # además prepara a los profesionales de demo
 ```
@@ -68,7 +68,7 @@ python manage.py migrate
 python manage.py seed_demo
 python manage.py runserver 127.0.0.1:8000
 
-# Front (otra ventana, carpeta "Overol Front")
+# Front (otra ventana, carpeta "overol-front")
 python app.py
 ```
 
@@ -126,7 +126,7 @@ Lo que falta en el backend está detallado en `PEDIDO_BACKEND_PARA_NEFI.md`, un 
 ## Estructura
 
 ```
-Overol Front/
+overol-front/
 ├── app.py                  Arranque, sesión, vuelta de Webpay y enrutamiento por rol
 ├── style.css               Estilos
 ├── requirements.txt        Dependencias del front (versiones fijas)

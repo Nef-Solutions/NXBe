@@ -1,7 +1,7 @@
 """Corre las pruebas AppTest del front, cada una sobre una copia temporal y contra la
 imitación del backend (backend_simulado.py).
 
-Uso (desde «Overol Front»):
+Uso (desde «overol-front»):
     python tests/correr_pruebas.py                    # todas
     python tests/correr_pruebas.py busqueda login     # solo esas (prueba_<nombre>.py)
     python tests/correr_pruebas.py -v                 # muestra cada verificación

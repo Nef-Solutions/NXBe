@@ -5,7 +5,7 @@ Hacen clic en los botones por su `key` y revisan lo que queda en pantalla y lo q
 
 ## Cómo correrlas
 
-Desde la carpeta `Overol Front`, con el Python que tiene Streamlit:
+Desde la carpeta `overol-front`, con el Python que tiene Streamlit:
 
 ```powershell
 python tests/correr_pruebas.py                  # todas

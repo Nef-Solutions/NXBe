@@ -43,7 +43,7 @@ services:
         condition: service_healthy
 
   front:
-    build: "./Overol Front"
+    build: "./overol-front"
     image: overol-front
     container_name: overol_front
     restart: unless-stopped

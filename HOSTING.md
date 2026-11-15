@@ -4,7 +4,7 @@ Guía paso a paso para dejar Overol en internet sin costo, con publicación auto
 
 ```text
  Navegador ──► Streamlit Community Cloud ──► Render ──────────► Supabase
-               (front, Overol Front/)        (backend, Docker)   ├─ PostgreSQL + PostGIS
+               (front, overol-front/)        (backend, Docker)   ├─ PostgreSQL + PostGIS
                                                                  └─ Storage (fotos y cédulas)
  GitHub Actions ── una vez al día ──► vence solicitudes antiguas en la base
 ```
@@ -103,7 +103,7 @@ Con `DATABASE_URL`, el contenedor ignora la base local y escribe en la de Supaba
 2. **Create app** → **Deploy a public app from GitHub**:
    - **Repository:** `Nef-Solutions/NXBe`
    - **Branch:** `main`
-   - **Main file path:** `Overol Front/app.py`
+   - **Main file path:** `overol-front/app.py`
    - **App URL:** elige un subdominio, por ejemplo `overol-nxbe`, y anota la URL completa: `https://overol-nxbe.streamlit.app`.
 3. **Advanced settings**:
    - **Python version:** 3.12. El front está probado con 3.11 y versiones posteriores.
@@ -117,7 +117,7 @@ Con `DATABASE_URL`, el contenedor ignora la base local y escribe en la de Supaba
      ```
 
      `OVEROL_API_TIMEOUT = "60"` es importante: el backend gratuito de Render se duerme y tarda hasta un minuto en despertar. Con el valor por defecto (10 segundos), la primera visita mostraría un error.
-4. **Deploy**. Streamlit instala `Overol Front/requirements.txt` y publica.
+4. **Deploy**. Streamlit instala `overol-front/requirements.txt` y publica.
 
 ---
 
@@ -164,7 +164,7 @@ GitHub desactiva las tareas programadas si el repositorio pasa 60 días sin acti
 
 | Cambio | Qué pasa |
 |---|---|
-| Push a `main` en `Overol Front/` | Streamlit Cloud publica la nueva versión en segundos. Las sesiones abiertas se cierran. |
+| Push a `main` en `overol-front/` | Streamlit Cloud publica la nueva versión en segundos. Las sesiones abiertas se cierran. |
 | Push a `main` en `backend/` | Render reconstruye la imagen y la publica (unos minutos). Si hay migraciones nuevas, se aplican al arrancar. |
 | Cambio de dependencias | Igual que el anterior: ambos servicios reinstalan sus `requirements.txt` solos. |
 | Push en otras ramas | No se publica nada. Prueben en local con Docker y fusionen a `main` con un Pull Request. |
