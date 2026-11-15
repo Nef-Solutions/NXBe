@@ -56,6 +56,7 @@ NXBe/
 ├── docker-compose.override.yml  # Modo desarrollo de Docker (recarga al guardar)
 ├── DOCKER.md                  # Guía de Docker para quien trabaja el front y el backend
 ├── HOSTING.md                 # Publicación gratuita (Streamlit Cloud + Render + Supabase)
+├── BITACORA_DOCKER_Y_HOSTING.md  # Registro detallado de cómo se hizo Docker y la publicación
 ├── render.yaml                # Blueprint de Render para el backend
 ├── .github/workflows/         # Tarea diaria que vence solicitudes en producción
 └── README.md                  # Esta guía
@@ -89,7 +90,7 @@ Los cambios de código se ven al guardar, sin reconstruir. La guía completa (c�
 
 Sigue siendo posible trabajar con `venv`, dejando solo la base de datos en Docker:
 
-- Backend: [backend/readme.md](backend/readme.md#puesta-en-marcha-local).
+- Backend: [backend/readme.md](backend/readme.md#puesta-en-marcha-local-sin-docker-para-el-código).
 - Front: [overol-front/README.md](overol-front/README.md#cómo-ejecutarlo). Incluye el script `scripts/demo_api.ps1`, que levanta backend y front en Windows.
 
 ## Pruebas
@@ -142,6 +143,7 @@ La [guía de integración front/API](backend/documentacion/guia-integracion-fron
 
 - [Guía de Docker](DOCKER.md)
 - [Publicar gratis (hosting)](HOSTING.md)
+- [Bitácora de Docker y publicación (15-11-2026)](BITACORA_DOCKER_Y_HOSTING.md)
 - [Backend: puesta en marcha y capacidades](backend/readme.md)
 - [Manual técnico integral del backend](backend/documentacion/manual-tecnico-integral-backend.md)
 - [Esquema de base de datos](backend/documentacion/esquema-base-datos.md)
