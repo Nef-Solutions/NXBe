@@ -12,7 +12,7 @@ Este repositorio reúne el producto y los documentos del proceso académico:
 
 ### Front (Streamlit)
 
-La carpeta [Overol Front](Overol%20Front/) contiene la aplicación web en Streamlit, con pantallas para visitantes, clientes, profesionales y administradores. Todos los datos vienen del backend a través de su API REST con JWT: el front no guarda datos propios.
+La carpeta [overol-front](overol-front/) contiene la aplicación web en Streamlit, con pantallas para visitantes, clientes, profesionales y administradores. Todos los datos vienen del backend a través de su API REST con JWT: el front no guarda datos propios.
 
 La versión anterior, que funcionaba sola con SQLite, quedó en el tag `front-modo-local-final`.
 
@@ -37,7 +37,7 @@ La carpeta [backend](backend/) contiene una API desarrollada con Django y Django
 
 ```text
 NXBe/
-├── Overol Front/              # Front Streamlit (consume la API)
+├── overol-front/              # Front Streamlit (consume la API)
 ├── backend/                   # API Django, docker-compose de la base y documentación técnica
 ├── Documentos_equipo/         # Documentos de producto, requisitos y diseño
 ├── Fase 1/                    # Evidencias y entregables de la primera fase
@@ -80,14 +80,14 @@ Los cambios de código se ven al guardar, sin reconstruir. La guía completa (c�
 Sigue siendo posible trabajar con `venv`, dejando solo la base de datos en Docker:
 
 - Backend: [backend/readme.md](backend/readme.md#puesta-en-marcha-local).
-- Front: [Overol Front/README.md](Overol%20Front/README.md#cómo-ejecutarlo). Incluye el script `scripts/demo_api.ps1`, que levanta backend y front en Windows.
+- Front: [overol-front/README.md](overol-front/README.md#cómo-ejecutarlo). Incluye el script `scripts/demo_api.ps1`, que levanta backend y front en Windows.
 
 ## Pruebas
 
 | Parte | Con Docker | Sin Docker |
 |---|---|---|
 | Backend | `docker compose exec backend python manage.py test` | `python manage.py test` desde `backend/` |
-| Front | — (no necesita el backend) | `python tests/correr_pruebas.py` desde `Overol Front/` |
+| Front | — (no necesita el backend) | `python tests/correr_pruebas.py` desde `overol-front/` |
 
 Las pruebas del backend usan una base de datos temporal y simulan Gemini y Transbank. La última ejecución, dentro de Docker, aprobó las 79 pruebas.
 
@@ -137,8 +137,8 @@ La [guía de integración front/API](backend/documentacion/guia-integracion-fron
 - [Esquema de base de datos](backend/documentacion/esquema-base-datos.md)
 - [Guía de integración front/API](backend/documentacion/guia-integracion-frontend-api.md)
 - [Reporte de pruebas de la API](backend/documentacion/Postman/reporte_de_pruebas_api_overol.md)
-- [Front: ejecución, roles y estructura](Overol%20Front/README.md)
-- [Front: despliegue en un servidor](Overol%20Front/DESPLIEGUE.md)
+- [Front: ejecución, roles y estructura](overol-front/README.md)
+- [Front: despliegue en un servidor](overol-front/DESPLIEGUE.md)
 
 ## Seguridad y mantenimiento
 

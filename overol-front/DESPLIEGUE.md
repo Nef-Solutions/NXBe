@@ -32,7 +32,7 @@ Opciones de Streamlit (ya vienen en `.streamlit/config.toml` para producción; s
 
 ## 2. Construir y correr el contenedor
 
-Desde la carpeta `Overol Front`:
+Desde la carpeta `overol-front`:
 
 ```bash
 docker build -t overol-front .

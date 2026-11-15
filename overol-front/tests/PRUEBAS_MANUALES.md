@@ -25,7 +25,7 @@ $py = "C:\Users\benja\Documents\Overol_envs\backend_venv\Scripts\python.exe"
 & $py manage.py runserver 127.0.0.1:8000     # déjala abierta
 
 # 2. Front (otra ventana)
-cd "C:\Users\benja\Documents\NXBe_repo\Overol Front"
+cd "C:\Users\benja\Documents\NXBe_repo\overol-front"
 & "C:\Users\benja\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\python.exe" app.py
 ```
 

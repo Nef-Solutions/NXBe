@@ -2,7 +2,7 @@
 
 Guía para levantar Overol con Docker y para trabajar en él, según si tu parte es el **front** (Streamlit) o el **backend** (Django).
 
-Docker es opcional: la forma anterior, con `venv` y solo la base de datos en Docker, sigue funcionando igual. Está descrita en [backend/readme.md](backend/readme.md) y en [Overol Front/README.md](Overol%20Front/README.md).
+Docker es opcional: la forma anterior, con `venv` y solo la base de datos en Docker, sigue funcionando igual. Está descrita en [backend/readme.md](backend/readme.md) y en [overol-front/README.md](overol-front/README.md).
 
 ---
 
@@ -22,7 +22,7 @@ Archivos involucrados:
 | [`docker-compose.override.yml`](docker-compose.override.yml) (raíz) | Modo **desarrollo**: monta el código y recarga al guardar. Docker Compose lo aplica solo. |
 | [`backend/docker-compose.yml`](backend/docker-compose.yml) | Solo la base de datos. Lo usan las dos formas de trabajo, así que comparten la misma base y los mismos datos. |
 | [`backend/Dockerfile`](backend/Dockerfile) | Imagen del backend: Python 3.14, Gunicorn y migraciones al arrancar. |
-| [`Overol Front/Dockerfile`](Overol%20Front/Dockerfile) | Imagen del front: Python 3.11 y Streamlit. |
+| [`overol-front/Dockerfile`](overol-front/Dockerfile) | Imagen del front: Python 3.11 y Streamlit. |
 
 ---
 
@@ -53,7 +53,7 @@ Archivos involucrados:
    docker compose exec backend python manage.py seed_demo
    ```
 
-   Todos usan la contraseña `OverolDemo123!`. Los correos están en [Overol Front/README.md](Overol%20Front/README.md#usuarios-de-demostración).
+   Todos usan la contraseña `OverolDemo123!`. Los correos están en [overol-front/README.md](overol-front/README.md#usuarios-de-demostración).
 
 Abre `http://localhost:8501`. En modo desarrollo, el login muestra botones con las cuentas de demostración.
 
@@ -91,7 +91,7 @@ No necesitas instalar Django ni PostgreSQL: Docker te da la API funcionando.
 docker compose up
 ```
 
-Edita los archivos de `Overol Front/` con tu editor. Al guardar, Streamlit recarga la página solo, porque el modo desarrollo monta la carpeta dentro del contenedor. Los errores se muestran completos en el navegador y en `docker compose logs -f front`.
+Edita los archivos de `overol-front/` con tu editor. Al guardar, Streamlit recarga la página solo, porque el modo desarrollo monta la carpeta dentro del contenedor. Los errores se muestran completos en el navegador y en `docker compose logs -f front`.
 
 ### Opción B: front en tu PC y API en Docker
 
@@ -99,7 +99,7 @@ Edita los archivos de `Overol Front/` con tu editor. Al guardar, Streamlit recar
 
 ```powershell
 docker compose up -d db backend      # base + API en Docker
-cd "Overol Front"
+cd "overol-front"
 pip install -r requirements.txt      # solo la primera vez
 python app.py                        # usa http://127.0.0.1:8000/api/ por defecto
 ```
@@ -108,7 +108,7 @@ Si el contenedor `front` estaba corriendo, detenlo antes (`docker compose stop f
 
 ### Pruebas del front
 
-Las pruebas automáticas no necesitan el backend, porque usan uno simulado. Desde `Overol Front/`:
+Las pruebas automáticas no necesitan el backend, porque usan uno simulado. Desde `overol-front/`:
 
 ```powershell
 python tests/correr_pruebas.py
@@ -169,7 +169,7 @@ Al ejecutar `docker compose up`, Docker combina `docker-compose.yml` con `docker
 | Servidor del backend | `runserver` (recarga automática) | Gunicorn + WhiteNoise para los archivos estáticos |
 | Front | Errores completos, menú de desarrollador y cuentas de demostración en el login | Errores ocultos, sin menú ni cuentas de demostración |
 
-Usa el modo producción para comprobar que las imágenes funcionan antes de publicarlas (por ejemplo en Render). Las variables para publicar el front están en [Overol Front/DESPLIEGUE.md](Overol%20Front/DESPLIEGUE.md).
+Usa el modo producción para comprobar que las imágenes funcionan antes de publicarlas (por ejemplo en Render). Las variables para publicar el front están en [overol-front/DESPLIEGUE.md](overol-front/DESPLIEGUE.md).
 
 ---
 
