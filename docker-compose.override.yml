@@ -1,0 +1,29 @@
+# Ajustes de DESARROLLO que Docker Compose aplica automáticamente sobre docker-compose.yml.
+#
+# - Monta el código de backend/ y "Overol Front/" dentro de los contenedores:
+#   al guardar un archivo, Django y Streamlit recargan solos (no hace falta --build).
+# - Usa el servidor de desarrollo de Django y muestra el detalle de los errores en Streamlit.
+#
+# Solo hay que reconstruir (docker compose up --build) cuando cambian los requirements.
+# Para ignorar este archivo y probar las imágenes de producción:
+#   docker compose -f docker-compose.yml up --build
+
+services:
+  backend:
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ./backend:/app
+
+  front:
+    command: >
+      streamlit run app.py
+      --server.address 0.0.0.0 --server.port 8501
+      --server.runOnSave true --server.fileWatcherType poll
+    environment:
+      OVEROL_MODO_DEMO: "1"
+      STREAMLIT_CLIENT_TOOLBAR_MODE: developer
+      STREAMLIT_CLIENT_SHOW_ERROR_DETAILS: full
+    volumes:
+      - "./Overol Front:/app"

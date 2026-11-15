@@ -41,7 +41,18 @@ ensure_streamlit()
 # Se usa una variable de entorno en vez de un argumento de sys.argv porque
 # Streamlit puede reconstruir sys.argv durante un rerun; eso podía provocar
 # que el login abriera otra instancia/pestaña de la aplicación.
-if os.environ.get(BOOTSTRAP_ENV) != "1":
+def running_inside_streamlit():
+    """True si este archivo ya lo está ejecutando un servidor Streamlit (streamlit run,
+    Streamlit Community Cloud), aunque no se haya definido OVEROL_STREAMLIT_STARTED."""
+    try:
+        from streamlit import runtime
+
+        return runtime.exists()
+    except Exception:
+        return False
+
+
+if os.environ.get(BOOTSTRAP_ENV) != "1" and not running_inside_streamlit():
     app_path = str(Path(__file__).resolve())
     child_env = os.environ.copy()
     child_env[BOOTSTRAP_ENV] = "1"

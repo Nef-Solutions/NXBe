@@ -48,6 +48,8 @@ docker run -d --name overol-front -p 8501:8501 \
 - La imagen usa Python 3.11, instala `requirements.txt` (versiones fijas, las mismas de las pruebas), corre con un usuario sin privilegios y expone el puerto **8501**.
 - Tiene un *healthcheck* en `http://127.0.0.1:8501/_stcore/health`.
 - No incluye pruebas, scripts, `.git`, bases locales, documentos subidos, `.env`, claves ni `__pycache__` (ver `.dockerignore`).
+- **Streamlit Community Cloud** (la opción gratuita elegida) no usa esta imagen: instala `requirements.txt` y ejecuta `app.py` directamente. Las variables de la sección 1 se escriben como *secrets* en su panel (`core/config.py` las lee de las variables de entorno o, si no están, de `st.secrets`). Paso a paso en [`HOSTING.md`](../HOSTING.md).
+- Para probar en local esta misma imagen junto al backend, sin el modo desarrollo, desde la raíz del repositorio: `docker compose -f docker-compose.yml up --build` (ver [`DOCKER.md`](../DOCKER.md)).
 
 ### Proxy https delante
 

@@ -10,10 +10,24 @@ Overol es un marketplace que conecta a clientes con profesionales de oficios del
 
 ## Cómo ejecutarlo
 
-### Requisitos
+### Con Docker (recomendado)
 
-- **Front:** Python 3.11 o superior, con las dependencias de `requirements.txt` (Streamlit y requests).
-- **Backend:** Python 3.12 o superior (Django 6.1), Docker Desktop para Postgres/PostGIS y un archivo `backend/.env` creado desde `backend/.env.example`.
+Desde la **raíz** del repositorio, con Docker Desktop abierto:
+
+```powershell
+Copy-Item backend\.env.example backend\.env
+docker compose up --build                                  # base + backend + front
+docker compose exec backend python manage.py seed_demo     # usuarios de demostración, una vez
+```
+
+El front queda en `http://localhost:8501` y se recarga solo al guardar un archivo de esta carpeta. Si solo quieres la API en Docker y el front en tu PC, usa `docker compose up -d db backend` y luego `python app.py`.
+
+La guía completa para quien trabaja el front o el backend está en [`DOCKER.md`](../DOCKER.md).
+
+### Requisitos (sin Docker)
+
+- **Front:** Python 3.11 o superior, con las dependencias de `requirements.txt` (Streamlit y requests). La imagen Docker usa Python 3.11.
+- **Backend:** Python 3.12 o superior (Django 6.1; validado con 3.14), Docker Desktop para Postgres/PostGIS y un archivo `backend/.env` creado desde `backend/.env.example`.
 
 ```bash
 pip install -r requirements.txt

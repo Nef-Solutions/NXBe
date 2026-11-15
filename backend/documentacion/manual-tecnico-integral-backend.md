@@ -51,7 +51,8 @@ backend/
 │   └── payments/         transacciones de visita y suscripciones sandbox
 ├── core/                 configuración Django y enrutamiento raíz
 ├── documentacion/        documentación del backend
-├── docker-compose.yml    PostgreSQL/PostGIS
+├── docker-compose.yml    PostgreSQL/PostGIS (incluido por el compose de la raíz)
+├── Dockerfile            imagen del backend (Gunicorn + WhiteNoise)
 └── manage.py
 ```
 
@@ -67,6 +68,8 @@ backend/
 | Transbank SDK 6.1.0 | Webpay Plus en integración/sandbox. |
 | Pillow | Procesamiento y validación de imágenes. |
 | django-cors-headers | Cabeceras CORS. |
+| Gunicorn | Servidor WSGI de la imagen Docker. |
+| WhiteNoise | Sirve `/static/` (admin) cuando corre con Gunicorn. |
 
 Las dependencias Python y sus versiones están en
 [`requirements.txt`](requirements.txt); el archivo no instala ni fija la
@@ -75,6 +78,18 @@ El backend usa la zona horaria `America/Santiago` y almacena datetimes con
 soporte de zona horaria.
 
 ## 3. Arranque y configuración local
+
+### Con Docker
+
+Desde la raíz del repositorio, `docker compose up --build` levanta la base
+(`db`), el backend (`backend`, puerto 8000) y el front (`front`, puerto 8501).
+El contenedor del backend lee `backend/.env`, reemplaza `POSTGRES_HOST` por
+`db`, agrega `backend` a `ALLOWED_HOSTS` y aplica las migraciones al arrancar.
+En desarrollo usa `runserver` con el código montado; la imagen de producción usa
+Gunicorn y `collectstatic` (destino `STATIC_ROOT = backend/staticfiles`). Detalle
+en [`DOCKER.md`](../../DOCKER.md).
+
+### Sin Docker para el código
 
 Ejecuta los comandos desde `backend/` en PowerShell:
 
@@ -111,9 +126,19 @@ con `python-dotenv`.
 | `GEMINI_API_KEY` | Credencial privada de Google AI Studio. | Vacía; necesaria para que Overil use Gemini. |
 | `GEMINI_MODEL` | Identificador de modelo Gemini. | `gemini-3.5-flash-lite`. |
 | `TRANSBANK_RETURN_URL` | URL que recibe el retorno de Webpay. | Callback local en el puerto 8000. |
-| `PAYMENT_RESULT_URL` | Destino de redirección después del callback. | `http://localhost:3000/payment-result`. |
+| `PAYMENT_RESULT_URL` | Destino de redirección después del callback. | `http://localhost:8501/` (el front Streamlit). |
 | `EMAIL_BACKEND` | Backend de correo Django. | Si no se define, se usa el backend de consola. |
 | `PRIVATE_MEDIA_ROOT` | Carpeta privada para documentos de verificación. | `backend/private_media`. |
+| `DATABASE_URL` | Conexión completa a PostgreSQL; si existe, reemplaza a `POSTGRES_*`. | No definida (producción). |
+| `S3_ENDPOINT_URL`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Almacenamiento compatible con S3 (Supabase Storage). | No definidas: se usa el disco local. |
+| `S3_MEDIA_BUCKET`, `S3_MEDIA_PUBLIC_URL` | Bucket público de fotos/certificaciones y su URL pública. | No definidas. |
+| `S3_PRIVATE_BUCKET` | Bucket privado de cédulas (se leen solo vía API). | No definida: `PRIVATE_MEDIA_ROOT`. |
+| `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS` | Orígenes https permitidos. Con `DEBUG=True` y sin lista, CORS acepta todo. | Vacías. |
+| `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL` | Correo SMTP cuando `EMAIL_BACKEND` es el de SMTP. | Valores de Django. |
+
+Con `DEBUG=False` se activan `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE` y
+`SECURE_PROXY_SSL_HEADER`. En Render, `RENDER_EXTERNAL_HOSTNAME` se agrega solo a
+`ALLOWED_HOSTS` y `CSRF_TRUSTED_ORIGINS`. Ver [`HOSTING.md`](../../HOSTING.md).
 
 Los límites diarios de Overil y la cantidad máxima de tokens se definen en
 `core/settings.py`, no en variables de entorno: 10 consultas por usuario/día,
@@ -122,10 +147,14 @@ el inicio a 5 y la confirmación a 10 solicitudes por hora y dirección IP.
 
 ### Persistencia local
 
-`docker-compose.yml` inicia:
+`backend/docker-compose.yml` inicia:
 
 - `overol_db`: imagen `postgis/postgis:16-3.4`, puerto `5432`, volumen
-  persistente `postgres_data`.
+  persistente `postgres_data` (proyecto `overol-backend`) y un *healthcheck*
+  con `pg_isready`.
+
+El `docker-compose.yml` de la raíz incluye ese servicio y agrega los volúmenes
+`media_data` y `private_media_data` para los archivos subidos.
 
 PostgreSQL es la base normal. `DATABASE_ENGINE=sqlite3` selecciona SQLite para
 pruebas locales especiales; por defecto se usa PostgreSQL. La búsqueda por radio

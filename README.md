@@ -2,115 +2,105 @@
 
 Proyecto Capstone del equipo NXBe para conectar clientes con profesionales de oficios del hogar. Overol permite buscar profesionales, solicitar visitas, coordinar servicios, evaluar resultados y gestionar situaciones de posventa.
 
-Este repositorio reúne el producto, sus dos implementaciones de desarrollo y los documentos del proceso académico:
+Este repositorio reúne el producto y los documentos del proceso académico:
 
-- Un prototipo integral local para demostraciones.
-- Un backend REST modular preparado para evolucionar hacia una arquitectura productiva.
+- Un **front** en Streamlit que consume la API del backend.
+- Un **backend** REST modular en Django.
 - Requisitos, diseño, evidencias y entregables de las distintas fases del proyecto.
 
 ## Componentes del proyecto
 
-### Prototipo integral
+### Front (Streamlit)
 
-La carpeta [Overol](Overol/) contiene una aplicación Streamlit ejecutable localmente. Incluye pantallas para clientes, profesionales y administradores, autenticación local y persistencia SQLite para demostraciones. Es la forma más rápida de explorar el flujo completo de la plataforma.
+La carpeta [Overol Front](Overol%20Front/) contiene la aplicación web en Streamlit, con pantallas para visitantes, clientes, profesionales y administradores. Todos los datos vienen del backend a través de su API REST con JWT: el front no guarda datos propios.
 
-### Backend REST
+La versión anterior, que funcionaba sola con SQLite, quedó en el tag `front-modo-local-final`.
 
-La carpeta [backend](backend/) contiene una API desarrollada con Django y Django REST Framework. Usa PostgreSQL/PostGIS y Redis mediante Docker, JWT para las rutas protegidas y una estructura modular por dominio:
+### Backend REST (Django)
 
-- `authentication`: usuarios, roles, sesiones y verificación profesional.
-- `catalog`: oficios, especialidades y búsqueda.
-- `visits`: visitas, reseñas, posventa, soporte y notificaciones.
-- `assistant`: espacio reservado para el asistente de diagnóstico.
+La carpeta [backend](backend/) contiene una API desarrollada con Django y Django REST Framework. Usa PostgreSQL/PostGIS en Docker, JWT para las rutas protegidas y una estructura modular por dominio:
 
-El backend implementa registro, autenticación, perfiles profesionales, solicitudes de visita, calificaciones, reclamos, tickets y administración.
+- `authentication`: usuarios, roles, perfiles, sesiones, recuperación de contraseña y verificación profesional.
+- `catalog`: oficios, especialidades, búsqueda (incluida la búsqueda por radio con PostGIS) y disponibilidad.
+- `visits`: solicitudes de visita, reseñas, posventa, soporte, notificaciones y centro profesional.
+- `assistant`: Overil, asistente que recomienda un oficio del catálogo usando Gemini.
+- `payments`: suscripción mensual de profesionales con Webpay Plus en modo de pruebas (sandbox).
 
 ### Documentación y entregables
 
 - [Documentos_equipo](Documentos_equipo/): visión del producto, backlog, diseño, Definition of Done y requisitos funcionales y no funcionales.
 - [Fase 1](Fase%201/): evidencias grupales e individuales de la primera fase.
-- [Fase 2](Fase%202/): evidencias grupales e individuales de la segunda fase.
-- [Documentación técnica del backend](backend/documentacion/): instalación, arquitectura, API, base de datos, Docker y pruebas.
+- [Fase 2](Fase%202/): evidencias grupales e individuales de la segunda fase. La presentación y el video se guardan con Git LFS.
+- [Documentación técnica del backend](backend/documentacion/): manual técnico, esquema de base de datos, guía de integración front/API y reporte de pruebas.
 
 ## Estructura general
 
 ```text
-overol-backend/
-├── Overol/                  # Prototipo Streamlit con SQLite para demostraciones
-├── backend/                 # API Django, infraestructura y documentación técnica
-├── Documentos_equipo/       # Documentos de producto, requisitos y diseño
-├── Fase 1/                 # Evidencias y entregables de la primera fase
-├── Fase 2/                 # Evidencias y entregables de la segunda fase
-└── readme.md               # Guía general del proyecto
+NXBe/
+├── Overol Front/              # Front Streamlit (consume la API)
+├── backend/                   # API Django, docker-compose de la base y documentación técnica
+├── Documentos_equipo/         # Documentos de producto, requisitos y diseño
+├── Fase 1/                    # Evidencias y entregables de la primera fase
+├── Fase 2/                    # Evidencias y entregables de la segunda fase
+├── docker-compose.yml         # Proyecto completo en Docker (base + backend + front)
+├── docker-compose.override.yml  # Modo desarrollo de Docker (recarga al guardar)
+├── DOCKER.md                  # Guía de Docker para quien trabaja el front y el backend
+├── HOSTING.md                 # Publicación gratuita (Streamlit Cloud + Render + Supabase)
+├── render.yaml                # Blueprint de Render para el backend
+├── .github/workflows/         # Tarea diaria que vence solicitudes en producción
+└── README.md                  # Esta guía
 ```
 
 ## Requisitos
 
-- Git
-- Python 3.14
-- Docker Desktop y Docker Compose para ejecutar el backend
+- Git y Git LFS (para la presentación y el video de la Fase 2).
+- Docker Desktop. En Windows debe estar abierto antes de usar `docker`.
+- Solo si trabajas sin Docker: Python 3.14 para el backend (validado con CPython 3.14.8) y Python 3.11 o superior para el front.
 
-En Windows, Docker Desktop debe estar abierto antes de iniciar los servicios del backend.
+## Ejecutar con Docker (recomendado)
 
-## Ejecutar el prototipo
-
-El prototipo instala Streamlit automáticamente si no está disponible. Desde la raíz del repositorio:
+Desde la raíz del repositorio:
 
 ```powershell
-Set-Location Overol
-python app.py
+Copy-Item backend\.env.example backend\.env
+docker compose up --build
+docker compose exec backend python manage.py seed_demo   # usuarios de demostración, una vez
 ```
 
-También se puede iniciar directamente con:
+| Servicio | URL |
+|---|---|
+| Front | `http://localhost:8501` |
+| API | `http://localhost:8000/api/` |
+| Django Admin | `http://localhost:8000/admin/` |
 
-```powershell
-streamlit run app.py
-```
+Los cambios de código se ven al guardar, sin reconstruir. La guía completa (cómo trabajar solo el front o solo el backend, comandos frecuentes, modo producción y problemas comunes) está en **[DOCKER.md](DOCKER.md)**.
 
-La aplicación se abrirá en la dirección local indicada por Streamlit. Sus datos de demostración se almacenan en SQLite dentro del prototipo y no reemplazan la persistencia del backend.
+## Ejecutar sin Docker para el código
 
-## Ejecutar el backend
+Sigue siendo posible trabajar con `venv`, dejando solo la base de datos en Docker:
 
-Todos los comandos del backend se ejecutan desde `backend/`:
+- Backend: [backend/readme.md](backend/readme.md#puesta-en-marcha-local).
+- Front: [Overol Front/README.md](Overol%20Front/README.md#cómo-ejecutarlo). Incluye el script `scripts/demo_api.ps1`, que levanta backend y front en Windows.
 
-```powershell
-Set-Location backend
-Copy-Item .env.example .env
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r documentacion/requirements.txt
-docker compose up -d
-python manage.py migrate
-python manage.py check
-python manage.py runserver
-```
-
-URLs locales:
-
-- API: `http://127.0.0.1:8000/api/`
-- Administración: `http://127.0.0.1:8000/admin/`
-
-Para crear un administrador:
-
-```powershell
-python manage.py createsuperuser
-```
 ## Pruebas
 
-Desde `backend/`:
+| Parte | Con Docker | Sin Docker |
+|---|---|---|
+| Backend | `docker compose exec backend python manage.py test` | `python manage.py test` desde `backend/` |
+| Front | — (no necesita el backend) | `python tests/correr_pruebas.py` desde `Overol Front/` |
 
-```powershell
-python manage.py test
-```
-
-Las pruebas del backend utilizan una base de datos temporal. El prototipo local utiliza su propia base SQLite para las demostraciones.
+Las pruebas del backend usan una base de datos temporal y simulan Gemini y Transbank. La última ejecución, dentro de Docker, aprobó las 79 pruebas.
 
 ## Funcionalidades y alcance
 
-El proyecto contempla registro y verificación profesional, búsqueda y categorización, perfiles, solicitudes, reputación, centro de desarrollo profesional, administración, posventa y reclamos.
+Implementado: registro y verificación manual de profesionales (cédula), búsqueda y categorización, perfiles, cobertura y disponibilidad, solicitudes de visita, reputación, centro de desarrollo profesional, administración, posventa, reclamos y soporte, recuperación de contraseña por código, el asistente Overil (Gemini) y la suscripción mensual de profesionales con Webpay Plus sandbox.
 
-Todavía están fuera del alcance implementado las suscripciones, los pagos, el chatbot con IA y la geolocalización real con mapas o radios de cobertura. El prototipo puede mostrar flujos de estas épicas, pero el backend aún no las implementa como funcionalidades productivas.
+Fuera del alcance actual:
+
+- Cobros reales y renovación automática de la suscripción.
+- Mapas en el front (la búsqueda por radio existe en la API).
+- Un programador periódico propio para vencer solicitudes. En producción lo reemplaza la tarea diaria de GitHub Actions (ver [HOSTING.md](HOSTING.md)).
+- Endpoints para algunas pantallas de administración, como la moderación de reseñas y la bitácora, que se gestionan desde Django Admin.
 
 ## API
 
@@ -124,37 +114,43 @@ Prefijos principales:
 
 | Prefijo | Funcionalidad |
 | :--- | :--- |
-| `/api/auth/` | Registro, autenticación, perfiles y verificación |
-| `/api/catalog/` | Catálogo y búsqueda de profesionales |
+| `/api/auth/` | Registro, autenticación, perfiles, recuperación de contraseña y verificación |
+| `/api/catalog/` | Catálogo de oficios y búsqueda de profesionales |
+| `/api/professionals/` | Rutas del profesional autenticado (oficios y disponibilidad) |
 | `/api/requests/` | Solicitudes y estados de visitas |
 | `/api/ratings/` | Calificaciones y reseñas |
 | `/api/claims/` | Reclamos de posventa |
 | `/api/tickets/` | Soporte |
 | `/api/notifications/` | Notificaciones internas |
 | `/api/professional-center/` | Contenido y progreso profesional |
+| `/api/assistant/` | Asistente Overil |
+| `/api/payments/` | Suscripción y Webpay Plus (sandbox) |
 
-Consulta el [contrato completo de la API](backend/documentacion/api.md) para conocer endpoints, cuerpos de petición, respuestas y permisos.
+La [guía de integración front/API](backend/documentacion/guia-integracion-frontend-api.md) detalla endpoints, cuerpos de petición, respuestas y permisos.
 
 ## Documentación
 
-- [Índice de documentación del backend](backend/documentacion/README.md)
-- [Instalación en otro computador](backend/documentacion/instalacion.md)
-- [Arquitectura](backend/documentacion/arquitectura.md)
-- [Contrato de API](backend/documentacion/api.md)
-- [Base de datos](backend/documentacion/base-de-datos.md)
-- [Docker](backend/documentacion/docker.md)
-- [Pruebas](backend/documentacion/pruebas.md)
-- [Estado de la Definition of Done](backend/documentacion/estado-dod.md)
-- [Propuesta Capstone](backend/propuesta_capstone_overol.md)
+- [Guía de Docker](DOCKER.md)
+- [Publicar gratis (hosting)](HOSTING.md)
+- [Backend: puesta en marcha y capacidades](backend/readme.md)
+- [Manual técnico integral del backend](backend/documentacion/manual-tecnico-integral-backend.md)
+- [Esquema de base de datos](backend/documentacion/esquema-base-datos.md)
+- [Guía de integración front/API](backend/documentacion/guia-integracion-frontend-api.md)
+- [Reporte de pruebas de la API](backend/documentacion/Postman/reporte_de_pruebas_api_overol.md)
+- [Front: ejecución, roles y estructura](Overol%20Front/README.md)
+- [Front: despliegue en un servidor](Overol%20Front/DESPLIEGUE.md)
 
 ## Seguridad y mantenimiento
 
-No subir `backend/.env` al repositorio. Para configurar otro computador, copiar `backend/.env.example` y completar los valores locales.
+No subas `backend/.env` al repositorio. Para configurar otro computador, copia `backend/.env.example` y completa los valores locales.
+
+Tampoco subas archivos subidos por usuarios (`backend/media/`, `backend/private_media/`): pueden contener cédulas y datos personales. Ambas carpetas están en `.gitignore`.
 
 Las credenciales de desarrollo no deben reutilizarse en producción. Antes de desplegar se deben cambiar `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, CORS y las credenciales de la base de datos.
 
-Las solicitudes pendientes con más de 30 días pueden marcarse como vencidas desde `backend/`:
+Las solicitudes pendientes con más de 30 días pueden marcarse como vencidas:
 
 ```powershell
-python manage.py expire_visit_requests
+docker compose exec backend python manage.py expire_visit_requests   # con Docker
+python manage.py expire_visit_requests                               # sin Docker, desde backend/
 ```
