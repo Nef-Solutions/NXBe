@@ -16,7 +16,9 @@ Todas se leen en `core/config.py`.
 | `OVEROL_API_TIMEOUT` | Segundos de espera por cada petición al backend | `10` | `10` |
 | `OVEROL_MODO_DEMO` | `1` muestra en el login las cuentas de demostración y su clave. **En un servidor público debe quedar en `0`** | `0` | `0` |
 | `OVEROL_COOKIE_SECURE` | `1` fuerza el atributo `Secure` en la cookie de sesión. Úsalo cuando la app esté tras https | `1` | `0` (igual se agrega `Secure` si la página carga por https) |
-| `OVEROL_STREAMLIT_STARTED` | Evita que `app.py` lance una segunda instancia de Streamlit. La imagen ya la define | `1` | — |
+| `OVEROL_STREAMLIT_STARTED` | Evita que `app.py` lance una segunda instancia de Streamlit. La imagen ya la define, y `app.py` también detecta solo si ya corre dentro de Streamlit (`streamlit run`, Streamlit Cloud) | `1` | — |
+
+**Publicación actual:** el front está en <https://overol-nxbe.streamlit.app> (Streamlit Community Cloud, Python 3.11), con estas variables como *secrets*: `OVEROL_API_URL=https://overol-backend.onrender.com/api/`, `OVEROL_API_TIMEOUT=60` (el backend gratuito de Render tarda hasta un minuto en despertar), `OVEROL_COOKIE_SECURE=1`, `OVEROL_MODO_DEMO=0` y `OVEROL_STREAMLIT_STARTED=1`. Paso a paso en [`HOSTING.md`](../HOSTING.md).
 
 Opciones de Streamlit (ya vienen en `.streamlit/config.toml` para producción; se pueden cambiar con variables `STREAMLIT_*`):
 
@@ -48,7 +50,7 @@ docker run -d --name overol-front -p 8501:8501 \
 - La imagen usa Python 3.11, instala `requirements.txt` (versiones fijas, las mismas de las pruebas), corre con un usuario sin privilegios y expone el puerto **8501**.
 - Tiene un *healthcheck* en `http://127.0.0.1:8501/_stcore/health`.
 - No incluye pruebas, scripts, `.git`, bases locales, documentos subidos, `.env`, claves ni `__pycache__` (ver `.dockerignore`).
-- **Streamlit Community Cloud** (la opción gratuita elegida) no usa esta imagen: instala `requirements.txt` y ejecuta `app.py` directamente. Las variables de la sección 1 se escriben como *secrets* en su panel (`core/config.py` las lee de las variables de entorno o, si no están, de `st.secrets`). Paso a paso en [`HOSTING.md`](../HOSTING.md).
+- **Streamlit Community Cloud** (la opción gratuita elegida) no usa esta imagen: instala `requirements.txt` y ejecuta `app.py` directamente. Las variables de la sección 1 se escriben como *secrets* en su panel (`core/config.py` las lee de las variables de entorno o, si no están, de `st.secrets`). La ruta del front no debe tener espacios: Streamlit Cloud la separa y falla al instalar las dependencias, por eso la carpeta se llama `overol-front`. Paso a paso en [`HOSTING.md`](../HOSTING.md).
 - Para probar en local esta misma imagen junto al backend, sin el modo desarrollo, desde la raíz del repositorio: `docker compose -f docker-compose.yml up --build` (ver [`DOCKER.md`](../DOCKER.md)).
 
 ### Proxy https delante

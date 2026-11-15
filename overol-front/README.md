@@ -6,6 +6,8 @@ Overol es un marketplace que conecta a clientes con profesionales de oficios del
 
 > La versión anterior, que funcionaba sola con SQLite, quedó en el tag `front-modo-local-final`.
 
+**Publicado en:** <https://overol-nxbe.streamlit.app> (Streamlit Community Cloud). Se actualiza solo con cada push a `main` que toque esta carpeta. Configuración en [`DESPLIEGUE.md`](DESPLIEGUE.md) y [`HOSTING.md`](../HOSTING.md).
+
 ---
 
 ## Cómo ejecutarlo
@@ -72,7 +74,7 @@ python manage.py runserver 127.0.0.1:8000
 python app.py
 ```
 
-`app.py` levanta Streamlit por sí mismo. Si prefieres `streamlit run app.py`, define antes `OVEROL_STREAMLIT_STARTED=1`. El front busca la API en `http://127.0.0.1:8000/api/`; se cambia con `OVEROL_API_URL`.
+`app.py` levanta Streamlit por sí mismo. También funciona `streamlit run app.py`: `app.py` detecta que ya corre dentro de Streamlit y no abre una segunda instancia. `OVEROL_STREAMLIT_STARTED=1` fuerza ese comportamiento. El front busca la API en `http://127.0.0.1:8000/api/`; se cambia con `OVEROL_API_URL`.
 
 La configuración del front sale de variables de entorno, leídas en `core/config.py` (`OVEROL_API_URL`, `OVEROL_API_TIMEOUT`, `OVEROL_MODO_DEMO`, `OVEROL_COOKIE_SECURE`). `.streamlit/config.toml` viene preparado para producción (sin abrir el navegador, sin menú de desarrollador ni botón «Deploy»). Para publicarlo en un servidor, ver `DESPLIEGUE.md`.
 

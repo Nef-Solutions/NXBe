@@ -8,6 +8,16 @@ Este repositorio reúne el producto y los documentos del proceso académico:
 - Un **backend** REST modular en Django.
 - Requisitos, diseño, evidencias y entregables de las distintas fases del proyecto.
 
+## Sitio publicado
+
+| Parte | Dirección |
+|---|---|
+| Aplicación (front) | <https://overol-nxbe.streamlit.app> |
+| API | <https://overol-backend.onrender.com/api/> |
+| Admin de Django | <https://overol-backend.onrender.com/admin/> |
+
+Se publica solo con cada push a `main`, con planes gratuitos de Streamlit Community Cloud, Render y Supabase. El backend gratuito se duerme tras 15 minutos sin uso, así que la primera visita puede tardar hasta un minuto. Detalles, configuración y cómo rehacerlo en [HOSTING.md](HOSTING.md).
+
 ## Componentes del proyecto
 
 ### Front (Streamlit)
