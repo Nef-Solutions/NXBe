@@ -1,7 +1,8 @@
 """Login contra el backend (401, bloqueo 429 con retry_after, sin contador local) y sesión
 persistente: la cookie lleva solo un identificador aleatorio, el token de renovación vive en
 la memoria del servidor, se restaura al recargar, rota, se borra al cerrar sesión y se pierde
-si el servidor se reinicia."""
+si el servidor se reinicia. Modo demo vs producción (OVEROL_MODO_DEMO) y cookie Secure
+(OVEROL_COOKIE_SECURE)."""
 
 import os
 
@@ -48,7 +49,21 @@ def stored():
     return dict(session._store()["sessions"])
 
 
-# ---------- Usuarios de demostración ----------
+# ---------- Producción (por defecto): sin cuentas de demostración ----------
+os.environ.pop("OVEROL_MODO_DEMO", None)
+at = login_page()
+page = md(at) + " " + texts(at) + " " + " ".join(c.value for c in at.code)
+check(not at.exception and not any((b.key or "").startswith("demo_") for b in at.button),
+      "producción: el login no tiene botones de usuarios de demostración")
+check(PASSWORD not in page and "@demo.overol.cl" not in page and "usuarios de demostración" not in page.lower()
+      and "seed_demo" not in page and not at.code,
+      "producción: no aparece la clave, ningún correo de demo ni el texto de cuentas demo")
+os.environ["OVEROL_MODO_DEMO"] = "0"
+at = login_page()
+check(not any((b.key or "").startswith("demo_") for b in at.button), "OVEROL_MODO_DEMO=0: tampoco aparecen")
+
+# ---------- Modo demo (OVEROL_MODO_DEMO=1): usuarios de demostración ----------
+os.environ["OVEROL_MODO_DEMO"] = "1"
 at = login_page()
 at.button(key="demo_cliente").click().run()
 check(at.text_input(key="login_email").value == CLIENTE and at.text_input(key="login_password").value == PASSWORD,
@@ -56,6 +71,7 @@ check(at.text_input(key="login_email").value == CLIENTE and at.text_input(key="l
 check("OverolDemo123!" in md(at) or any("OverolDemo123!" in c.value for c in at.code),
       "la pantalla muestra la contraseña de los usuarios de seed_demo")
 check(any("Olvidaste" in (e.label or "") for e in at.expander), "«¿Olvidaste tu contraseña?» está disponible")
+os.environ.pop("OVEROL_MODO_DEMO", None)
 
 # ---------- 401 y bloqueo 429 (lo cuenta el backend, no el front) ----------
 victim = "cliente2@demo.overol.cl"
@@ -91,6 +107,18 @@ script = " ".join(cookie_html)
 check(f"overol_session={token}" in script and "SameSite=Lax" in script and refresh not in script
       and CLIENTE not in script and "acc-" not in script,
       "la cookie lleva solo el identificador, con SameSite y sin tokens ni datos personales")
+check("location.protocol === 'https:'" in script and "const s = '; Secure';" not in script,
+      "sin OVEROL_COOKIE_SECURE: Secure solo si la página carga por https (en local funciona por http)")
+
+# ---------- OVEROL_COOKIE_SECURE=1: la cookie siempre lleva Secure ----------
+os.environ["OVEROL_COOKIE_SECURE"] = "1"
+cookie_html.clear()
+at_secure = login(login_page(), CLIENTE, PASSWORD)
+script_secure = " ".join(cookie_html)
+check(at_secure.session_state["authenticated"] and "const s = '; Secure';" in script_secure
+      and "SameSite=Lax" in script_secure and CLIENTE not in script_secure,
+      "OVEROL_COOKIE_SECURE=1: la cookie lleva Secure y SameSite=Lax, sin datos personales")
+os.environ.pop("OVEROL_COOKIE_SECURE", None)
 
 # ---------- Recargar la página: la sesión se restaura ----------
 at = reload_page(token)

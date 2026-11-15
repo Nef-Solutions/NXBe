@@ -189,5 +189,8 @@ Step "(e) Arrancando el front (Ctrl+C para detenerlo)"
 $env:OVEROL_API_URL = $ApiUrl
 # app.py relanza Streamlit si esta variable no vale "1"; así se evita una instancia duplicada
 $env:OVEROL_STREAMLIT_STARTED = "1"
+# Demo: muestra en el login las cuentas de seed_demo y abre el navegador (config.toml es de producción)
+$env:OVEROL_MODO_DEMO = "1"
+$env:STREAMLIT_SERVER_HEADLESS = "false"
 Set-Location $Root
 & $FrontPy -m streamlit run app.py --server.port $FrontPort

@@ -13,8 +13,21 @@ showWidgetBorder = true
 font = "sans serif"
 
 [browser]
+# Sin telemetría de Streamlit
 gatherUsageStats = false
 
 [server]
+# Producción por defecto: no intenta abrir un navegador, protección XSRF y CORS activas.
+# En desarrollo se puede abrir el navegador con STREAMLIT_SERVER_HEADLESS=false.
+headless = true
+enableXsrfProtection = true
+enableCORS = true
 # Evita límites raros al subir documentos de verificación (el tope real se valida en el código: 5 MB)
 maxUploadSize = 10
+
+[client]
+# Sin opciones de desarrollador (rerun, limpiar caché) ni botón «Deploy». Los errores no
+# muestran el detalle en el navegador (quedan en la consola del servidor).
+# En desarrollo: STREAMLIT_CLIENT_TOOLBAR_MODE=developer y STREAMLIT_CLIENT_SHOW_ERROR_DETAILS=full
+toolbarMode = "viewer"
+showErrorDetails = "none"
