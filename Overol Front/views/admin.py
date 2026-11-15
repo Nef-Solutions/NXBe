@@ -8,6 +8,7 @@ bitácora, listado de usuarios y de verificaciones pendientes.
 
 from collections import Counter
 
+import altair as alt
 import streamlit as st
 
 from core import api_client, requests_api
@@ -15,6 +16,24 @@ from core.constants import MAX_TEXTO, pantallas_visibles
 from ui.components import empty_state, flash, hero, metric_card, nav_bar, section, security_note, status_badge
 from views.about import about_page
 from views.shared import PROFILE_FOCUS_KEY, user_profile_page
+
+
+def _state_chart(counts):
+    """Barras horizontales por estado. Con Altair (labelLimit=0) las etiquetas largas, como
+    «Respondido por el profesional», se leen completas; st.bar_chart las cortaba en celular."""
+    data = alt.Data(values=[{"Estado": state, "Cantidad": n} for state, n in counts.items()])
+    chart = (
+        alt.Chart(data)
+        .mark_bar(color="#1B4F8A", cornerRadiusEnd=4)
+        .encode(
+            x=alt.X("Cantidad:Q", title=None, axis=alt.Axis(tickMinStep=1, format="d")),
+            y=alt.Y("Estado:N", title=None, sort="-x",
+                    axis=alt.Axis(labelLimit=0, labelPadding=8, labelFontSize=12)),
+            tooltip=[alt.Tooltip("Estado:N"), alt.Tooltip("Cantidad:Q")],
+        )
+        .properties(height=alt.Step(38), padding={"left": 8, "right": 12, "top": 4, "bottom": 4})
+    )
+    st.altair_chart(chart, use_container_width=True)
 
 
 def admin_dashboard(user):
@@ -109,13 +128,13 @@ def admin_summary():
     with c1:
         st.markdown("#### Estado de reclamos")
         if claim_states:
-            st.bar_chart(dict(claim_states), horizontal=True, height=220)
+            _state_chart(claim_states)
         else:
             st.caption("Sin reclamos.")
     with c2:
         st.markdown("#### Estado de tickets")
         if ticket_states:
-            st.bar_chart(dict(ticket_states), horizontal=True, height=220)
+            _state_chart(ticket_states)
         else:
             st.caption("Sin tickets.")
 
