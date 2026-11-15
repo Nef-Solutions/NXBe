@@ -10,7 +10,17 @@
     --navy: #111827;
     --slate: #374151;
     --muted: #6B7280;
-    --border: #E5E7EB;
+    /* Sistema de bordes: el borde normal tiene contraste 3,6:1 sobre blanco (antes casi blanco).
+       --borde-suave queda solo para separadores internos (líneas entre filas de una tarjeta). */
+    --borde: #7C8899;
+    --borde-fuerte: #4B5563;    /* hover de campos y bordes que deben destacar */
+    --borde-acento: #D97706;    /* ámbar del tema: foco y hover */
+    --borde-suave: #D5DAE1;
+    --grosor-borde: 1.5px;
+    --radio-control: 10px;      /* botones y campos */
+    --radio-caja: 12px;         /* contenedores, formularios, expanders y cajas */
+    --anillo-foco: 0 0 0 3px rgba(245,158,11,.22);
+    --border: var(--borde-suave);   /* nombre antiguo: solo separadores */
     --bg: #F6F7F9;
     --amber: #F59E0B;
     --amber-dark: #D97706;
@@ -74,7 +84,7 @@ header[data-testid="stHeader"] { background: var(--bg); }
 
 [data-testid="stSidebar"] div.stButton > button {
     background: rgba(255,255,255,.08);
-    border: 1px solid rgba(255,255,255,.35);
+    border: var(--grosor-borde) solid rgba(255,255,255,.45);
     color: #FFFFFF;
 }
 [data-testid="stSidebar"] div.stButton > button:hover {
@@ -96,14 +106,14 @@ header[data-testid="stHeader"] { background: var(--bg); }
     justify-content: flex-start;
     min-height: 2.4rem;
     padding: .4rem .85rem;
-    border-color: rgba(255,255,255,.18);
+    border-color: rgba(255,255,255,.30);
 }
 .st-key-side_menu div.stButton > button > div { justify-content: flex-start; width: 100%; }
 .st-key-side_menu div.stButton > button p { text-align: left; }
 /* «Cerrar sesión» al final, como acción secundaria */
 .st-key-logout_button button {
     background: transparent !important;
-    border: 1px solid rgba(255,255,255,.35) !important;
+    border: var(--grosor-borde) solid rgba(255,255,255,.45) !important;
 }
 
 hr { border-color: var(--border) !important; }
@@ -114,7 +124,7 @@ hr { border-color: var(--border) !important; }
     align-items: center;
     gap: 14px;
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: var(--grosor-borde) solid var(--borde);
     border-radius: var(--radius);
     padding: 14px 22px;
     margin-bottom: 22px;
@@ -203,7 +213,7 @@ hr { border-color: var(--border) !important; }
 /* ---------- Tarjetas ---------- */
 .card {
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: var(--grosor-borde) solid var(--borde);
     border-radius: var(--radius);
     padding: 20px;
     box-shadow: var(--shadow);
@@ -257,6 +267,7 @@ hr { border-color: var(--border) !important; }
 
 .trade-block {
     background: #FAFAFA;
+    border: var(--grosor-borde) solid var(--borde-suave);
     border-left: 4px solid var(--amber);
     border-radius: 10px;
     padding: 10px 14px;
@@ -274,7 +285,7 @@ hr { border-color: var(--border) !important; }
 
 .review {
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: var(--grosor-borde) solid var(--borde);
     border-radius: 12px;
     padding: 12px 16px;
     margin: 8px 0;
@@ -313,20 +324,20 @@ hr { border-color: var(--border) !important; }
 
 /* ---------- Cajas informativas ---------- */
 .security-box, .warning-box, .success-box {
-    border-radius: 14px;
+    border-radius: var(--radio-caja);
     padding: 16px 18px;
     margin: 8px 0 14px 0;
     font-size: 14px;
     line-height: 1.6;
 }
-.security-box { background: #EFF6FF; border: 1px solid #BFDBFE; color: #1E3A8A; }
-.warning-box  { background: #FFF7ED; border: 1px solid #FED7AA; color: #7C2D12; }
-.success-box  { background: #F0FDF4; border: 1px solid #BBF7D0; color: #14532D; }
+.security-box { background: #EFF6FF; border: var(--grosor-borde) solid #3B82F6; color: #1E3A8A; }
+.warning-box  { background: #FFF7ED; border: var(--grosor-borde) solid #EA580C; color: #7C2D12; }
+.success-box  { background: #F0FDF4; border: var(--grosor-borde) solid #16A34A; color: #14532D; }
 
 /* ---------- Métricas ---------- */
 .metric-card {
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: var(--grosor-borde) solid var(--borde);
     border-radius: 14px;
     padding: 16px 18px;
     box-shadow: var(--shadow);
@@ -337,7 +348,7 @@ hr { border-color: var(--border) !important; }
 
 [data-testid="stMetric"] {
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: var(--grosor-borde) solid var(--borde);
     border-radius: 14px;
     padding: 14px 18px;
     box-shadow: var(--shadow);
@@ -347,7 +358,7 @@ hr { border-color: var(--border) !important; }
 .empty-state {
     text-align: center;
     background: #FFFFFF;
-    border: 2px dashed var(--border);
+    border: 2px dashed var(--borde);
     border-radius: var(--radius);
     padding: 36px 20px;
     margin: 10px 0;
@@ -360,7 +371,7 @@ div.stButton > button,
 div.stFormSubmitButton > button,
 div.stDownloadButton > button,
 a[data-testid^="stBaseLinkButton"] {
-    border-radius: 10px;
+    border-radius: var(--radio-control);
     font-weight: 700;
     transition: all .15s ease;
 }
@@ -370,7 +381,7 @@ button[kind="primaryFormSubmit"],
 [data-testid="stBaseButton-primary"],
 [data-testid="stBaseButton-primaryFormSubmit"] {
     background: var(--amber) !important;
-    border: 1px solid var(--amber-dark) !important;
+    border: var(--grosor-borde) solid var(--amber-dark) !important;
     color: var(--navy) !important;
 }
 button[kind="primary"]:hover,
@@ -386,12 +397,14 @@ button[kind="secondaryFormSubmit"],
 [data-testid="stBaseButton-secondary"],
 [data-testid="stBaseButton-secondaryFormSubmit"] {
     background: #FFFFFF;
-    border: 1px solid #D1D5DB;
+    border: var(--grosor-borde) solid var(--borde);
     color: var(--navy);
 }
 button[kind="secondary"]:hover,
-[data-testid="stBaseButton-secondary"]:hover {
-    border-color: var(--amber);
+button[kind="secondaryFormSubmit"]:hover,
+[data-testid="stBaseButton-secondary"]:hover,
+[data-testid="stBaseButton-secondaryFormSubmit"]:hover {
+    border-color: var(--borde-acento);
     color: var(--amber-dark);
 }
 
@@ -400,7 +413,7 @@ div[data-testid="stRadio"] div[role="radiogroup"] { gap: 8px; flex-wrap: wrap; }
 
 div[data-testid="stRadio"] label[data-baseweb="radio"] {
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: var(--grosor-borde) solid var(--borde);
     border-radius: 999px;
     padding: 7px 16px;
     margin: 0;
@@ -408,7 +421,7 @@ div[data-testid="stRadio"] label[data-baseweb="radio"] {
     transition: all .15s ease;
 }
 div[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child { display: none; }
-div[data-testid="stRadio"] label[data-baseweb="radio"]:hover { border-color: var(--amber); }
+div[data-testid="stRadio"] label[data-baseweb="radio"]:hover { border-color: var(--borde-acento); }
 div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) {
     background: var(--navy);
     border-color: var(--navy);
@@ -428,7 +441,7 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
 }
 [class*="st-key-nav_bar_"] {
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: var(--grosor-borde) solid var(--borde);
     border-radius: 12px;
     padding: 8px;
     box-shadow: var(--shadow);
@@ -454,7 +467,7 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
     min-height: 3.25rem;        /* misma altura aunque el texto ocupe dos líneas */
     line-height: 1.2;
     padding: 6px 10px;
-    border-radius: 8px;
+    border-radius: var(--radio-control);
 }
 /* Streamlit corta la etiqueta con «…»: se deja partir en dos líneas */
 [class*="st-key-nav_bar_"] div.stButton > button p {
@@ -487,12 +500,12 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
     height: 100%;
     padding: 16px 12px;
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: var(--grosor-borde) solid var(--borde);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
 }
 [class*="st-key-cat_grid_"] div.stButton > button:hover {
-    border-color: var(--amber);
+    border-color: var(--borde-acento);
     transform: translateY(-2px);
 }
 [class*="st-key-cat_grid_"] div.stButton > button p {
@@ -514,24 +527,50 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
 }
 
 /* ---------- Campos de formulario ---------- */
-div[data-baseweb="input"] > div,
-div[data-baseweb="textarea"] > div,
-div[data-baseweb="select"] > div {
-    border-radius: 10px;
-    border-color: #D1D5DB;
+/* Texto, área de texto, número, fecha, selector y selector múltiple */
+[data-testid="stTextInputRootElement"],
+[data-testid="stTextAreaRootElement"],
+[data-testid="stNumberInputContainer"],
+[data-testid="stDateInputField"],
+[data-testid="stSelectbox"] [role="group"],
+[data-testid="stMultiSelect"] [role="group"] {
+    border: var(--grosor-borde) solid var(--borde) !important;
+    border-radius: var(--radio-control) !important;
+    background-color: #FFFFFF;
+    transition: border-color .15s ease, box-shadow .15s ease;
 }
-div[data-baseweb="input"]:focus-within > div,
-div[data-baseweb="textarea"]:focus-within > div,
-div[data-baseweb="select"]:focus-within > div {
-    border-color: var(--amber) !important;
-    box-shadow: 0 0 0 3px rgba(245,158,11,.20);
+[data-testid="stTextInputRootElement"]:hover,
+[data-testid="stTextAreaRootElement"]:hover,
+[data-testid="stNumberInputContainer"]:hover,
+[data-testid="stDateInputField"]:hover,
+[data-testid="stSelectbox"] [role="group"]:hover,
+[data-testid="stMultiSelect"] [role="group"]:hover { border-color: var(--borde-fuerte) !important; }
+[data-testid="stTextInputRootElement"]:focus-within,
+[data-testid="stTextAreaRootElement"]:focus-within,
+[data-testid="stNumberInputContainer"]:focus-within,
+[data-testid="stDateInputField"]:focus-within,
+[data-testid="stSelectbox"] [role="group"]:focus-within,
+[data-testid="stMultiSelect"] [role="group"]:focus-within {
+    border-color: var(--borde-acento) !important;
+    box-shadow: var(--anillo-foco);
 }
+
+/* ---------- Contenedores con borde, formularios y expanders ---------- */
+/* Streamlit dibuja su borde con el color del tema; aquí solo se iguala grosor y radio.
+   En los bloques sin borde (estilo «none») el grosor no dibuja nada. */
+[data-testid="stVerticalBlock"],
+[data-testid="stForm"],
+[data-testid="stExpander"] details { border-width: var(--grosor-borde); }
+[data-testid="stForm"],
+[data-testid="stExpander"] details { border-radius: var(--radio-caja); }
+[data-testid="stExpander"] details:hover { border-color: var(--borde-fuerte); }
+[data-testid="stExpander"] summary:focus-visible { outline: 2px solid var(--borde-acento); outline-offset: 2px; }
 
 /* ---------- Barra de búsqueda por palabra clave (Historia 4.16): borde visible y lupa ---------- */
 /* Streamlit 1.63 ya no usa baseweb en st.text_input: el borde está en stTextInputRootElement */
 .st-key-search_text [data-testid="stTextInputRootElement"] {
-    border: 1.5px solid #9CA3AF !important;
-    border-radius: 10px;
+    border: var(--grosor-borde) solid var(--borde) !important;
+    border-radius: var(--radio-control) !important;
     min-height: 2.9rem;
     padding-left: 40px;
     background-color: #FFFFFF;
@@ -542,14 +581,16 @@ div[data-baseweb="select"]:focus-within > div {
     box-shadow: var(--shadow);
 }
 .st-key-search_text [data-testid="stTextInputRootElement"]:focus-within {
-    border-color: var(--amber) !important;
-    box-shadow: 0 0 0 3px rgba(245,158,11,.20);
+    border-color: var(--borde-acento) !important;
+    box-shadow: var(--anillo-foco);
 }
 .st-key-search_text input::placeholder { color: var(--muted); opacity: 1; }
 
 /* ---------- Pestañas ---------- */
-button[data-baseweb="tab"] { font-weight: 600; }
-button[data-baseweb="tab"][aria-selected="true"] { font-weight: 800; }
+[data-testid="stTabs"] [role="tablist"] { border-bottom: var(--grosor-borde) solid var(--borde); }
+[data-testid="stTab"] { font-weight: 600; }
+[data-testid="stTab"][aria-selected="true"] { font-weight: 800; }
+[data-testid="stTab"]:hover { color: var(--borde-acento); }
 
 /* ---------- Pie ---------- */
 .overol-footer {
@@ -568,8 +609,8 @@ button[data-baseweb="tab"][aria-selected="true"] { font-weight: 800; }
     line-height: 1.5;
 }
 .support-msg .who { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
-.support-user  { background: #EFF6FF; border: 1px solid #BFDBFE; color: #1E3A8A; }
-.support-admin { background: #FFF7ED; border: 1px solid #FED7AA; color: #7C2D12; }
+.support-user  { background: #EFF6FF; border: var(--grosor-borde) solid #3B82F6; color: #1E3A8A; }
+.support-admin { background: #FFF7ED; border: var(--grosor-borde) solid #EA580C; color: #7C2D12; }
 
 /* ---------- Notificaciones ---------- */
 .notif { font-size: 14px; line-height: 1.5; color: var(--slate); }
@@ -585,8 +626,8 @@ button[data-baseweb="tab"][aria-selected="true"] { font-weight: 800; }
 /* ---------- Contacto habilitado ---------- */
 .contact-box {
     background: #F0FDF4;
-    border: 1px solid #BBF7D0;
-    border-radius: 14px;
+    border: var(--grosor-borde) solid #16A34A;
+    border-radius: var(--radio-caja);
     padding: 14px 18px;
     margin: 10px 0;
     color: #14532D;
@@ -620,7 +661,7 @@ button[data-baseweb="tab"][aria-selected="true"] { font-weight: 800; }
 
 .profile-card {
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: var(--grosor-borde) solid var(--borde);
     border-radius: 18px;
     overflow: hidden;
     box-shadow: var(--shadow);
@@ -692,7 +733,7 @@ button[data-baseweb="tab"][aria-selected="true"] { font-weight: 800; }
 /* Secciones del perfil */
 .psection {
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: var(--grosor-borde) solid var(--borde);
     border-radius: 16px;
     padding: 20px 24px;
     margin-bottom: 14px;
