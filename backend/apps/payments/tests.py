@@ -258,6 +258,69 @@ class PaymentApiTests(APITestCase):
 
     @patch('apps.payments.services.webpay_transaction')
     @override_settings(PAYMENT_RESULT_URL='http://localhost:3000/payment-result')
+    def test_get_return_confirms_subscription_from_query_string(self, transaction_factory):
+        payment = PaymentTransaction.objects.create(
+            professional=self.professional,
+            payer=self.professional_user,
+            amount=self.plan.amount,
+            buy_order='ov-get-subscription',
+            session_id='ov-get-subscription-session',
+            token_hash=token_digest('get-subscription-token'),
+        )
+        transbank = Mock()
+        transbank.commit.return_value = {
+            'buy_order': payment.buy_order,
+            'session_id': payment.session_id,
+            'amount': self.plan.amount,
+            'response_code': 0,
+            'status': 'AUTHORIZED',
+        }
+        transaction_factory.return_value = transbank
+
+        response = self.client.get(
+            '/api/payments/transbank/return/',
+            {'token_ws': 'get-subscription-token'},
+        )
+
+        payment.refresh_from_db()
+        self.professional.refresh_from_db()
+        self.assertEqual(payment.status, PaymentTransaction.Status.AUTHORIZED)
+        self.assertIsNotNone(self.professional.subscription_expires_at)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('status=authorized', response['Location'])
+        self.assertIn(
+            f'professional_profile_id={self.professional.pk}',
+            response['Location'],
+        )
+        transbank.commit.assert_called_once_with('get-subscription-token')
+
+    @override_settings(PAYMENT_RESULT_URL='http://localhost:3000/payment-result')
+    def test_get_return_cancels_payment_from_query_string(self):
+        payment = PaymentTransaction.objects.create(
+            visit=self.visit,
+            payer=self.client_user,
+            amount=15000,
+            buy_order='ov-cancelled-order',
+            session_id='ov-cancelled-session',
+            token_hash=token_digest('cancelled-token'),
+        )
+
+        response = self.client.get(
+            '/api/payments/transbank/return/',
+            {
+                'TBK_TOKEN': 'cancelled-token',
+                'TBK_ORDEN_COMPRA': payment.buy_order,
+            },
+        )
+
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, PaymentTransaction.Status.REJECTED)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('status=cancelled', response['Location'])
+        self.assertIn(f'visit_id={self.visit.pk}', response['Location'])
+
+    @patch('apps.payments.services.webpay_transaction')
+    @override_settings(PAYMENT_RESULT_URL='http://localhost:3000/payment-result')
     def test_authorized_subscription_payment_activates_one_month(self, transaction_factory):
         payment = PaymentTransaction.objects.create(
             professional=self.professional,
