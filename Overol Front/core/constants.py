@@ -181,3 +181,6 @@ MAX_ASUNTO = 100
 
 # Duración de la sesión persistente («Mantener mi sesión iniciada»)
 DIAS_SESION = 7
+
+# Overol solo cobra la suscripción del profesional: el servicio se paga directo al profesional.
+FEE_NOTE = "La tarifa se paga directamente al profesional; Overol no cobra comisión por los servicios."

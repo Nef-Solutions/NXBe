@@ -17,7 +17,7 @@ from html import escape
 
 import streamlit as st
 
-from core.constants import DIAS_SEMANA, OFICIOS_INFO, ROLES
+from core.constants import DIAS_SEMANA, FEE_NOTE, OFICIOS_INFO, ROLES
 from core import api_client, catalog_api, requests_api
 from ui.components import _html, initials, stars
 
@@ -225,7 +225,8 @@ def profile_sections(professional, owner=False):
         '<div class="plabel">Zona de cobertura</div>'
         f'<div class="chips">{_chips(coverage, "chip-trade") if coverage else "<span class=muted>Sin cobertura definida</span>"}</div>'
         '<div class="plabel">Tarifa de visita</div>'
-        f'<div><b>{escape(professional["visit_fee"] or "Por definir")}</b></div>',
+        f'<div><b>{escape(professional["visit_fee"] or "Por definir")}</b></div>'
+        f'<div class="muted">{escape(FEE_NOTE)}</div>',
     )
 
 

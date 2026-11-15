@@ -4,6 +4,7 @@ import streamlit as st
 
 from core import api_client, catalog_api, requests_api
 from core.constants import (
+    FEE_NOTE,
     MAX_TEXTO,
     COMUNAS,
     pantallas_visibles,
@@ -21,7 +22,6 @@ from ui.components import (
     status_badge,
     support_box,
 )
-from views import payments
 from views.about import about_page
 from views.assistant import assistant_page
 from views.home import home_page
@@ -269,7 +269,6 @@ def client_search(user):
 def client_requests(user):
     """Historias 010 a 013: solicitudes del cliente (GET /api/requests/)."""
     section("📋 Mis solicitudes")
-    _visit_payment_result()
 
     try:
         requests = requests_api.list_requests()
@@ -378,9 +377,9 @@ def _client_request_card(user, request, claims, tickets):
         if raw in ("PENDING", "ACCEPTED"):
             _cancel_flow(request)
 
-        # ---------- Aceptada: pagar la visita con Webpay ----------
+        # ---------- Aceptada: el servicio se paga directo al profesional ----------
         if raw == "ACCEPTED":
-            _visit_payment_block(request)
+            st.caption(f"💰 {FEE_NOTE}")
 
         # ---------- Finalizada: evaluar y posventa ----------
         if raw == "COMPLETED":
@@ -490,69 +489,6 @@ def _claim_block(request, claim):
                 return
             flash(f"Reclamo #{created['id']} enviado. El profesional y Overol lo revisarán.")
             st.rerun()
-
-
-def _visit_payment_block(request):
-    """Pago de la visita con Webpay (sandbox), solo con la solicitud aceptada."""
-    rid = request["id"]
-    try:
-        payment = api_client.get_visit_payment(rid)
-    except api_client.ApiError as error:
-        payment = None if error.status == 404 else {"status": "?"}
-
-    if payment and payment.get("status") == "AUTHORIZED":
-        st.success(f"✓ Visita pagada (${_money(payment.get('amount'))}).")
-        return
-
-    pending = st.session_state.get(payments.PENDING_KEY)
-    if pending and pending.get("key") == f"visit_{rid}":
-        st.info("Tu pago está listo. Continúa en Webpay:")
-        payments.webpay_form(pending["url"], pending["token"], f"visit_{rid}")
-        if st.button("Cancelar y volver", key=f"visit_pay_cancel_{rid}"):
-            st.session_state.pop(payments.PENDING_KEY, None)
-            st.rerun()
-        return
-
-    if payment and payment.get("status") in ("REJECTED", "FAILED"):
-        st.caption(f"Último intento de pago: {payments.payment_status_text(payment.get('status'))}.")
-
-    if st.button("💳 Pagar la visita con Webpay", key=f"visit_pay_{rid}"):
-        try:
-            started = api_client.start_visit_payment(rid)
-        except api_client.ApiError as error:
-            st.error(f"No se pudo iniciar el pago. {error}")
-            return
-        st.session_state[payments.PENDING_KEY] = {"url": started["url"], "token": started["token"], "key": f"visit_{rid}"}
-        st.rerun()
-
-
-def _visit_payment_result():
-    """Vuelta de Webpay de un pago de visita: se muestra el estado real del backend."""
-    back = payments.pop_return("visit")
-    if not back or not back.get("visit_id"):
-        return
-    st.session_state.pop(payments.PENDING_KEY, None)
-    try:
-        payment = api_client.get_visit_payment(back["visit_id"])
-    except api_client.ApiError as error:
-        st.error(f"No se pudo confirmar el pago de la solicitud #{back['visit_id']}. {error}")
-        return
-    if payment.get("status") == "AUTHORIZED":
-        st.success(f"✅ Pago confirmado para la solicitud #{back['visit_id']} (${_money(payment.get('amount'))}).")
-    elif payment.get("status") == "PENDING":
-        st.info("Tu pago todavía figura pendiente. Revisa de nuevo en unos minutos.")
-    else:
-        st.error(
-            f"El pago de la solicitud #{back['visit_id']} no se completó "
-            f"(estado: {payments.payment_status_text(payment.get('status'))}). No se hizo ningún cargo."
-        )
-
-
-def _money(value):
-    try:
-        return f"{int(float(value)):,}".replace(",", ".")
-    except (TypeError, ValueError):
-        return str(value or "")
 
 
 def client_claims(user):

@@ -1,4 +1,5 @@
-"""Pagos con Webpay Plus (sandbox) a través del backend.
+"""Pago de la suscripción mensual del profesional con Webpay Plus (sandbox), a través del backend.
+Overol no intermedia el pago de las visitas: el cliente le paga directo al profesional.
 
 Flujo: el backend inicia el pago y entrega `url` y `token`; el front envía un formulario
 POST con `token_ws` a esa url (la página completa pasa a Webpay). Transbank vuelve al
@@ -27,15 +28,14 @@ def capture_payment_return():
     """Si la URL trae la vuelta de Webpay, la guarda en la sesión y limpia la URL.
     Debe llamarse al inicio de cada ejecución, antes de crear las barras."""
     params = st.query_params
-    if "status" not in params or not ({"professional_profile_id", "visit_id"} & set(params)):
+    if "status" not in params or "professional_profile_id" not in params:
         return
 
     st.session_state[RETURN_KEY] = {
         "status": params.get("status", ""),
-        "visit_id": params.get("visit_id"),
         "professional_profile_id": params.get("professional_profile_id"),
     }
-    for key in ("status", "visit_id", "professional_profile_id"):
+    for key in ("status", "professional_profile_id"):
         if key in params:
             del params[key]
 
@@ -51,13 +51,10 @@ def route_payment_return(user):
         return
     if data.get("professional_profile_id") and user["role"] == "profesional":
         st.session_state["professional_navigation"] = "💳 Suscripción"
-    elif data.get("visit_id") and user["role"] == "cliente":
-        st.session_state["client_navigation"] = "📋 Mis solicitudes"
-        st.session_state["_client_prev_menu"] = "📋 Mis solicitudes"
 
 
 def pop_return(kind):
-    """Devuelve y borra la vuelta de Webpay de ese tipo («subscription» o «visit»)."""
+    """Devuelve y borra la vuelta de Webpay de la suscripción (kind="subscription")."""
     data = pending_return()
     if not data:
         return None

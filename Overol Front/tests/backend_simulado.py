@@ -268,13 +268,6 @@ class BackendSimulado:
         match = re.fullmatch(r"/catalog/professionals/(\d+)/", path)
         if method == "GET" and match:
             return self._detail(int(match.group(1)))
-        match = re.fullmatch(r"/payments/visits/(\d+)/(transbank/)?", path)
-        if match and user and method in ("GET", "POST"):
-            vid = int(match.group(1))
-            if method == "POST" and match.group(2):
-                return self._start_visit_payment(user, vid)
-            if method == "GET" and not match.group(2):
-                return self._visit_payment(user, vid)
         match = re.fullmatch(r"/auth/verification/(\d+)/(\w+)/", path)
         if method == "POST" and match and user:
             return self._decide_verification(user, int(match.group(1)), match.group(2), body)
@@ -772,14 +765,14 @@ class BackendSimulado:
         return bool(pro.get("subscription_expires_at") and pro["subscription_expires_at"] > datetime.now(timezone.utc))
 
     def _payment_data(self, payment):
-        return {k: payment[k] for k in ("id", "visit_id", "professional_profile_id", "amount", "buy_order",
+        return {k: payment[k] for k in ("id", "professional_profile_id", "amount", "buy_order",
                                          "status", "created_at", "updated_at")}
 
-    def _start_payment(self, payer, amount, visit_id=None, professional_id=None):
+    def _start_payment(self, payer, amount, professional_id):
         pid = next(self.payment_ids)
         token = f"tbk-{pid:04d}"
         now = datetime.now(timezone.utc).isoformat()
-        self.payments[pid] = {"id": pid, "visit_id": visit_id, "professional_profile_id": professional_id,
+        self.payments[pid] = {"id": pid, "professional_profile_id": professional_id,
                               "amount": str(amount), "buy_order": f"ov-{pid:023d}", "status": "PENDING",
                               "created_at": now, "updated_at": now, "token": token, "payer": payer}
         return Respuesta(201, {**self._payment_data(self.payments[pid]),
@@ -807,30 +800,7 @@ class BackendSimulado:
         pro = user["professional"]
         if any(p["professional_profile_id"] == pro["id"] and p["status"] == "PENDING" for p in self.payments.values()):
             return Respuesta(409, {"detail": "Ya existe un pago de suscripción pendiente."})
-        return self._start_payment(user["id"], self.plan_amount, professional_id=pro["id"])
-
-    def _visit_payment(self, user, vid):
-        payment = next((p for p in sorted(self.payments.values(), key=lambda p: p["id"], reverse=True)
-                        if p["visit_id"] == vid and p["payer"] == user["id"]), None)
-        if not payment:
-            return Respuesta(404, {"detail": "No existe un pago para esta solicitud."})
-        return Respuesta(200, self._payment_data(payment))
-
-    def _start_visit_payment(self, user, vid):
-        visit = self.visits.get(vid)
-        if not visit or visit["client"] != user["id"]:
-            return Respuesta(404, {"detail": "No se encontró la solicitud de visita."})
-        if visit["status"] != "ACCEPTED":
-            return Respuesta(409, {"detail": "Solo puedes pagar una solicitud aceptada por el profesional."})
-        fee = self._pro_user(visit["professional"])["professional"]["visit_fee"]
-        if not fee or int(float(fee)) <= 0:
-            return Respuesta(409, {"detail": "El profesional no tiene una tarifa de visita válida."})
-        mine = [p for p in self.payments.values() if p["visit_id"] == vid]
-        if any(p["status"] == "AUTHORIZED" for p in mine):
-            return Respuesta(409, {"detail": "Esta solicitud ya tiene un pago autorizado."})
-        if any(p["status"] == "PENDING" for p in mine):
-            return Respuesta(409, {"detail": "Ya existe un pago pendiente para esta solicitud."})
-        return self._start_payment(user["id"], int(float(fee)), visit_id=vid)
+        return self._start_payment(user["id"], self.plan_amount, pro["id"])
 
     def webpay_return(self, token, outcome="authorized"):
         """Simula que Transbank vuelve al backend: confirma y devuelve los parámetros con que
@@ -846,8 +816,6 @@ class BackendSimulado:
                 start = max(pro.get("subscription_expires_at") or datetime.now(timezone.utc), datetime.now(timezone.utc))
                 pro["subscription_expires_at"] = start + timedelta(days=30)
         params = {"status": payment["status"].lower() if outcome != "cancelled" else "cancelled"}
-        if payment["visit_id"]:
-            params["visit_id"] = str(payment["visit_id"])
         if payment["professional_profile_id"]:
             params["professional_profile_id"] = str(payment["professional_profile_id"])
         return params

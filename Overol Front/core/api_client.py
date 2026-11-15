@@ -309,14 +309,6 @@ def start_subscription_payment():
     return request("POST", "payments/professional-subscription/transbank/", {}) or {}
 
 
-def get_visit_payment(visit_id):
-    return request("GET", f"payments/visits/{int(visit_id)}/") or {}
-
-
-def start_visit_payment(visit_id):
-    return request("POST", f"payments/visits/{int(visit_id)}/transbank/", {}) or {}
-
-
 def assistant_chat(message):
     return (request("POST", "assistant/chat/", {"message": message.strip()}) or {}).get("reply", "")
 

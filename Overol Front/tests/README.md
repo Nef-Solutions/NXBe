@@ -30,7 +30,7 @@ Reemplaza `requests.request`, así que ninguna petición sale a la red.
   - Catálogo paginado.
   - Disponibilidad del profesional.
   - Solicitudes con la misma validación del backend: 400 por campo o `non_field_errors`, 403 sin permiso y 409 en una transición inválida.
-  - Suscripción obligatoria para aparecer en el catálogo y recibir solicitudes, pagos con Webpay (`backend.webpay_return(token, ...)` simula la vuelta), cédula por multipart, mensajes de verificación, asistente (429 y 503) y recuperación con código.
+  - Suscripción obligatoria para aparecer en el catálogo y recibir solicitudes, pago de la suscripción con Webpay (`backend.webpay_return(token, ...)` simula la vuelta), cédula por multipart, mensajes de verificación, asistente (429 y 503) y recuperación con código.
 - **Datos de demostración:** los mismos correos de `seed_demo` (contraseña `OverolDemo123!`), más un profesional pendiente de verificación y un cliente sin teléfono ni dirección.
 - **Interruptores:**
   - `backend.caido = True` simula el backend apagado.
@@ -60,7 +60,7 @@ Es una imitación: **no reemplaza las pruebas contra el backend real** (ver `PRU
 | `prueba_solicitudes.py` | Formulario (especialidad, dirección de `/me`, errores 400 legibles), Mis solicitudes y Solicitudes con pestañas, aceptar, rechazar con motivo, cancelar de ambos lados, finalizar y confirmar en los dos órdenes, contacto, 409, vencida y «Cerrada por Overol» |
 | `prueba_suscripcion_verificacion.py` | Suscripción y Webpay (formulario POST con `token_ws`, vuelta sin confiar en `?status=`, con y sin sesión), catálogo según la suscripción, cédula y mensajes de verificación |
 | `prueba_asistente.py` | Asistente para cliente y profesional, historial en la sesión, aviso de datos personales, 429 y 503 |
-| `prueba_valoraciones_reclamos.py` | Evaluar al profesional y al cliente (400 «ya calificado»), reclamos (crear, responder, mediación, resolución) y pago de visitas con Webpay |
+| `prueba_valoraciones_reclamos.py` | Evaluar al profesional y al cliente (400 «ya calificado»), reclamos (crear, responder, mediación, resolución) y la tarifa informativa (sin pago de visitas; se ignora una vuelta de Webpay de visita) |
 | `prueba_notificaciones_tickets.py` | Notificaciones (contador, marcar una o todas, escape, cada uno las suyas) y tickets de soporte por solicitud con la respuesta del admin |
 | `prueba_profesional.py` | «Mi perfil» del profesional (datos, vista pública y reputación, oficios: agregar, editar, desactivar) y centro de desarrollo profesional |
 | `prueba_admin.py` | Panel del admin: indicadores de reclamos y tickets, verificación con la cédula, estado de cuentas, resolver reclamos y bandeja de soporte |

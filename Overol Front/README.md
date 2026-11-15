@@ -62,7 +62,7 @@ python app.py
 
 ### Variables del backend que importan al front (`backend/.env`)
 
-- **`PAYMENT_RESULT_URL=http://localhost:8501/`:** es la dirección a la que vuelve Webpay después de un pago. El valor por defecto apunta a otro front.
+- **`PAYMENT_RESULT_URL=http://localhost:8501/`:** es la dirección a la que vuelve Webpay después de pagar la suscripción. El valor por defecto apunta a otro front.
 - **Clave de Gemini:** solo hace falta para las respuestas reales del asistente Overil. Sin ella, el asistente avisa que no está disponible y todo lo demás funciona.
 
 ---
@@ -84,7 +84,7 @@ Los crea `python manage.py seed_demo`. La contraseña de todos es `OverolDemo123
 | Rol | Pantallas |
 |---|---|
 | Visitante | Portada con cifras y destacados, catálogo con tarjetas anónimas, perfil público sin datos personales, registro e ingreso |
-| Cliente | Buscar profesionales (oficio, especialidad, comuna y palabra clave), solicitar visita, Mis solicitudes (cancelar, confirmar, pagar la visita con Webpay, evaluar, reclamar, soporte), Mis reclamos, Notificaciones, Asistente, Mi perfil |
+| Cliente | Buscar profesionales (oficio, especialidad, comuna y palabra clave), solicitar visita, Mis solicitudes (cancelar, confirmar, evaluar, reclamar, soporte), Mis reclamos, Notificaciones, Asistente, Mi perfil |
 | Profesional | Solicitudes (aceptar, rechazar con motivo, cancelar, finalizar, calificar al cliente, soporte), Notificaciones, Mi perfil (datos, vista pública con reputación, oficios), Cobertura (días, horario, comunas, tarifa), Suscripción con Webpay, Verificación (cédula y mensajes), Reclamos, Desarrollo profesional, Asistente |
 | Administrador | Indicadores de reclamos y tickets, Verificación (ver la cédula, aprobar o rechazar), estado de cuentas, Reclamos (resolver) y Bandeja de soporte |
 
@@ -96,7 +96,8 @@ Los crea `python manage.py seed_demo`. La contraseña de todos es `OverolDemo123
 - **Profesionales en el catálogo:** solo aparecen y reciben solicitudes si están **verificados** y con **suscripción vigente** ($10.000 al mes, pagada con Webpay en modo de pruebas).
   - Para solicitar una visita, además deben tener horario y al menos una especialidad en el oficio elegido.
   - Hoy solo Gasfitería, Electricidad y Cerrajería tienen especialidades en el backend.
-- **Webpay:** al volver de Webpay, el front consulta el estado real del pago; no confía en el parámetro de la URL. Si no marcaste «Mantener mi sesión», te pide ingresar antes de mostrar el resultado.
+- **Cobros:** Overol solo cobra la suscripción mensual de los profesionales. Los clientes le pagan la visita directamente al profesional; la tarifa del perfil es informativa y Overol no cobra comisión por los servicios.
+- **Webpay (solo suscripción):** al volver de Webpay, el front consulta el estado real del pago; no confía en el parámetro de la URL. Si no marcaste «Mantener mi sesión», te pide ingresar antes de mostrar el resultado.
 - **Asistente Overil:** para clientes y profesionales con sesión. La conversación vive solo en la sesión. El texto se procesa con un servicio de Google, así que no hay que escribir datos personales. Límite: 5 consultas por hora y 10 al día.
 - **Vencimiento de solicitudes:** el front muestra el plazo que entrega el backend (`expires_at`). Hoy son 30 días, no 72 horas.
 - **Panel del admin:** el backend no entrega la lista de verificaciones pendientes ni de usuarios, así que el panel pide el id (se ve en `/admin/` de Django). Moderación de reseñas, contenidos del centro profesional y bitácora no tienen endpoint: están ocultas (`PANTALLAS_PENDIENTES_API`) y se hacen en `/admin/`.
@@ -132,7 +133,7 @@ Overol Front/
 │   ├── client.py           Vistas del cliente
 │   ├── professional.py     Vistas del profesional
 │   ├── admin.py            Vistas del administrador
-│   ├── payments.py         Webpay: formulario de pago y vuelta
+│   ├── payments.py         Webpay de la suscripción: formulario de pago y vuelta
 │   └── assistant.py        Asistente Overil
 ├── tests/                  Pruebas AppTest con un backend simulado y pruebas manuales
 └── scripts/demo_api.ps1    Arranque de la demo

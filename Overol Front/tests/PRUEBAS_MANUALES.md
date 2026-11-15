@@ -6,7 +6,7 @@ Anota en cada caso ✅ o ❌ y lo que viste.
 **Etapa B:** login, bloqueo, registro, completar perfil, Mi perfil, contraseñas y sesión recordada (casos 1 a 24).
 **Etapa C:** Cobertura y solicitudes (casos C1 a C17).
 **Etapa C2:** suscripción con Webpay, cédula, recuperación con código, oficios del backend y asistente (casos S1 a S12).
-**Etapa D:** valoraciones, reclamos y pago de visitas (casos D1 a D8).
+**Etapa D:** valoraciones, reclamos y tarifa informativa (casos D1 a D7).
 **Etapa E:** notificaciones y tickets de soporte (casos E1 a E5).
 **Etapa F:** perfil, reputación, oficios y desarrollo profesional (casos F1 a F6).
 **Etapa G:** panel del admin (casos G1 a G6, al final).
@@ -116,7 +116,7 @@ cd "C:\Users\benja\Documents\NXBe_repo\Overol Front"
 | S11 | Asistente | `cliente1` → «🤖 Asistente» → pregunta por una llave que gotea (con la clave de Gemini configurada) | Aviso de no escribir datos personales. Responde Overil. Al recargar sin «Mantener sesión», el historial se pierde |
 | S12 | Límite y caída del asistente | Envía 6 consultas en una hora. Luego quita la clave de Gemini y reinicia runserver | La sexta: «Llegaste al límite de consultas…». Sin la clave: «El asistente no está disponible en este momento» |
 
-## Etapa D: valoraciones, reclamos y pago de visitas
+## Etapa D: valoraciones, reclamos y tarifa informativa
 
 Necesitas una solicitud **Finalizada** entre `cliente1` y `profesional1` (casos C11 y C12).
 
@@ -128,8 +128,7 @@ Necesitas una solicitud **Finalizada** entre `cliente1` y `profesional1` (casos 
 | D4 | Abrir un reclamo | `cliente1` → solicitud finalizada → «Abrir un reclamo de posventa» → describe el problema | «Reclamo #N enviado». Ya no ofrece reclamar de nuevo ese servicio. Aparece en «🛠️ Mis reclamos» como **Abierto** |
 | D5 | El profesional responde | `profesional1` → «🛠️ Reclamos» (con el contador) → responde | Queda **Respondido por el profesional**. `cliente1` ve la respuesta y en `/admin/` → Notifications hay una «Respuesta de posventa» |
 | D6 | Mediación y resolución | `cliente1` → «Pedir mediación de Overol». Luego `admin@demo.overol.cl` lo resuelve: en esta etapa, desde `/admin/` o con `POST /api/claims/{id}/resolve/` | Pasa a **En mediación** y, al resolverse, a **Resuelto** con la «Resolución de Overol» |
-| D7 | Pagar una visita | Solicitud **Aceptada** de un profesional con tarifa → «💳 Pagar la visita con Webpay» → paga en Webpay (sandbox) | Vuelve a «Mis solicitudes» con «Pago confirmado para la solicitud #N» y la tarjeta dice «Visita pagada». En `/admin/` → Payment transactions: AUTHORIZED con `visit` |
-| D8 | Sin tarifa | Igual con un profesional de tarifa 0 | «El profesional no tiene una tarifa de visita válida.» |
+| D7 | Sin pago de visitas | `cliente1` → «Mis solicitudes» → una solicitud **Aceptada**. Luego abre el perfil público de `profesional1` | No hay ningún botón para pagar la visita. La tarjeta y el perfil (bajo «Tarifa de visita») dicen «La tarifa se paga directamente al profesional; Overol no cobra comisión por los servicios.» |
 
 ## Etapa E: notificaciones y tickets de soporte
 

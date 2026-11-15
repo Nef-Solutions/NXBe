@@ -1,11 +1,13 @@
 """Etapa D: el cliente evalúa al profesional, el profesional califica al cliente (POST /ratings/),
-reclamos de posventa (crear, responder, mediación, resolución) y pago de la visita con Webpay."""
+reclamos de posventa (crear, responder, mediación, resolución) y la tarifa como dato informativo
+(Overol no cobra las visitas: el cliente le paga directo al profesional)."""
 
 import streamlit
 
-from comun import backend, calls, check, errors, md, nav_labels, new_app, preparar, terminar, texts, toasts
+from comun import backend, calls, check, md, nav_labels, new_app, preparar, terminar, texts, toasts
 
 front = preparar()
+from core.constants import FEE_NOTE  # noqa: E402  (la copia del front queda en sys.path tras preparar)
 
 CLIENTE, PRO = "cliente1@demo.overol.cl", "profesional1@demo.overol.cl"
 iframes = []
@@ -40,6 +42,7 @@ pid = backend.professional(PRO)["id"]
 at = new_app(front, CLIENTE, client_navigation="🔎 Buscar profesionales", _client_prev_menu="🔎 Buscar profesionales",
              selected_professional=pid)
 check("Llegó a la hora y dejó todo limpio" in md(at), "la opinión aparece en el perfil público")
+check(FEE_NOTE in md(at), "el perfil aclara que la tarifa se paga directo al profesional")
 
 # ---------- El profesional califica al cliente ----------
 at = new_app(front, PRO, professional_navigation="📋 Solicitudes")
@@ -83,29 +86,20 @@ at = new_app(front, CLIENTE, client_navigation="🛠️ Mis reclamos")
 check("Resuelto" in md(at) and "Se coordinó una segunda visita" in texts(at)
       and not any(b.key == f"escalate_claim_{claim['id']}" for b in at.button), "resuelto: muestra la resolución de Overol")
 
-# ---------- Pago de la visita con Webpay ----------
+# ---------- Sin pago de visitas: la tarifa es informativa ----------
 VID = backend.add_visit(CLIENTE, PRO, status="ACCEPTED")
 at = client_requests()
-iframes.clear()
-at.button(key=f"visit_pay_{VID}").click().run()
-payment = backend.payments[max(backend.payments)]
-check(calls("POST", f"/payments/visits/{VID}/transbank/") and payment["amount"] == "15000"
-      and f'value="{payment["token"]}"' in " ".join(iframes), "inicia el pago con la tarifa del profesional y arma el formulario")
+check(not at.exception and FEE_NOTE in texts(at), "aceptada: aclara que la tarifa se paga directo al profesional")
+check(not any(b.key.startswith("visit_pay_") for b in at.button if b.key)
+      and not any("Pagar" in (b.label or "") for b in at.button), "no hay botón para pagar la visita")
+check(not calls(prefix="/payments/visits/"), "el front no llama a /payments/visits/")
 
-params = backend.webpay_return(payment["token"], "authorized")
 at = new_app(front, CLIENTE, run=False)
-for key, value in params.items():
-    at.query_params[key] = value
+at.query_params["status"] = "authorized"
+at.query_params["visit_id"] = str(VID)
 at.run()
-check(at.session_state["client_navigation"] == "📋 Mis solicitudes" and any(
-    f"Pago confirmado para la solicitud #{VID}" in s.value for s in at.success), "al volver: resultado real en «Mis solicitudes»")
-check("Visita pagada ($15.000)" in texts(at), "la tarjeta muestra la visita pagada")
-
-backend.professional("profesional3@demo.overol.cl")["visit_fee"] = 0
-VID = backend.add_visit(CLIENTE, "profesional3@demo.overol.cl", status="ACCEPTED")
-at = client_requests()
-at.button(key=f"visit_pay_{VID}").click().run()
-check("El profesional no tiene una tarifa de visita válida." in errors(at), "sin tarifa: muestra el 409 del backend")
+check(not at.exception and "_payment_return" not in at.session_state
+      and not any("Pago confirmado" in s.value for s in at.success), "una vuelta de Webpay de visita se ignora")
 
 check("🛠️ Mis reclamos" in nav_labels(client_requests(), "client_navigation"), "«Mis reclamos» está en la barra del cliente")
 
