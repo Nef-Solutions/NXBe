@@ -71,7 +71,7 @@ expected = {pid for pid, u in CATALOG.items() if "Ñuñoa" in u["professional"][
 check(last_list_query().get("commune") == "Ñuñoa" and card_ids(at) == expected, "comuna → commune=Ñuñoa, filtrada por el backend")
 check(set(at.selectbox(key="search_trade").options) == {"Todas", "Gasfitería", "Electricidad", "Carpintero",
                                                           "Pintor", "Cerrajería", "Soldador", "Jardinero"},
-      "los oficios del filtro salen de GET /catalog/categories/")
+      "los oficios del filtro salen de GET /catalog/categories/, sin los retirados (Guardia, Niñera)")
 
 # ---------- Paginación ----------
 backend.page_size_max = 1
@@ -115,18 +115,22 @@ check(f'metric-number">{len(CATALOG)}<' in md(at), f"portada: «{len(CATALOG)} p
 import ast  # noqa: E402
 from pathlib import Path  # noqa: E402
 
-from core.oficios import GRUPOS_OFICIOS, OFICIOS_PORTADA  # noqa: E402
+from core.oficios import GRUPOS_OFICIOS, OFICIOS_EXCLUIDOS, OFICIOS_PORTADA  # noqa: E402
 
 at = new_app(front)
 trade_buttons = [b for b in at.button if (b.key or "").startswith("cat_visitor_navigation_")]
-check(not at.exception and len(OFICIOS_PORTADA) == 65 and len(trade_buttons) == 65,
-      "portada: muestra los 65 oficios de la lista del equipo")
+check(not at.exception and len(OFICIOS_PORTADA) == 54 and len(trade_buttons) == 54,
+      "portada: muestra los 54 oficios vigentes de la lista del equipo")
+check(not any(b.key.split("_", 3)[-1] in OFICIOS_EXCLUIDOS for b in trade_buttons)
+      and "Cuidado de personas y mascotas" not in md(at),
+      "portada: sin los oficios retirados ni la categoría que quedó vacía")
 check(all(f"{title} <span>({len(oficios)})</span>" in md(at) for _, title, oficios in GRUPOS_OFICIOS),
       f"portada: los oficios van agrupados en {len(GRUPOS_OFICIOS)} categorías con su cantidad")
 labels = {b.label for b in trade_buttons}
-check({"🕸️ Instalador de malla anticaída", "🔔 Citófono y videoportero", "💧 Impermeabilizador", "🧻 Papel mural",
-       "📏 Cornisa y zócalo", "⛏️ Excavador", "🌬️ Aire acondicionado", "🎮 Técnico de consolas", "🧸 Niñera",
-       "🏠 Techumbre", "🍳 Campanero de cocina"} <= labels,
+check({"🕸️ Instalador de malla anticaída", "💧 Impermeabilizador", "🧻 Papel mural",
+       "📏 Cornisa y zócalo", "⛏️ Excavador", "🌬️ Aire acondicionado",
+       "🏠 Techumbre", "🍳 Campanero de cocina"} <= labels
+      and not labels & {"🧸 Niñera", "🔔 Citófono y videoportero", "🎮 Técnico de consolas", "🧹 Aseo"},
       "portada: nombres con la ortografía corregida («Campanero de cocina» se deja como en la lista)")
 migration = Path(__file__).resolve().parents[2] / "backend" / "apps" / "catalog" / "migrations" / "0005_seed_official_trade_catalog.py"
 if migration.exists():
@@ -135,6 +139,8 @@ if migration.exists():
                                          if isinstance(n, ast.Assign) and n.targets[0].id == "OFFICIAL_TRADES")}
     check({backend_name for _, backend_name, _ in OFICIOS_PORTADA} <= official,
           "portada: todos los oficios existen en el catálogo oficial del backend (migración catalog 0005)")
+    check(OFICIOS_EXCLUIDOS <= official and not OFICIOS_EXCLUIDOS & {b for _, b, _ in OFICIOS_PORTADA},
+          "cruce con el backend: los excluidos existen allá y se ignoran en la portada")
 else:
     print("OK   (sin carpeta backend/: se omite el cruce con la migración catalog 0005)")
 
@@ -147,10 +153,38 @@ at.button(key="cat_client_navigation_Jardinero").click().run()
 check(not at.exception and at.session_state["client_navigation"] == "🔎 Buscar profesionales"
       and at.session_state["search_trade"] == "Jardinero", "cliente: «Jardinero» lleva al catálogo filtrado por ese oficio")
 at = new_app(front)
-at.button(key="cat_visitor_navigation_Niñera").click().run()
+at.button(key="cat_visitor_navigation_Pasto sintético").click().run()
 check(not at.exception and at.session_state["visitor_navigation"] == "🔎 Profesionales"
       and "todavía no está disponible" in texts(at),
       "un oficio que el catálogo aún no tiene: va al catálogo y avisa (como antes)")
+
+# ---------- Oficios retirados aunque el backend los devuelva ----------
+solo_retirado = backend.add_professional("guardia@demo.overol.cl", "Gustavo", "Guardia", "16789012-3",
+                                         trades=[(8, 3, ["Vigilancia de eventos"])], coverage=["Santiago"], fee=9000)
+mixto = backend.add_professional("mixto@demo.overol.cl", "Mario", "Mixto", "17890123-4",
+                                 trades=[(2, 4, ["Iluminación"]), (8, 2, ["Vigilancia de eventos"])],
+                                 coverage=["Santiago"], fee=11000)
+pid_retirado, pid_mixto = 100 + solo_retirado, 100 + mixto
+at = search_page(CLIENTE)
+check(not at.exception and pid_mixto in card_ids(at) and pid_retirado not in card_ids(at),
+      "catálogo: oculta al profesional que solo tiene oficios retirados; el que tiene otro oficio sigue")
+check("Guardia" not in md(at) and "Vigilancia de eventos" not in md(at), "catálogo: las tarjetas no muestran el oficio retirado")
+at.text_input(key="search_text").input("guardia vigilancia").run()
+check(not at.exception and pid_retirado not in card_ids(at) and pid_mixto not in card_ids(at),
+      "búsqueda por palabra clave: no encuentra a nadie por el oficio retirado")
+at = AppTest.from_file(os.path.join(front, "app.py"), default_timeout=60)
+at.query_params["profesional"] = str(pid_retirado)
+at.run()
+check(not at.exception and not any(b.key == "back_from_profile" for b in at.button),
+      "enlace directo a un profesional con solo oficios retirados: no abre el perfil")
+at = new_app(front, CLIENTE, client_navigation="🔎 Buscar profesionales", _client_prev_menu="🔎 Buscar profesionales",
+             selected_professional=pid_mixto)
+check(not at.exception and at.selectbox(key=f"request_trade_{pid_mixto}").options == ["Electricidad"],
+      "solicitar visita: el formulario solo ofrece los oficios vigentes del profesional")
+vid = backend.add_visit(CLIENTE, "guardia@demo.overol.cl", status="ACCEPTED")
+at = new_app(front, CLIENTE, client_navigation="📋 Mis solicitudes")
+check(not at.exception and "Guardia (oficio retirado)" in md(at),
+      "una solicitud existente con un oficio retirado se sigue viendo, marcada «(oficio retirado)»")
 
 # ---------- Backend caído ----------
 backend.caido = True

@@ -1,12 +1,41 @@
-"""Oficios de la portada: la lista oficial del equipo (65), agrupada por categorías.
+"""Oficios de la portada: la lista oficial del equipo, agrupada por categorías.
 
 Cada oficio es (nombre que se muestra, nombre exacto en el backend, ícono). El nombre que se
 muestra corrige la ortografía de la lista del equipo; el del backend es el de
 GET /api/catalog/categories/ (migración catalog 0005) y es el que filtra el catálogo.
 Solo se incluyen oficios que existen en el backend.
+
+OFICIOS_EXCLUIDOS es la lista central de oficios retirados de la plataforma (nombres del
+backend). El front los oculta en todas partes aunque el backend los siga devolviendo: portada,
+filtro y búsqueda del catálogo, registro, oficios del profesional y perfiles. Para devolver uno,
+basta con quitarlo de esa lista.
 """
 
-GRUPOS_OFICIOS = [
+# Oficios retirados de la plataforma (15-11-2026). PEDIDO 0.13: que el backend los desactive.
+OFICIOS_EXCLUIDOS = frozenset({
+    # Toda la categoría «Cuidado de personas y mascotas»
+    "Cuidador de adulto mayor",
+    "Niñera",
+    "Peluquería a domicilio",
+    "Paseador de animales",
+    "Peluquería canina",
+    # Sueltos
+    "Aseo",
+    "Costurera",
+    "Decoración",
+    "Citófono y videoportero",
+    "Guardia",
+    "Técnico de consolas",
+})
+
+
+def oficio_visible(nombre):
+    """False si el oficio (nombre del backend) fue retirado de la plataforma."""
+    return (nombre or "").strip() not in OFICIOS_EXCLUIDOS
+
+
+# Lista completa del equipo (incluye los retirados, para poder devolverlos fácilmente)
+_TODOS_LOS_GRUPOS = [
     ("🏗️", "Construcción y terminaciones", [
         ("Albañil", "Albañil", "🧱"),
         ("Carpintero", "Carpintero", "🪚"),
@@ -87,6 +116,13 @@ GRUPOS_OFICIOS = [
         ("Paseador de animales", "Paseador de animales", "🐕"),
         ("Peluquería canina", "Peluquería canina", "🐩"),
     ]),
+]
+
+# Portada: sin los oficios retirados; una categoría que queda vacía no se muestra
+GRUPOS_OFICIOS = [
+    (icono, titulo, visibles)
+    for icono, titulo, oficios in _TODOS_LOS_GRUPOS
+    if (visibles := [oficio for oficio in oficios if oficio_visible(oficio[1])])
 ]
 
 # Todos los oficios de la portada: [(nombre que se muestra, nombre en el backend, ícono)]

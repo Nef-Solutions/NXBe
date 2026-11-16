@@ -77,7 +77,7 @@ at = register_page()
 at.radio(key="register_role").set_value("Profesional").run()
 check(set(at.selectbox(key="register_trade").options) == {"Carpintero", "Cerrajería", "Electricidad", "Gasfitería",
                                                            "Jardinero", "Pintor", "Soldador"},
-      "los oficios salen de GET /catalog/categories/ (no de una lista fija del front)")
+      "los oficios salen de GET /catalog/categories/ (no de una lista fija del front), sin los retirados")
 
 at.selectbox(key="register_trade").select("Soldador").run()
 check("todavía no tiene especialidades" in texts(at) and "no recibirás solicitudes" in texts(at),

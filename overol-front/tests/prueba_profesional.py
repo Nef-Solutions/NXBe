@@ -50,6 +50,13 @@ check(body.get("category_id") == 2 and body.get("years_experience") == 3 and len
       "agrega un oficio con sus especialidades (POST)")
 at = profile()
 check("Electricidad" not in at.selectbox(key="trade_new_category").options, "no ofrece agregar un oficio que ya tiene")
+check(not {"Guardia", "Niñera"} & set(at.selectbox(key="trade_new_category").options),
+      "no ofrece agregar oficios retirados de la plataforma")
+pro["trades"].append({"id": 9999, "category_id": 8, "years_experience": 1, "specialties": ["Vigilancia de eventos"]})
+at = profile()
+check(not at.exception and "Guardia" in md(at) and "oficio retirado de Overol" in md(at),
+      "un oficio retirado que el profesional ya tenía se ve marcado, sin romper la pantalla")
+pro["trades"].pop()
 
 at.selectbox(key="trade_new_category").select("Soldador").run()
 check("todavía no tiene especialidades" in texts(at), "oficio sin especialidades: avisa que no recibirá solicitudes")

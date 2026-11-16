@@ -13,6 +13,7 @@ Traduce cada solicitud a un diccionario con los estados que muestra el front.
 from datetime import date, datetime, timedelta
 
 from core import api_client
+from core.oficios import oficio_visible
 from core.constants import DIAS_COMPLETOS, DIAS_SEMANA
 
 # Estado del backend → etiqueta del front
@@ -56,7 +57,8 @@ def from_api(data):
         "status": ESTADOS.get(data.get("status"), data.get("status") or ""),
         "client_name": data.get("client_name") or "",
         "professional_name": data.get("professional_name") or "",
-        "trade": data.get("category_name") or "",
+        # Una solicitud con un oficio ya retirado de la plataforma se sigue mostrando, marcada
+        "trade": (data.get("category_name") or "") + ("" if oficio_visible(data.get("category_name")) else " (oficio retirado)"),
         "specialty": data.get("specialty_name") or "",
         "description": data.get("problem_description") or "",
         "date": _fecha(data.get("visit_date")),
