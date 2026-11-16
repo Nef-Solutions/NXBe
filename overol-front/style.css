@@ -522,6 +522,9 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
 }
 /* Con el panel abierto, el círculo queda a su izquierda para poder cerrarlo pulsándolo de nuevo */
 .st-key-overil_fab_open { right: calc(min(440px, 100vw) + 14px); }
+/* Mismo aspecto en todos los estados (también en celular, donde no hay hover): fondo oscuro, borde
+   e ícono ámbar. El color se fija aquí y no se hereda de Streamlit (heredaba #111827, el mismo del
+   fondo, y el ícono desaparecía). El halo blanco lo separa de fondos oscuros (portada, tarjetas). */
 .st-key-overil_fab button,
 .st-key-overil_fab_open button {
     width: 56px;
@@ -530,13 +533,44 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
     padding: 0;
     border-radius: 50% !important;
     background: var(--navy) !important;
-    border: 2px solid var(--amber) !important;
-    box-shadow: 0 6px 18px rgba(17,24,39,.28);
+    border: 2px solid var(--borde-acento) !important;
+    color: var(--borde-acento) !important;
+    box-shadow: 0 0 0 2px #FFFFFF, 0 6px 18px rgba(17,24,39,.35) !important;
+    transition: transform .15s ease, filter .15s ease, box-shadow .15s ease;
 }
-.st-key-overil_fab button p,
-.st-key-overil_fab_open button p { font-size: 26px; line-height: 1; }
+.st-key-overil_fab button *,
+.st-key-overil_fab_open button * { color: var(--borde-acento) !important; }
+/* Ícono Material grande y centrado */
+.st-key-overil_fab button [data-testid="stIconMaterial"],
+.st-key-overil_fab_open button [data-testid="stIconMaterial"] { font-size: 30px !important; margin: 0 !important; }
+.st-key-overil_fab button > div,
+.st-key-overil_fab_open button > div { justify-content: center; gap: 0; }
+/* La etiqueta «Asistente Overil» es el nombre accesible del botón: se oculta a la vista, no al lector */
+.st-key-overil_fab button [data-testid="stMarkdownContainer"],
+.st-key-overil_fab_open button [data-testid="stMarkdownContainer"] {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+/* Hover y toque: el mismo aspecto, apenas más grande y brillante */
 .st-key-overil_fab button:hover,
-.st-key-overil_fab_open button:hover { background: var(--slate) !important; }
+.st-key-overil_fab_open button:hover {
+    background: var(--navy) !important;
+    border-color: var(--borde-acento) !important;
+    transform: scale(1.07);
+    filter: brightness(1.15);
+}
+.st-key-overil_fab button:active,
+.st-key-overil_fab_open button:active { transform: scale(.95); }
+/* Foco con teclado: anillo ámbar visible por fuera del halo */
+.st-key-overil_fab button:focus-visible,
+.st-key-overil_fab_open button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 5px var(--amber), 0 6px 18px rgba(17,24,39,.35) !important;
+}
 
 .st-key-overil_panel {
     position: fixed;

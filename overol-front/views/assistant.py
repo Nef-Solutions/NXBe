@@ -47,9 +47,12 @@ def assistant_launcher(user):
     is_open = st.session_state.get(OPEN_KEY, False)
 
     with st.container(key="overil_fab_open" if is_open else "overil_fab"):
+        # Ícono Material (glifo de un color, que el CSS pinta de ámbar). La etiqueta queda como nombre
+        # accesible del botón y se oculta a la vista en style.css.
         st.button(
-            "🤖",
+            "Asistente Overil",
             key="overil_toggle",
+            icon=":material/smart_toy:",
             help="Cerrar el asistente Overil" if is_open else "Abrir el asistente Overil",
             on_click=_toggle_panel,
         )
