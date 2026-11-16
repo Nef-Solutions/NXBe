@@ -29,6 +29,7 @@ La guía completa para quien trabaja el front o el backend está en [`DOCKER.md`
 ### Requisitos (sin Docker)
 
 - **Front:** Python 3.11 o superior, con las dependencias de `requirements.txt` (Streamlit y requests). La imagen Docker usa Python 3.11.
+- **Versión de Streamlit: 1.63.0, fijada en `requirements.txt`** (la misma que instala el `Dockerfile`). Es la versión con la que se probaron las suites, el menú lateral y el panel del asistente. Si tu `python` tiene otra versión de Streamlit instalada (por ejemplo, 1.66), instala la fijada (`python -m pip install -r requirements.txt`) o usa con `scripts\demo_api.ps1` un Python que la tenga (`OVEROL_FRONT_PYTHON`). Ver la nota sobre el CSS en «Reglas que conviene saber».
 - **Backend:** Python 3.12 o superior (Django 6.1; validado con 3.14), Docker Desktop para Postgres/PostGIS y un archivo `backend/.env` creado desde `backend/.env.example`.
 
 ```bash
@@ -119,6 +120,7 @@ Los crea `python manage.py seed_demo`. La contraseña de todos es `OverolDemo123
 - **Navegación:** las secciones están solo en el menú lateral izquierdo (abierto en escritorio; en celular se abre con el botón «Menú»). La sección actual va en ámbar.
 - **Oficios de la portada:** los 65 oficios de la lista del equipo, agrupados por categorías (`core/oficios.py`). Cada uno lleva al catálogo filtrado por ese oficio; todos existen en el catálogo oficial del backend.
 - **Asistente Overil:** se abre con el círculo fijo del borde derecho, en todas las secciones, y el chat aparece en un panel lateral derecho (se cierra con la X o con el círculo). Para clientes y profesionales con sesión; sin sesión, el panel pide iniciar sesión. La conversación vive solo en la sesión y se mantiene al cambiar de sección. El texto se procesa con un servicio de Google, así que no hay que escribir datos personales. Límite: 5 consultas por hora y 10 al día.
+- **CSS atado a Streamlit 1.63.0:** Streamlit no tiene un panel lateral derecho nativo. El círculo y el panel del asistente son contenedores con key (`st-key-overil_fab`, `st-key-overil_panel`) que `style.css` fija a la pantalla, y el CSS del panel, del menú lateral, de la grilla de oficios y de los campos usa la estructura HTML de esa versión (`data-testid` como `stLayoutWrapper`, `stHorizontalBlock`, `stColumn`, `stChatInput`, `stExpandSidebarButton`, `stTextInputRootElement`). Antes de subir la versión de Streamlit, revisa estas pantallas en el navegador (y con las capturas a 390, 768 y 1366 px).
 - **Vencimiento de solicitudes:** el front muestra el plazo que entrega el backend (`expires_at`). Hoy son 30 días, no 72 horas.
 - **Panel del admin:** el backend no entrega la lista de verificaciones pendientes ni de usuarios, así que el panel pide el id (se ve en `/admin/` de Django). Moderación de reseñas, contenidos del centro profesional y bitácora no tienen endpoint: están ocultas (`PANTALLAS_PENDIENTES_API`) y se hacen en `/admin/`.
 - **Nombres:** nombre y apellido solo admiten letras, espacios y apóstrofes («Ana María», no «Ana-María»).
