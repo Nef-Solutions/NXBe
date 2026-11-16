@@ -301,7 +301,7 @@ SIDE_SECTIONS_SLOT = "_side_sections_slot"
 
 def _scroll_to_top():
     """Lleva la página arriba: al cambiar de sección con la página desplazada, Streamlit conserva
-    el desplazamiento y el comienzo de la sección nueva quedaba tapado por la barra fija."""
+    el desplazamiento y la sección nueva se vería a media altura."""
     html = (
         "<script>try { const d = window.parent.document;"
         " const m = d.querySelector('[data-testid=\"stMain\"]'); if (m) m.scrollTo(0, 0);"
@@ -319,10 +319,12 @@ def _scroll_to_top():
 
 def nav_bar(nav_key, options, extra=None, badges=None):
     """
-    Barra de secciones fija bajo la cabecera (estilo en style.css, «st-key-nav_bar_»).
+    Navegación entre secciones, solo en el menú lateral izquierdo (ya no hay barra superior).
     Un botón por opción; el de la sección actual va en ámbar (type="primary").
-    La sección elegida se guarda en st.session_state[nav_key], igual que antes con st.radio,
-    por lo que los callbacks que cambian de sección (go_to, deeplinks) siguen funcionando.
+    Con sesión, sidebar() deja un espacio bajo el saludo y los botones van ahí; el visitante no
+    tiene ese espacio, así que aquí se arma su menú lateral (marca, secciones y `extra`).
+    La sección elegida se guarda en st.session_state[nav_key], por lo que los callbacks que
+    cambian de sección (go_to, deeplinks) siguen funcionando.
     `extra` es una función opcional que dibuja un botón más al final (p. ej. «Ingresar»).
     `badges` ({opción: número}) agrega un contador a la etiqueta, p. ej. «🔔 Notificaciones (2)»;
     el valor guardado sigue siendo la opción sin contador.
@@ -338,38 +340,29 @@ def nav_bar(nav_key, options, extra=None, badges=None):
         # Con contador, espacios no separables: «🔔 Notificaciones (2)» queda en una línea
         return f"{option} ({count})".replace(" ", "\u00a0") if count else option
 
-    with st.container(key=f"nav_bar_{nav_key}"):
-        cols = st.columns(len(options) + (1 if extra else 0))
-
-        for i, (col, option) in enumerate(zip(cols, options)):
-            with col:
-                st.button(
-                    label_for(option),
-                    key=f"{nav_key}_btn_{i}",
-                    type="primary" if option == current else "secondary",
-                    on_click=_set_section,
-                    args=(nav_key, option),
-                    use_container_width=True,
-                )
-
-        if extra:
-            with cols[-1]:
-                extra()
-
-    # Las mismas secciones en el menú lateral (espacio que deja sidebar() bajo el saludo):
-    # mismo callback y keys propias. El visitante no tiene ese espacio.
     slot = st.session_state.pop(SIDE_SECTIONS_SLOT, None)
-    if slot is not None:
-        with slot:
-            for i, option in enumerate(options):
-                st.button(
-                    label_for(option),
-                    key=f"side_{nav_key}_btn_{i}",
-                    type="primary" if option == current else "secondary",
-                    on_click=_set_section,
-                    args=(nav_key, option),
-                    use_container_width=True,
-                )
+    if slot is None:
+        # Visitante (sin sidebar()): su propio menú lateral
+        with st.sidebar:
+            st.markdown("## 🦺 Overol")
+            st.caption("Explora profesionales sin iniciar sesión.")
+            slot = st.container(key="side_sections")
+
+    with slot:
+        for i, option in enumerate(options):
+            st.button(
+                label_for(option),
+                key=f"side_{nav_key}_btn_{i}",
+                type="primary" if option == current else "secondary",
+                on_click=_set_section,
+                args=(nav_key, option),
+                use_container_width=True,
+            )
+
+    if extra:
+        with st.sidebar:
+            st.divider()
+            extra()
 
     # Al cambiar de sección (o de pantalla de la cuenta), la página vuelve arriba
     shown = (current, st.session_state.get("_profile_focus"))

@@ -61,6 +61,7 @@ def home_page(role, nav_key, prev_key, search_target, show_hero=True):
 
     # ---------------- Categorías ----------------
     section("🧰 ¿Qué necesitas arreglar?")
+    st.caption("Elige un oficio para ver a los profesionales disponibles.")
     category_buttons(nav_key, search_target)
 
     # ---------------- Cómo funciona ----------------

@@ -54,10 +54,10 @@ cd "C:\Users\benja\Documents\NXBe_repo\overol-front"
 | 3 | Registro de profesional | Igual, con oficio **Gasfitería** y 4 años de experiencia | Cuenta creada. En `/admin/` → Professional profiles: `coverage_communes` = Santiago y Ñuñoa, estado `PENDING`. En Professional trades: un oficio Gasfitería con 4 años |
 | 4 | Contraseña débil | Registro con la contraseña `password123` | Error «La contraseña no cumple las reglas de seguridad del servidor:» con la lista de reglas |
 | 5 | Correo repetido | Registro con `cliente1@demo.overol.cl` | Error «Correo: …ya existe…» |
-| 6 | Login correcto | `cliente1@demo.overol.cl` con «Mantener mi sesión» marcado | Entra como cliente. La barra muestra Inicio, Buscar profesionales, Mi perfil y Quiénes somos |
+| 6 | Login correcto | `cliente1@demo.overol.cl` con «Mantener mi sesión» marcado | Entra como cliente. El menú lateral muestra Inicio, Buscar profesionales, Mis solicitudes, Mis reclamos, Notificaciones, Mi perfil y Quiénes somos. No hay barra de secciones arriba |
 | 7 | Clave incorrecta | `cliente2@demo.overol.cl` con una clave equivocada | «Correo o contraseña incorrectos. Tras 3 intentos fallidos, la cuenta se bloquea por seguridad durante 5 minutos.» |
 | 8 | Bloqueo | 3 claves equivocadas seguidas y después la clave correcta | «Cuenta bloqueada por intentos fallidos. Intenta de nuevo en 5 minutos» (o 4, según el tiempo). Pasados 5 minutos, entra |
-| 9 | Completar perfil | En `/admin/` → Users, borra el teléfono y la dirección de `cliente2` → entra con esa cuenta | Pide «Completa tu perfil» antes de mostrar la barra. Al guardar teléfono, dirección y comuna, entra. En `/admin/` quedan guardados |
+| 9 | Completar perfil | En `/admin/` → Users, borra el teléfono y la dirección de `cliente2` → entra con esa cuenta | Pide «Completa tu perfil» antes de mostrar las secciones (el menú lateral solo ofrece «Cerrar sesión»). Al guardar teléfono, dirección y comuna, entra. En `/admin/` quedan guardados |
 | 10 | Mi perfil del cliente | Cliente → Mi perfil → cambia la dirección → Guardar | Aviso «Tus datos fueron actualizados». En `/admin/` la dirección cambió. No aparece «Preferencia de contacto», porque el backend no la guarda para clientes |
 | 11 | Mi perfil del profesional | `profesional1` → Mi perfil → preferencia «Correo electrónico», un titular y una presentación → Guardar | En `/admin/` → Professional profiles: `contact_preference`, `headline` y `bio` actualizados. Arriba dice «Tu identidad está verificada» |
 | 12 | Profesional pendiente | Entra con el profesional del caso 3 | Aviso «Tu cuenta está pendiente de verificación» y no aparece en «Buscar profesionales». Apruébalo en `/admin/` (Professional profiles → `verification_status` = APPROVED) y aparece en el catálogo |
@@ -113,7 +113,7 @@ cd "C:\Users\benja\Documents\NXBe_repo\overol-front"
 | S8 | Archivo inválido | Sube un `.png` que en realidad sea otro tipo, o una imagen de más de 5 MB | El front lo rechaza antes de enviar |
 | S9 | Mensaje de verificación | En «Verificación» escribe un mensaje → «Enviar mensaje». En `/admin/` → Verification case messages, responde | El mensaje aparece en el hilo y luego la respuesta de Overol |
 | S10 | Oficios del backend | Registro de profesional | La lista tiene los **66 oficios** del backend. Con «Soldador» (sin especialidades) avisa que no recibirá solicitudes hasta tenerlas y deja registrarse; con «Gasfitería» pide especialidades |
-| S11 | Asistente | `cliente1` → «🤖 Asistente» → pregunta por una llave que gotea (con la clave de Gemini configurada) | Aviso de no escribir datos personales. Responde Overil. Al recargar sin «Mantener sesión», el historial se pierde |
+| S11 | Asistente | `cliente1` → círculo 🤖 del borde derecho → pregunta por una llave que gotea (con la clave de Gemini configurada). Cambia de sección y cierra con la X o con el círculo | Se abre un panel a la derecha con el aviso de no escribir datos personales. Responde Overil. La conversación sigue al cambiar de sección y al reabrir. Al recargar sin «Mantener sesión», el historial se pierde. Sin sesión, el panel pide iniciar sesión. En celular, el panel ocupa casi todo el ancho y el campo para escribir se ve |
 | S12 | Límite y caída del asistente | Envía 6 consultas en una hora. Luego quita la clave de Gemini y reinicia runserver | La sexta: «Llegaste al límite de consultas…». Sin la clave: «El asistente no está disponible en este momento» |
 
 ## Etapa D: valoraciones, reclamos y tarifa informativa
@@ -134,7 +134,7 @@ Necesitas una solicitud **Finalizada** entre `cliente1` y `profesional1` (casos 
 
 | # | Caso | Pasos | Resultado esperado |
 |---|---|---|---|
-| E1 | Aviso de una acción | `profesional1` acepta una solicitud de `cliente1` → `cliente1` mira su barra | «🔔 Notificaciones (1)». En la pantalla: «Solicitud aceptada», marcada como **Nueva**, con el número de la solicitud |
+| E1 | Aviso de una acción | `profesional1` acepta una solicitud de `cliente1` → `cliente1` mira su menú lateral | «🔔 Notificaciones (1)». En la pantalla: «Solicitud aceptada», marcada como **Nueva**, con el número de la solicitud |
 | E2 | Marcar como leída | «Marcar como leída» en una y luego «Marcar todas como leídas» | El contador baja de inmediato. En `/admin/` → Notifications quedan con `is_read` |
 | E3 | Abrir un ticket | `cliente1` → «Mis solicitudes» → «💬 Contactar a soporte» → asunto y mensaje → «Abrir ticket» | «Ticket #N abierto». Aparece **Abierto** dentro de la solicitud. En `/admin/` → Support tickets: con la solicitud y el usuario |
 | E4 | Respuesta de soporte | Resuelve el ticket con `POST /api/tickets/{id}/resolve/` (o desde el panel del admin cuando esté la etapa G) | `cliente1` ve «Soporte Overol» con la respuesta, el ticket **Resuelto** y una notificación «Ticket resuelto» |
@@ -157,10 +157,18 @@ Entra con `admin@demo.overol.cl` (rol ADMIN y `is_staff`, lo deja así `seed_dem
 
 | # | Caso | Pasos | Resultado esperado |
 |---|---|---|---|
-| G1 | Barra | Entra como admin | Indicadores, Verificación, Usuarios, Reclamos, Soporte y Quiénes somos. **No** aparecen Moderación, Contenidos ni Trazabilidad (no tienen endpoint) |
+| G1 | Menú lateral | Entra como admin | Indicadores, Verificación, Usuarios, Reclamos, Soporte y Quiénes somos. **No** aparecen Moderación, Contenidos ni Trazabilidad (no tienen endpoint) |
 | G2 | Indicadores | «📊 Indicadores» | Totales de reclamos y tickets, y gráficos por estado, iguales a lo que muestra `/admin/` |
 | G3 | Verificación | «🪪 Verificación» → escribe el id del perfil del profesional del caso S7 (en `/admin/` → Professional profiles) → «Ver frente» y «Ver reverso» → «Aprobar» | Muestra o descarga la cédula. Sin los dos lados: «debe cargar ambos lados…». Al aprobar: el perfil pasa a APPROVED y el profesional recibe «Resultado de verificación». Rechazar exige motivo |
 | G4 | Estado de una cuenta | «👥 Usuarios» → id de `cliente2` → **Desactivada** con motivo | En `/admin/` → Users: DEACTIVATED. `cliente2` no puede ingresar y recibe la notificación. Vuelve a dejarla Activa |
 | G5 | Resolver un reclamo | «🛠️ Reclamos» → el reclamo del caso D4 → escribe la resolución → «Resolver reclamo» | Pasa a **Resuelto**. `cliente1` ve la «Resolución de Overol». En `/admin/` → Admin audit logs: `resolve_claim` |
 | G6 | Bandeja de soporte | «💬 Soporte» → «Abiertos» → el ticket del caso E3 → responde | Pasa a **Resuelto** y el cliente recibe «Ticket resuelto». Aparece en el filtro «Resueltos» |
+
+## Navegación lateral y oficios de la portada
+
+| # | Caso | Pasos | Resultado esperado |
+|---|---|---|---|
+| N1 | Solo menú lateral | Recorre las secciones como visitante, cliente, profesional y admin en escritorio | No hay barra de secciones arriba. Todo se navega desde el menú lateral, con la sección actual en ámbar y la página arriba al cambiar |
+| N2 | Celular | Abre la portada a 390 px (o en un teléfono) | El menú parte cerrado y el botón «Menú» se ve arriba a la izquierda. Al abrirlo, sus botones cambian de sección. No hay scroll horizontal |
+| N3 | Oficios | En la portada, revisa las categorías y pulsa «Gasfíter» y «Pasto sintético». Revisa también el filtro «Oficio» del catálogo y el selector de oficio del registro de profesional | Se ven los 54 oficios en 6 categorías, sin nombres cortados, y no aparecen los retirados (Cuidado de personas y mascotas, Aseo, Costurera, Decoración, Citófono y videoportero, Guardia, Técnico de consolas) ni en la portada ni en el filtro ni en el registro. «Gasfíter» abre el catálogo con el filtro «Gasfitería»; un oficio sin profesionales muestra el catálogo con el aviso «todavía no está disponible» |
 

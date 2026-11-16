@@ -313,9 +313,15 @@ def assistant_chat(message):
     return (request("POST", "assistant/chat/", {"message": message.strip()}) or {}).get("reply", "")
 
 
-def get_categories():
-    """Oficios del catálogo del backend: [{id, name, keywords, home_zones}]."""
-    return request("GET", "catalog/categories/", auth=False) or []
+def get_categories(include_retired=False):
+    """Oficios del catálogo del backend: [{id, name, keywords, home_zones}]. Sin los oficios
+    retirados de la plataforma (core.oficios.OFICIOS_EXCLUIDOS), salvo con include_retired=True
+    (solo para poner nombre a un oficio que alguien ya tenía)."""
+    from core.oficios import oficio_visible
+
+    data = request("GET", "catalog/categories/", auth=False) or []
+    items = data.get("results", []) if isinstance(data, dict) else data
+    return items if include_retired else [c for c in items if oficio_visible(c.get("name"))]
 
 
 def get_specialties(category_id):

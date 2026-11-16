@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from core.config import API_BASE_URL, API_TIMEOUT  # noqa: F401  (se leen de variables de entorno)
+from core.oficios import OFICIOS_PORTADA
 
 # Carpeta raíz del proyecto (proyecto_overol/), un nivel sobre core/
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -54,14 +55,8 @@ ZONAS_HOGAR = [
     "Otra zona",
 ]
 
-# Oficios destacados en la portada: los nombres son los del catálogo oficial del backend.
-# La lista completa de oficios (66) sale de GET /api/catalog/categories/.
-CATEGORIAS = [
-    ("🔧", "Gasfitería", "Reparaciones, fugas y cañerías"),
-    ("⚡", "Electricidad", "Instalaciones y reparaciones eléctricas"),
-    ("🪚", "Carpintero", "Muebles, puertas y terminaciones"),
-    ("🎨", "Pintor", "Interior, exterior y terminaciones"),
-]
+# Oficios de la portada: lista oficial del equipo agrupada por categorías (core/oficios.py).
+# La lista completa de oficios del backend (66) sale de GET /api/catalog/categories/.
 
 ROLES = {
     "cliente": "Cliente",
@@ -138,10 +133,8 @@ HORAS = [f"{h:02d}:00" for h in range(6, 24)]
 
 PREFERENCIAS_CONTACTO = ["WhatsApp", "Llamada telefónica", "Correo electrónico"]
 
-# Oficios con ícono y descripción (portada y botones de categorías)
-OFICIOS_INFO = list(CATEGORIAS) + [
-    ("🔑", "Cerrajería", "Cerraduras, llaves y apertura de puertas"),
-]
+# Ícono de cada oficio del backend (perfiles): sale de la lista de la portada (core/oficios.py)
+OFICIOS_INFO = [(icono, backend, nombre) for nombre, backend, icono in OFICIOS_PORTADA]
 
 # Integrantes del equipo (Documento 01 – Product Vision)
 EQUIPO = [

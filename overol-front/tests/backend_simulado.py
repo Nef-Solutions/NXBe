@@ -39,6 +39,9 @@ CATEGORIES = {
     5: ("Cerrajería", ["Apertura de puertas", "Cambio de chapas"]),
     6: ("Soldador", []),
     7: ("Jardinero", []),
+    # Retirados de la plataforma (core.oficios.OFICIOS_EXCLUIDOS): el backend aún los devuelve
+    8: ("Guardia", ["Vigilancia de eventos"]),
+    9: ("Niñera", []),
 }
 
 

@@ -16,7 +16,7 @@ U = {"cliente": CLIENTE}
 def open_search(email):
     at = new_app(front, email)
     nav = "client_navigation" if email else "visitor_navigation"
-    at.button(key=f"{nav}_btn_1").click().run()
+    at.button(key=f"side_{nav}_btn_1").click().run()
     return at
 
 

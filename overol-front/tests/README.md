@@ -54,12 +54,12 @@ Es una imitación: **no reemplaza las pruebas contra el backend real** (ver `PRU
 |---|---|
 | `prueba_login.py` | 401, bloqueo 429 del backend sin contador local, sesión persistente (identificador en la cookie, token en la memoria del servidor, restaurar al recargar, rotación, cerrar sesión, reinicio del servidor), acceso vencido, cuenta suspendida |
 | `prueba_registro_perfil.py` | Registro de cliente y profesional (oficio inexistente, contraseña débil, correo repetido), completar perfil, Mi perfil por `PATCH /auth/me/`, cambio y recuperación de contraseña |
-| `prueba_navegacion.py` | Barra de los 4 roles (sin las pantallas que no tienen endpoint), estado de verificación, cerrar sesión |
+| `prueba_navegacion.py` | Navegación solo lateral de los 4 roles (sin barra superior ni pantallas sin endpoint), pantalla de ingreso con menú, «Mi cuenta», círculo del asistente, estado de verificación, cerrar sesión |
 | `prueba_busqueda.py` | Palabra clave sin distinguir mayúsculas ni tildes, varias palabras, filtros, «Limpiar búsqueda», visitante sin nombres |
-| `prueba_catalogo.py` | Filtros enviados al backend, paginación, perfil público, formulario de solicitud, enlace directo, portada, backend caído |
+| `prueba_catalogo.py` | Filtros enviados al backend, paginación, perfil público, formulario de solicitud, enlace directo, portada (54 oficios por categorías, cruce con el catálogo oficial y filtro al pulsar uno), oficios retirados ocultos aunque el backend los devuelva (catálogo, búsqueda, enlace directo, formulario de solicitud y solicitudes antiguas), backend caído |
 | `prueba_solicitudes.py` | Formulario (especialidad, dirección de `/me`, errores 400 legibles), Mis solicitudes y Solicitudes con pestañas, aceptar, rechazar con motivo, cancelar de ambos lados, finalizar y confirmar en los dos órdenes, contacto, 409, vencida y «Cerrada por Overol» |
 | `prueba_suscripcion_verificacion.py` | Suscripción y Webpay (formulario POST con `token_ws`, vuelta sin confiar en `?status=`, con y sin sesión), catálogo según la suscripción, cédula y mensajes de verificación |
-| `prueba_asistente.py` | Asistente para cliente y profesional, historial en la sesión, aviso de datos personales, 429 y 503 |
+| `prueba_asistente.py` | Círculo y panel del asistente (abrir, cerrar con X o círculo, con y sin sesión, admin sin círculo), historial en la sesión aunque cambie de sección, aviso de datos personales, 429 y 503 |
 | `prueba_valoraciones_reclamos.py` | Evaluar al profesional y al cliente (400 «ya calificado»), reclamos (crear, responder, mediación, resolución) y la tarifa informativa (sin pago de visitas; se ignora una vuelta de Webpay de visita) |
 | `prueba_notificaciones_tickets.py` | Notificaciones (contador, marcar una o todas, escape, cada uno las suyas) y tickets de soporte por solicitud con la respuesta del admin |
 | `prueba_profesional.py` | «Mi perfil» del profesional (datos, vista pública y reputación, oficios: agregar, editar, desactivar) y centro de desarrollo profesional |
@@ -70,7 +70,7 @@ Es una imitación: **no reemplaza las pruebas contra el backend real** (ver `PRU
 
 ## Límites conocidos
 
-- **No es un navegador.** AppTest no muestra el diseño: los estilos, el CSS y la barra fija hay que mirarlos a mano.
+- **No es un navegador.** AppTest no muestra el diseño: los estilos, el CSS, el menú lateral y el panel del asistente hay que mirarlos a mano.
 - **Cookies:** AppTest no maneja cookies. Las pruebas reemplazan `read_session_cookie` y capturan el script que escribe la cookie.
 - **Subida de archivos:** AppTest no sube archivos. `prueba_suscripcion_verificacion.py` reemplaza el selector de archivos por uno que entrega archivos preparados.
 - **Webpay:** no se abre Webpay. Se revisa el formulario que se enviaría y se simula la vuelta con `backend.webpay_return`.

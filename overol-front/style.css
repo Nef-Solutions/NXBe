@@ -43,13 +43,13 @@
     margin-left: auto;
     margin-right: auto;
     padding-top: calc(3.75rem + .75rem);   /* alto de la cabecera fija de Streamlit + respiro */
-    padding-bottom: 3rem;
+    padding-bottom: 6rem;                  /* el círculo del asistente no tapa el último botón */
     padding-left: var(--margen-lateral);
     padding-right: var(--margen-lateral);
 }
 
 #MainMenu, footer { visibility: hidden; }
-/* Fondo sólido: la barra de secciones fija queda justo debajo y el contenido no se ve por encima */
+/* Fondo sólido en la cabecera fija de Streamlit (con el botón «Menú»): el contenido no se ve por encima */
 header[data-testid="stHeader"] { background: var(--bg); }
 
 /* ---------- Menú lateral: azul «obra» (denim de overol) con acentos ámbar ---------- */
@@ -441,99 +441,175 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
     font-weight: 700;
 }
 
-/* ---------- Barra de secciones fija (ui.components.nav_bar) ---------- */
-/* Streamlit puede envolver el contenedor en un stLayoutWrapper: se fija el que corresponda. */
-[data-testid="stLayoutWrapper"]:has(> [class*="st-key-nav_bar_"]),
-[class*="st-key-nav_bar_"] {
-    position: sticky;
-    top: 3.75rem;               /* alto de la cabecera de Streamlit */
-    z-index: 999;
-}
-[class*="st-key-nav_bar_"] {
-    background: #FFFFFF;
-    border: var(--grosor-borde) solid var(--borde);
-    border-radius: 12px;
-    padding: 8px;
+/* ---------- Botón para abrir el menú lateral (la navegación está solo ahí) ---------- */
+/* En celular el menú parte cerrado: el botón se destaca y dice «Menú» para que se vea */
+[data-testid="stExpandSidebarButton"] {
+    background: var(--navy) !important;
+    border-radius: var(--radio-control) !important;
+    padding: 4px 10px !important;
     box-shadow: var(--shadow);
 }
-/* Grilla de botones del mismo ancho: si no caben en una fila, pasan a dos (o más en pantallas
-   angostas) en vez de hacer scroll. --nav-cols = columnas por fila cuando hay espacio:
-   hasta 6 opciones, una fila; 7 u 8 (cliente), 4 por fila; 9 o 10 (admin), 5 por fila. */
-[class*="st-key-nav_bar_"] [data-testid="stHorizontalBlock"] {
-    --nav-cols: 6;
-    --nav-min: 9.5rem;          /* ancho mínimo de un botón antes de pasar a otra fila */
-    display: grid !important;
-    grid-template-columns: repeat(auto-fit,
-        minmax(max(var(--nav-min), calc((100% - (var(--nav-cols) - 1) * 8px) / var(--nav-cols))), 1fr));
-    gap: 8px;
-}
-[class*="st-key-nav_bar_"] [data-testid="stHorizontalBlock"]:has(> :nth-child(7)) { --nav-cols: 4; }
-[class*="st-key-nav_bar_"] [data-testid="stHorizontalBlock"]:has(> :nth-child(9)) { --nav-cols: 5; }
-[class*="st-key-nav_bar_"] [data-testid="stColumn"] {
-    width: auto !important;
-    min-width: 0 !important;
-}
-[class*="st-key-nav_bar_"] div.stButton > button {
-    min-height: 3.25rem;        /* misma altura aunque el texto ocupe dos líneas */
-    line-height: 1.2;
-    padding: 6px 10px;
-    border-radius: var(--radio-control);
-}
-/* Streamlit corta la etiqueta con «…»: se deja partir en dos líneas */
-[class*="st-key-nav_bar_"] div.stButton > button p {
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-}
-/* «Ingresar» del visitante: azul, para no confundirlo con la sección actual (ámbar) */
-[class*="st-key-nav_bar_"] .st-key-go_login_top button {
-    background: var(--navy) !important;
-    border-color: var(--navy) !important;
-    color: #FFFFFF !important;
-}
-[class*="st-key-nav_bar_"] .st-key-go_login_top button * { color: #FFFFFF !important; }
-[class*="st-key-nav_bar_"] .st-key-go_login_top button:hover {
-    background: var(--slate) !important;
-}
-/* Celular: dos columnas; la barra deja de ser fija para no tapar media pantalla con varias filas */
-@media (max-width: 640px) {
-    [data-testid="stLayoutWrapper"]:has(> [class*="st-key-nav_bar_"]),
-    [class*="st-key-nav_bar_"] {
-        position: static;
-    }
-    [class*="st-key-nav_bar_"] [data-testid="stHorizontalBlock"] { --nav-min: 8rem; }
+[data-testid="stExpandSidebarButton"] * { color: #FFFFFF !important; }
+[data-testid="stExpandSidebarButton"]::after {
+    content: "Menú";
+    color: #FFFFFF;
+    font-size: 14px;
+    font-weight: 700;
+    margin-left: 4px;
 }
 
-/* ---------- Categorías de la portada como botones grandes (views.shared.category_buttons) ---------- */
+/* ---------- Oficios de la portada por categorías (views.shared.category_buttons) ---------- */
+.cat-group-title {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--navy);
+    margin: 18px 0 6px 0;
+}
+.cat-group-title span { color: var(--muted); font-size: 13px; font-weight: 600; }
+/* Grilla que se acomoda al ancho: 2 columnas en celular, más en tablet y escritorio */
+[class*="st-key-cat_grid_"] [data-testid="stHorizontalBlock"] {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 8px;
+}
+[class*="st-key-cat_grid_"] [data-testid="stColumn"] {
+    width: auto !important;
+    min-width: 0 !important;
+    flex: none !important;
+}
+[class*="st-key-cat_grid_"] div.stButton,
+[class*="st-key-cat_grid_"] div.stButton > button { height: 100%; }
 [class*="st-key-cat_grid_"] div.stButton > button {
-    min-height: 11rem;
-    height: 100%;
-    padding: 16px 12px;
+    min-height: 2.75rem;
+    justify-content: flex-start;
+    padding: 6px 12px;
     background: #FFFFFF;
     border: var(--grosor-borde) solid var(--borde);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
+    border-radius: var(--radio-control);
+}
+[class*="st-key-cat_grid_"] div.stButton > button > div { justify-content: flex-start; width: 100%; }
+/* Nombres largos en dos líneas: alineados a la izquierda como los cortos */
+[class*="st-key-cat_grid_"] div.stButton > button [data-testid="stMarkdownContainer"] { width: 100%; text-align: left; }
+[class*="st-key-cat_grid_"] div.stButton > button p {
+    white-space: normal;        /* los nombres largos pasan a una segunda línea, sin «…» */
+    overflow: visible;
+    text-overflow: clip;
+    text-align: left;
+    color: var(--navy);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.25;
 }
 [class*="st-key-cat_grid_"] div.stButton > button:hover {
     border-color: var(--borde-acento);
-    transform: translateY(-2px);
+    background: var(--amber-soft);
 }
-[class*="st-key-cat_grid_"] div.stButton > button p {
-    display: block;             /* ::first-line solo se aplica a elementos de bloque */
-    overflow: visible;
-    text-overflow: clip;
-    white-space: pre-line;      /* ícono / oficio / descripción en líneas separadas */
-    text-align: center;
-    color: var(--muted);
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1.45;
+@media (max-width: 420px) {
+    [class*="st-key-cat_grid_"] [data-testid="stHorizontalBlock"] {
+        grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    }
 }
-[class*="st-key-cat_grid_"] div.stButton > button p::first-line { font-size: 34px; line-height: 1.5; }
-[class*="st-key-cat_grid_"] div.stButton > button strong {
-    color: var(--navy);
-    font-size: 16px;
-    font-weight: 800;
+
+/* ---------- Asistente Overil: círculo fijo y panel lateral derecho (views/assistant.py) ---------- */
+/* Streamlit no tiene un panel derecho nativo: son contenedores con key fijados a la pantalla */
+.st-key-overil_fab,
+.st-key-overil_fab_open {
+    position: fixed;
+    right: 18px;
+    bottom: 22px;
+    z-index: 1000002;
+    width: auto !important;
+}
+/* Con el panel abierto, el círculo queda a su izquierda para poder cerrarlo pulsándolo de nuevo */
+.st-key-overil_fab_open { right: calc(min(440px, 100vw) + 14px); }
+/* Mismo aspecto en todos los estados (también en celular, donde no hay hover): fondo oscuro, borde
+   e ícono ámbar. El color se fija aquí y no se hereda de Streamlit (heredaba #111827, el mismo del
+   fondo, y el ícono desaparecía). El halo blanco lo separa de fondos oscuros (portada, tarjetas). */
+.st-key-overil_fab button,
+.st-key-overil_fab_open button {
+    width: 56px;
+    height: 56px;
+    min-height: 56px;
+    padding: 0;
+    border-radius: 50% !important;
+    background: var(--navy) !important;
+    border: 2px solid var(--borde-acento) !important;
+    color: var(--borde-acento) !important;
+    box-shadow: 0 0 0 2px #FFFFFF, 0 6px 18px rgba(17,24,39,.35) !important;
+    transition: transform .15s ease, filter .15s ease, box-shadow .15s ease;
+}
+.st-key-overil_fab button *,
+.st-key-overil_fab_open button * { color: var(--borde-acento) !important; }
+/* Ícono Material grande y centrado */
+.st-key-overil_fab button [data-testid="stIconMaterial"],
+.st-key-overil_fab_open button [data-testid="stIconMaterial"] { font-size: 30px !important; margin: 0 !important; }
+.st-key-overil_fab button > div,
+.st-key-overil_fab_open button > div { justify-content: center; gap: 0; }
+/* La etiqueta «Asistente Overil» es el nombre accesible del botón: se oculta a la vista, no al lector */
+.st-key-overil_fab button [data-testid="stMarkdownContainer"],
+.st-key-overil_fab_open button [data-testid="stMarkdownContainer"] {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+/* Hover y toque: el mismo aspecto, apenas más grande y brillante */
+.st-key-overil_fab button:hover,
+.st-key-overil_fab_open button:hover {
+    background: var(--navy) !important;
+    border-color: var(--borde-acento) !important;
+    transform: scale(1.07);
+    filter: brightness(1.15);
+}
+.st-key-overil_fab button:active,
+.st-key-overil_fab_open button:active { transform: scale(.95); }
+/* Foco con teclado: anillo ámbar visible por fuera del halo */
+.st-key-overil_fab button:focus-visible,
+.st-key-overil_fab_open button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 5px var(--amber), 0 6px 18px rgba(17,24,39,.35) !important;
+}
+
+.st-key-overil_panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(440px, 100vw);
+    max-width: 100vw;
+    box-sizing: border-box;
+    z-index: 1000001;
+    background: #FFFFFF;
+    border-left: var(--grosor-borde) solid var(--borde);
+    box-shadow: -10px 0 30px rgba(17,24,39,.18);
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    flex-wrap: nowrap;
+    animation: overil-entra .22s ease-out;
+}
+@keyframes overil-entra { from { transform: translateX(100%); } to { transform: none; } }
+/* El historial ocupa el espacio libre y se desplaza solo él: el campo para escribir queda a la vista */
+.st-key-overil_panel > [data-testid="stLayoutWrapper"]:has(.st-key-overil_history),
+.st-key-overil_panel > .st-key-overil_history {
+    flex: 1 1 auto;
+    min-height: 120px;
+    overflow-y: auto;
+}
+.st-key-overil_panel h4 { margin: 0; padding: 0; }
+/* Encabezado (título y X) en una sola fila también en celular, donde Streamlit apila las columnas */
+.st-key-overil_panel [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; align-items: center; }
+.st-key-overil_panel [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] { min-width: 0 !important; width: auto !important; flex: 1 1 auto !important; }
+.st-key-overil_panel [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child { flex: 0 0 auto !important; }
+.st-key-overil_panel [data-testid="stAlertContainer"] { padding: 8px 12px; }
+.st-key-overil_panel [data-testid="stAlertContainer"] p { font-size: 13px; line-height: 1.45; }
+@media (max-width: 640px) {
+    /* Celular: el panel ocupa casi todo el ancho y se cierra con la X (el círculo no lo tapa) */
+    .st-key-overil_panel { width: calc(100vw - 12px); padding-left: 12px; padding-right: 12px; }
+    .st-key-overil_fab_open { display: none; }
 }
 
 /* ---------- Campos de formulario ---------- */

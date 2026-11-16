@@ -7,6 +7,7 @@ from pathlib import Path
 import streamlit as st
 
 from core import api_client, catalog_api, requests_api
+from core.oficios import oficio_visible
 from core.constants import (
     COMUNAS,
     DIAS_SEMANA,
@@ -30,7 +31,6 @@ from ui.components import (
 from ui.profile import profile_header, profile_reviews, profile_sections
 from views import payments
 from views.about import about_page
-from views.assistant import assistant_page
 from views.shared import PROFILE_FOCUS_KEY, user_profile_page
 
 # Primeros bytes (firma) válidos para cada extensión permitida
@@ -52,7 +52,6 @@ def professional_dashboard(user):
         "🪪 Verificación",
         "🛠️ Reclamos",
         "🎓 Desarrollo profesional",
-        "🤖 Asistente",
         "ℹ️ Quiénes somos",
     ])
 
@@ -95,9 +94,6 @@ def professional_dashboard(user):
 
     elif menu == "🪪 Verificación":
         professional_verification(user)
-
-    elif menu == "🤖 Asistente":
-        assistant_page(user)
 
     elif menu == "🛠️ Reclamos":
         professional_claims(user)
@@ -704,7 +700,9 @@ def _trades_manager(user):
     """Historia 018: oficios del profesional (GET/POST/PATCH/DELETE /api/professionals/me/trades/)."""
     try:
         trades = api_client.list_my_trades()
-        categories = {c["id"]: c["name"] for c in api_client.get_categories()}
+        # Con los retirados solo para poner nombre a los que ya tiene; para agregar, solo los vigentes
+        all_categories = {c["id"]: c["name"] for c in api_client.get_categories(include_retired=True)}
+        categories = {cid: name for cid, name in all_categories.items() if oficio_visible(name)}
     except api_client.ApiError as error:
         st.error(f"No se pudieron cargar tus oficios. {error}")
         return
@@ -716,11 +714,15 @@ def _trades_manager(user):
 
     for trade in trades:
         tid = trade["id"]
-        name = categories.get(trade.get("category_id"), f"Oficio #{trade.get('category_id')}")
+        name = all_categories.get(trade.get("category_id"), f"Oficio #{trade.get('category_id')}")
         active = trade.get("is_active", True)
+        retired = not oficio_visible(name)
         with st.container(border=True):
             st.markdown(f"**{name}** · {trade.get('years_experience') or 0} años de experiencia"
-                        + ("" if active else " · ⛔ desactivado"))
+                        + ("" if active else " · ⛔ desactivado")
+                        + (" · 🚫 oficio retirado de Overol" if retired else ""))
+            if retired:
+                st.caption("Overol ya no ofrece este oficio: no aparece en el catálogo ni recibe solicitudes.")
             if trade.get("description"):
                 st.caption(trade["description"])
             if not active:

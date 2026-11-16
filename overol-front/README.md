@@ -29,6 +29,7 @@ La guía completa para quien trabaja el front o el backend está en [`DOCKER.md`
 ### Requisitos (sin Docker)
 
 - **Front:** Python 3.11 o superior, con las dependencias de `requirements.txt` (Streamlit y requests). La imagen Docker usa Python 3.11.
+- **Versión de Streamlit: 1.63.0, fijada en `requirements.txt`** (la misma que instala el `Dockerfile`). Es la versión con la que se probaron las suites, el menú lateral y el panel del asistente. Si tu `python` tiene otra versión de Streamlit instalada (por ejemplo, 1.66), instala la fijada (`python -m pip install -r requirements.txt`) o usa con `scripts\demo_api.ps1` un Python que la tenga (`OVEROL_FRONT_PYTHON`). Ver la nota sobre el CSS en «Reglas que conviene saber».
 - **Backend:** Python 3.12 o superior (Django 6.1; validado con 3.14), Docker Desktop para Postgres/PostGIS y un archivo `backend/.env` creado desde `backend/.env.example`.
 
 ```bash
@@ -102,8 +103,8 @@ Los crea `python manage.py seed_demo`. La contraseña de todos es `OverolDemo123
 | Rol | Pantallas |
 |---|---|
 | Visitante | Portada con cifras y destacados, catálogo con tarjetas anónimas, perfil público sin datos personales, registro e ingreso |
-| Cliente | Buscar profesionales (oficio, especialidad, comuna y palabra clave), solicitar visita, Mis solicitudes (cancelar, confirmar, evaluar, reclamar, soporte), Mis reclamos, Notificaciones, Asistente, Mi perfil |
-| Profesional | Solicitudes (aceptar, rechazar con motivo, cancelar, finalizar, calificar al cliente, soporte), Notificaciones, Mi perfil (datos, vista pública con reputación, oficios), Cobertura (días, horario, comunas, tarifa), Suscripción con Webpay, Verificación (cédula y mensajes), Reclamos, Desarrollo profesional, Asistente |
+| Cliente | Buscar profesionales (oficio, especialidad, comuna y palabra clave), solicitar visita, Mis solicitudes (cancelar, confirmar, evaluar, reclamar, soporte), Mis reclamos (tickets y reclamos), Notificaciones, Mi perfil, asistente Overil |
+| Profesional | Solicitudes (aceptar, rechazar con motivo, cancelar, finalizar, calificar al cliente, soporte), Notificaciones, Mi perfil (datos, vista pública con reputación, oficios), Cobertura (días, horario, comunas, tarifa), Suscripción con Webpay, Verificación (cédula y mensajes), Reclamos, Desarrollo profesional, asistente Overil |
 | Administrador | Indicadores de reclamos y tickets, Verificación (ver la cédula, aprobar o rechazar), estado de cuentas, Reclamos (resolver) y Bandeja de soporte |
 
 ### Reglas que conviene saber
@@ -116,7 +117,11 @@ Los crea `python manage.py seed_demo`. La contraseña de todos es `OverolDemo123
   - Hoy solo Gasfitería, Electricidad y Cerrajería tienen especialidades en el backend.
 - **Cobros:** Overol solo cobra la suscripción mensual de los profesionales. Los clientes le pagan la visita directamente al profesional; la tarifa del perfil es informativa y Overol no cobra comisión por los servicios.
 - **Webpay (solo suscripción):** al volver de Webpay, el front consulta el estado real del pago; no confía en el parámetro de la URL. Si no marcaste «Mantener mi sesión», te pide ingresar antes de mostrar el resultado.
-- **Asistente Overil:** para clientes y profesionales con sesión. La conversación vive solo en la sesión. El texto se procesa con un servicio de Google, así que no hay que escribir datos personales. Límite: 5 consultas por hora y 10 al día.
+- **Navegación:** las secciones están solo en el menú lateral izquierdo (abierto en escritorio; en celular se abre con el botón «Menú»). La sección actual va en ámbar.
+- **Oficios de la portada:** los 54 oficios vigentes de la lista del equipo, agrupados en 6 categorías (`core/oficios.py`). Cada uno lleva al catálogo filtrado por ese oficio; todos existen en el catálogo oficial del backend.
+- **Oficios retirados:** `OFICIOS_EXCLUIDOS` en `core/oficios.py` es la lista central de oficios que Overol ya no ofrece (la categoría «Cuidado de personas y mascotas», Aseo, Costurera, Decoración, Citófono y videoportero, Guardia y Técnico de consolas). El front los oculta en la portada, el filtro y la búsqueda del catálogo, el registro y los oficios del profesional aunque el backend los siga devolviendo; un profesional que solo tenga oficios retirados no aparece en el catálogo y una solicitud antigua se muestra con «(oficio retirado)». Para devolver uno, basta con quitarlo de esa lista.
+- **Asistente Overil:** se abre con el círculo fijo del borde derecho, en todas las secciones, y el chat aparece en un panel lateral derecho (se cierra con la X o con el círculo). Para clientes y profesionales con sesión; sin sesión, el panel pide iniciar sesión. La conversación vive solo en la sesión y se mantiene al cambiar de sección. El texto se procesa con un servicio de Google, así que no hay que escribir datos personales. Límite: 5 consultas por hora y 10 al día.
+- **CSS atado a Streamlit 1.63.0:** Streamlit no tiene un panel lateral derecho nativo. El círculo y el panel del asistente son contenedores con key (`st-key-overil_fab`, `st-key-overil_panel`) que `style.css` fija a la pantalla, y el CSS del panel, del menú lateral, de la grilla de oficios y de los campos usa la estructura HTML de esa versión (`data-testid` como `stLayoutWrapper`, `stHorizontalBlock`, `stColumn`, `stChatInput`, `stExpandSidebarButton`, `stTextInputRootElement`). Antes de subir la versión de Streamlit, revisa estas pantallas en el navegador (y con las capturas a 390, 768 y 1366 px).
 - **Vencimiento de solicitudes:** el front muestra el plazo que entrega el backend (`expires_at`). Hoy son 30 días, no 72 horas.
 - **Panel del admin:** el backend no entrega la lista de verificaciones pendientes ni de usuarios, así que el panel pide el id (se ve en `/admin/` de Django). Moderación de reseñas, contenidos del centro profesional y bitácora no tienen endpoint: están ocultas (`PANTALLAS_PENDIENTES_API`) y se hacen en `/admin/`.
 - **Nombres:** nombre y apellido solo admiten letras, espacios y apóstrofes («Ana María», no «Ana-María»).
@@ -137,6 +142,7 @@ overol-front/
 ├── .streamlit/config.toml  Tema claro y ajustes de producción
 ├── core/
 │   ├── config.py           Variables de entorno del front (único lugar que las lee)
+│   ├── oficios.py          Oficios de la portada por categorías (nombre visible y del backend)
 │   ├── constants.py        Comunas, oficios destacados, roles y pantallas sin endpoint
 │   ├── api_client.py       Cliente HTTP del backend (JWT con renovación, errores legibles, archivos)
 │   ├── session.py          Usuario actual (/auth/me/) y sesión persistente de 7 días
@@ -155,7 +161,7 @@ overol-front/
 │   ├── professional.py     Vistas del profesional
 │   ├── admin.py            Vistas del administrador
 │   ├── payments.py         Webpay de la suscripción: formulario de pago y vuelta
-│   └── assistant.py        Asistente Overil
+│   └── assistant.py        Asistente Overil (círculo flotante y panel derecho)
 ├── tests/                  Pruebas AppTest con un backend simulado y pruebas manuales
 └── scripts/demo_api.ps1    Arranque de la demo
 ```

@@ -77,7 +77,7 @@ at = register_page()
 at.radio(key="register_role").set_value("Profesional").run()
 check(set(at.selectbox(key="register_trade").options) == {"Carpintero", "Cerrajería", "Electricidad", "Gasfitería",
                                                            "Jardinero", "Pintor", "Soldador"},
-      "los oficios salen de GET /catalog/categories/ (no de una lista fija del front)")
+      "los oficios salen de GET /catalog/categories/ (no de una lista fija del front), sin los retirados")
 
 at.selectbox(key="register_trade").select("Soldador").run()
 check("todavía no tiene especialidades" in texts(at) and "no recibirás solicitudes" in texts(at),
@@ -143,7 +143,8 @@ check("Correo: Ya existe" in errors(at), "correo repetido: el backend lo informa
 # ---------- Completar perfil (cuenta sin teléfono ni dirección) ----------
 INCOMPLETO = "cliente2@demo.overol.cl"
 at = new_app(front, INCOMPLETO)
-check(not at.exception and "Completa tu perfil" in texts(at) and "client_navigation_btn_0" not in [b.key for b in at.button],
+check(not at.exception and "Completa tu perfil" in texts(at) and "side_client_navigation_btn_0" not in [b.key for b in at.button]
+      and "logout_button" in [b.key for b in at.sidebar.button],
       "cuenta sin teléfono ni dirección: pide completar el perfil antes de entrar")
 check("profile_contact_preference" not in [w.key for w in at.selectbox],
       "cliente: no pide preferencia de contacto (el backend no la guarda para clientes)")
@@ -157,7 +158,7 @@ submit(at, "Guardar mis datos y entrar a Overol")
 body = last_body("PATCH", "/auth/me/") or {}
 check(body == {"phone": "+56 9 5555 5555", "address": "Pasaje Uno 12", "commune": "Ñuñoa"},
       "completa el perfil con PATCH /auth/me/ (teléfono, dirección y comuna)")
-check(not at.exception and "client_navigation_btn_0" in [b.key for b in at.button], "después entra a la plataforma")
+check(not at.exception and "side_client_navigation_btn_0" in [b.key for b in at.button], "después entra a la plataforma")
 
 # ---------- Mi perfil del cliente ----------
 CLIENTE = "cliente1@demo.overol.cl"

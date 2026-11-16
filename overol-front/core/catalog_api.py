@@ -15,6 +15,7 @@ from urllib.parse import urlencode
 import streamlit as st
 
 from core import api_client
+from core.oficios import oficio_visible
 from core.constants import DIAS_COMPLETOS, PALABRAS_CLAVE_OFICIO
 
 # «Lunes» → «Lun» (el backend guarda los días con nombre completo)
@@ -73,6 +74,7 @@ def from_api(data, anonymous=False):
             "certifications": "",
         }
         for t in data.get("trades") or []
+        if oficio_visible(t.get("category"))  # los oficios retirados no se muestran
     ]
 
     opinions = data.get("opinions")
@@ -91,6 +93,8 @@ def from_api(data, anonymous=False):
     return {
         "id": data["id"],
         "name": name,
+        # True si todos sus oficios fueron retirados de la plataforma: no se muestra en el catálogo
+        "only_retired_trades": bool(data.get("trades")) and not trades,
         "about": data.get("bio") or "",
         "coverage": ",".join(data.get("coverage") or []),
         "work_days": ",".join(days),
@@ -146,7 +150,10 @@ def reviews(professional, limit=5):
 # ------------------------------------------------------------
 
 def _categories():
-    return _get("catalog/categories/") or []
+    """Oficios del catálogo sin los retirados de la plataforma (core.oficios.OFICIOS_EXCLUIDOS)."""
+    data = _get("catalog/categories/") or []
+    items = data.get("results", []) if isinstance(data, dict) else data
+    return [c for c in items if oficio_visible(c.get("name"))]
 
 
 def _specialties(category_id=None):
@@ -203,7 +210,8 @@ def list_professionals(trade="Todas", specialty="Todas", commune="Todas", anonym
         if not isinstance(data, dict) or not data.get("next"):
             break
 
-    return [from_api(item, anonymous) for item in found.values()]
+    professionals = [from_api(item, anonymous) for item in found.values()]
+    return [p for p in professionals if not p["only_retired_trades"]]
 
 
 def get_professional(professional_id, anonymous=False):
@@ -214,7 +222,9 @@ def get_professional(professional_id, anonymous=False):
         if error.status == 404:
             return None
         raise
-    return from_api(data, anonymous)
+    professional = from_api(data, anonymous)
+    # Solo ofrece oficios retirados de la plataforma: igual que si no estuviera en el catálogo
+    return None if professional["only_retired_trades"] else professional
 
 
 # ------------------------------------------------------------
