@@ -102,7 +102,7 @@ El contenedor habla http. Delante debe ir un proxy inverso con https (Nginx, Cad
 
 - **Sesiones en memoria:** un reinicio cierra las sesiones; con varias instancias hacen falta sesiones pegajosas.
 - **Webpay:** está en modo de pruebas (sandbox) hasta que el backend configure las credenciales de producción. Overol solo cobra la suscripción del profesional; no hay pago de visitas.
-- **Asistente Overil:** depende de la clave de Gemini del backend. Sin ella, avisa que no está disponible. Tiene límite de consultas por hora y por día.
+- **Asistente Overil:** depende de la clave de Gemini del backend. Sin ella, avisa que no está disponible. Tiene límite de consultas por hora y por día. Se abre con el círculo del borde derecho (panel lateral derecho hecho con contenedores y CSS fijo: si una versión nueva de Streamlit cambia su estructura, revisar `style.css`).
 - **Panel del administrador:** no hay listados de verificaciones pendientes ni de usuarios en la API, así que se trabaja con el id. Moderación, contenidos y bitácora se hacen en el `/admin/` de Django.
 - **Vencimiento de solicitudes:** lo fija el backend (hoy 30 días).
 - **Cuentas de demostración:** si en el servidor existen las cuentas de `seed_demo`, su clave es pública (está en el repositorio). En un servidor público no se debe ejecutar `seed_demo`, o hay que cambiar esas claves.

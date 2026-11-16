@@ -13,7 +13,7 @@ CID = backend.by_email(CLIENTE)["id"]
 
 def label(at, nav, name):
     return next((b.label.replace(" ", " ") for b in at.button
-                 if (b.key or "").startswith(f"{nav}_btn_") and name in b.label), "")
+                 if (b.key or "").startswith(f"side_{nav}_btn_") and name in b.label), "")
 
 
 def notifications(email, nav):
@@ -25,7 +25,7 @@ VID = backend.add_visit(CLIENTE, PRO)
 at = new_app(front, PRO, professional_navigation="📋 Solicitudes")
 at.button(key=f"pro_accept_{VID}").click().run()
 at = notifications(CLIENTE, "client_navigation")
-check(label(at, "client_navigation", "Notificaciones") == "🔔 Notificaciones (1)", "la barra del cliente muestra 1 no leída")
+check(label(at, "client_navigation", "Notificaciones") == "🔔 Notificaciones (1)", "el menú lateral del cliente muestra 1 no leída")
 check(not at.exception and "Solicitud aceptada" in md(at) and "Nueva" in md(at) and f"Solicitud #{VID}" in md(at),
       "la notificación aparece como nueva, con la solicitud")
 nid = backend.notifications[-1]["id"]
@@ -73,10 +73,8 @@ NAV = "client_navigation"
 
 
 def marked(at):
-    """Etiqueta destacada (primary) en la barra superior y en el menú lateral."""
-    top = [b.label for b in at.button if (b.key or "").startswith(f"{NAV}_btn_") and b.proto.type == "primary"]
-    side = [b.label for b in at.sidebar.button if (b.key or "").startswith(f"side_{NAV}_btn_") and b.proto.type == "primary"]
-    return top, side
+    """Sección destacada (primary) en el menú lateral (no hay barra superior)."""
+    return [b.label for b in at.sidebar.button if (b.key or "").startswith(f"side_{NAV}_btn_") and b.proto.type == "primary"]
 
 
 for state, name in [("ACCEPTED", "aceptada"), ("REJECTED", "rechazada"), ("EXPIRED", "vencida")]:
@@ -89,8 +87,8 @@ for state, name in [("ACCEPTED", "aceptada"), ("REJECTED", "rechazada"), ("EXPIR
     created = backend.tickets[max(backend.tickets)]
     check(not at.exception and created["visit"] == vid and created["subject"] == subject,
           f"[{name}] crea el ticket asociado a la solicitud #{vid} (POST /tickets/)")
-    check(at.session_state[NAV] == "🛠️ Mis reclamos" and marked(at) == (["🛠️ Mis reclamos"], ["🛠️ Mis reclamos"]),
-          f"[{name}] pasa a «Mis reclamos», marcada en la barra y en el menú lateral")
+    check(at.session_state[NAV] == "🛠️ Mis reclamos" and marked(at) == ["🛠️ Mis reclamos"],
+          f"[{name}] pasa a «Mis reclamos», marcada en el menú lateral")
     check(at.session_state[f"_nav_shown_{NAV}"][0] == "🛠️ Mis reclamos",
           f"[{name}] cuenta como cambio de sección (la página vuelve arriba)")
     check(f"Ticket #{created['id']} enviado a soporte (solicitud #{vid})" in toasts(at),
@@ -98,7 +96,7 @@ for state, name in [("ACCEPTED", "aceptada"), ("REJECTED", "rechazada"), ("EXPIR
     check(subject in md(at) and "recién enviado" in md(at) and f"Solicitud #{vid}" in texts(at),
           f"[{name}] el ticket aparece en «Mis reclamos», destacado y con su solicitud de origen")
     at.button(key=f"ticket_to_request_{created['id']}").click().run()
-    check(at.session_state[NAV] == "📋 Mis solicitudes" and marked(at)[0] == ["📋 Mis solicitudes"],
+    check(at.session_state[NAV] == "📋 Mis solicitudes" and marked(at) == ["📋 Mis solicitudes"],
           f"[{name}] «Ver solicitud» vuelve a «Mis solicitudes»")
 
 at = new_app(front, CLIENTE, client_navigation="🛠️ Mis reclamos")

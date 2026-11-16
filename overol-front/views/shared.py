@@ -1,6 +1,7 @@
 """Pantallas compartidas entre roles: perfil personal, perfil público del profesional y barra lateral."""
 
 from datetime import date
+from html import escape
 
 import streamlit as st
 
@@ -9,10 +10,10 @@ from core.constants import (
     COMUNAS,
     FRANJAS_HORARIAS,
     MAX_TEXTO,
-    OFICIOS_INFO,
     PREFERENCIAS_CONTACTO,
     ROLES,
 )
+from core.oficios import GRUPOS_OFICIOS
 from core.security import validate_password_strength, validate_phone
 from core.session import end_session, load_user
 from ui.components import SIDE_SECTIONS_SLOT, flash, section, security_note
@@ -284,21 +285,26 @@ def go_to(nav_key, target):
 
 
 def category_buttons(nav_key, target):
-    """Categorías de oficios: cada tarjeta (ícono, oficio y descripción) es un botón que
-    lleva a la lista de profesionales. Estilo en style.css («st-key-cat_grid_»)."""
-    with st.container(key=f"cat_grid_{nav_key}"):
-        cols = st.columns(len(OFICIOS_INFO))
+    """Oficios de la portada (lista oficial del equipo, por categorías): cada uno es un botón que
+    lleva al catálogo filtrado por ese oficio (nombre del backend). Estilo en style.css
+    («st-key-cat_grid_»): una grilla que se acomoda sola al ancho de la pantalla."""
+    for g, (icon, title, oficios) in enumerate(GRUPOS_OFICIOS):
+        st.markdown(
+            f'<div class="cat-group-title">{icon} {escape(title)} <span>({len(oficios)})</span></div>',
+            unsafe_allow_html=True,
+        )
+        with st.container(key=f"cat_grid_{nav_key}_{g}"):
+            cols = st.columns(len(oficios))
 
-        for col, (icon, trade, description) in zip(cols, OFICIOS_INFO):
-            with col:
-                # Los saltos de línea se muestran gracias a «white-space: pre-line» en el CSS
-                st.button(
-                    f"{icon}\n**{trade}**\n{description}",
-                    key=f"cat_{nav_key}_{trade}",
-                    on_click=_go_category,
-                    args=(nav_key, target, trade),
-                    use_container_width=True,
-                )
+            for col, (label, trade, emoji) in zip(cols, oficios):
+                with col:
+                    st.button(
+                        f"{emoji} {label}",
+                        key=f"cat_{nav_key}_{trade}",
+                        on_click=_go_category,
+                        args=(nav_key, target, trade),
+                        use_container_width=True,
+                    )
 
 
 def go_login_button(key, label="🔑 Iniciar sesión o registrarme"):
@@ -509,7 +515,7 @@ def sidebar(user):
         st.markdown("## 🦺 Overol")
         st.write(f"Hola, **{user['name']}**")
 
-        # Botones de sección: los dibuja nav_bar aquí (los mismos de la barra superior)
+        # Botones de sección: los dibuja nav_bar aquí (la navegación está solo en este menú)
         st.session_state[SIDE_SECTIONS_SLOT] = st.container(key="side_sections")
 
         st.divider()
@@ -531,14 +537,27 @@ def sidebar(user):
                 )
 
         st.divider()
+        _logout_button()
 
-        if st.button(
-            "Cerrar sesión",
-            use_container_width=True,
-            key="logout_button",
-        ):
-            # Anula el token en el backend y borra la sesión del servidor y la cookie
-            end_session()
-            flash("Sesión cerrada correctamente.", "info")
 
-            st.rerun()
+def _logout_button():
+    if st.button(
+        "Cerrar sesión",
+        use_container_width=True,
+        key="logout_button",
+    ):
+        # Anula el token en el backend y borra la sesión del servidor y la cookie
+        end_session()
+        flash("Sesión cerrada correctamente.", "info")
+
+        st.rerun()
+
+
+def pending_profile_sidebar(user):
+    """Menú lateral mínimo mientras faltan los datos personales: el usuario puede salir."""
+    with st.sidebar:
+        st.markdown("## 🦺 Overol")
+        st.write(f"Hola, **{user['name']}**")
+        st.caption("Completa tus datos para usar Overol.")
+        st.divider()
+        _logout_button()

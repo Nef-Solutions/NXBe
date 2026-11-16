@@ -20,7 +20,7 @@ PENDING = backend.professional("pendiente@demo.overol.cl")["id"]
 
 def search_page(email=None):
     at = new_app(front, email)
-    at.button(key="client_navigation_btn_1" if email else "visitor_navigation_btn_1").click().run()
+    at.button(key="side_client_navigation_btn_1" if email else "side_visitor_navigation_btn_1").click().run()
     return at
 
 
@@ -111,12 +111,53 @@ feat = {int(b.key.rsplit("_", 1)[1]) for b in at.button if (b.key or "").startsw
 check(not at.exception and feat and feat <= set(CATALOG) and not any_name(at), "portada: destacados del backend, sin nombres")
 check(f'metric-number">{len(CATALOG)}<' in md(at), f"portada: «{len(CATALOG)} profesionales verificados» sale del catálogo")
 
+# ---------- Portada: los 65 oficios del equipo, por categorías ----------
+import ast  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from core.oficios import GRUPOS_OFICIOS, OFICIOS_PORTADA  # noqa: E402
+
+at = new_app(front)
+trade_buttons = [b for b in at.button if (b.key or "").startswith("cat_visitor_navigation_")]
+check(not at.exception and len(OFICIOS_PORTADA) == 65 and len(trade_buttons) == 65,
+      "portada: muestra los 65 oficios de la lista del equipo")
+check(all(f"{title} <span>({len(oficios)})</span>" in md(at) for _, title, oficios in GRUPOS_OFICIOS),
+      f"portada: los oficios van agrupados en {len(GRUPOS_OFICIOS)} categorías con su cantidad")
+labels = {b.label for b in trade_buttons}
+check({"🕸️ Instalador de malla anticaída", "🔔 Citófono y videoportero", "💧 Impermeabilizador", "🧻 Papel mural",
+       "📏 Cornisa y zócalo", "⛏️ Excavador", "🌬️ Aire acondicionado", "🎮 Técnico de consolas", "🧸 Niñera",
+       "🏠 Techumbre", "🍳 Campanero de cocina"} <= labels,
+      "portada: nombres con la ortografía corregida («Campanero de cocina» se deja como en la lista)")
+migration = Path(__file__).resolve().parents[2] / "backend" / "apps" / "catalog" / "migrations" / "0005_seed_official_trade_catalog.py"
+if migration.exists():
+    tree = ast.parse(migration.read_text(encoding="utf-8"))
+    official = {name for name, _ in next(ast.literal_eval(n.value) for n in tree.body
+                                         if isinstance(n, ast.Assign) and n.targets[0].id == "OFFICIAL_TRADES")}
+    check({backend_name for _, backend_name, _ in OFICIOS_PORTADA} <= official,
+          "portada: todos los oficios existen en el catálogo oficial del backend (migración catalog 0005)")
+else:
+    print("OK   (sin carpeta backend/: se omite el cruce con la migración catalog 0005)")
+
+at.button(key="cat_visitor_navigation_Gasfitería").click().run()
+check(not at.exception and at.session_state["visitor_navigation"] == "🔎 Profesionales"
+      and at.session_state["search_trade"] == "Gasfitería" and last_list_query().get("category_id") == "1",
+      "visitante: «Gasfíter» lleva al catálogo filtrado por Gasfitería")
+at = new_app(front, CLIENTE, client_navigation="🏠 Inicio")
+at.button(key="cat_client_navigation_Jardinero").click().run()
+check(not at.exception and at.session_state["client_navigation"] == "🔎 Buscar profesionales"
+      and at.session_state["search_trade"] == "Jardinero", "cliente: «Jardinero» lleva al catálogo filtrado por ese oficio")
+at = new_app(front)
+at.button(key="cat_visitor_navigation_Niñera").click().run()
+check(not at.exception and at.session_state["visitor_navigation"] == "🔎 Profesionales"
+      and "todavía no está disponible" in texts(at),
+      "un oficio que el catálogo aún no tiene: va al catálogo y avisa (como antes)")
+
 # ---------- Backend caído ----------
 backend.caido = True
 at = new_app(front)
 check(not at.exception and not any((b.key or "").startswith("home_feat_") for b in at.button),
       "backend caído: la portada abre sin cifras ni destacados")
-at.button(key="visitor_navigation_btn_1").click().run()
+at.button(key="side_visitor_navigation_btn_1").click().run()
 check(not at.exception and any("No se pudo cargar el catálogo" in str(e.value) for e in at.error),
       "backend caído: la búsqueda muestra un error claro")
 backend.caido = False

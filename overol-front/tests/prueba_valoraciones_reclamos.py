@@ -67,7 +67,7 @@ check(f"Abriste el reclamo #{claim['id']}" in texts(at) and not any(b.key == f"s
 # ---------- El profesional responde ----------
 at = new_app(front, PRO, professional_navigation="🛠️ Reclamos")
 check("🛠️ Reclamos (1)" in [b.label.replace(" ", " ") for b in at.button],
-      "su barra muestra el contador de reclamos abiertos")
+      "su menú lateral muestra el contador de reclamos abiertos")
 at.button(key=f"respond_claim_{claim['id']}").click().run()
 check("Escribe una respuesta" in texts(at), "la respuesta no puede ir vacía")
 at.text_area(key=f"claim_response_{claim['id']}").input("Voy el lunes sin costo")
@@ -101,6 +101,6 @@ at.run()
 check(not at.exception and "_payment_return" not in at.session_state
       and not any("Pago confirmado" in s.value for s in at.success), "una vuelta de Webpay de visita se ignora")
 
-check("🛠️ Mis reclamos" in nav_labels(client_requests(), "client_navigation"), "«Mis reclamos» está en la barra del cliente")
+check("🛠️ Mis reclamos" in nav_labels(client_requests(), "client_navigation"), "«Mis reclamos» está en el menú lateral del cliente")
 
 terminar()

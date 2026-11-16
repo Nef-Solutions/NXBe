@@ -30,7 +30,6 @@ from ui.components import (
 from ui.profile import profile_header, profile_reviews, profile_sections
 from views import payments
 from views.about import about_page
-from views.assistant import assistant_page
 from views.shared import PROFILE_FOCUS_KEY, user_profile_page
 
 # Primeros bytes (firma) válidos para cada extensión permitida
@@ -52,7 +51,6 @@ def professional_dashboard(user):
         "🪪 Verificación",
         "🛠️ Reclamos",
         "🎓 Desarrollo profesional",
-        "🤖 Asistente",
         "ℹ️ Quiénes somos",
     ])
 
@@ -95,9 +93,6 @@ def professional_dashboard(user):
 
     elif menu == "🪪 Verificación":
         professional_verification(user)
-
-    elif menu == "🤖 Asistente":
-        assistant_page(user)
 
     elif menu == "🛠️ Reclamos":
         professional_claims(user)

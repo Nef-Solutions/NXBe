@@ -124,7 +124,7 @@ os.environ.pop("OVEROL_COOKIE_SECURE", None)
 at = reload_page(token)
 rotated = stored()[session._hash(token)]["refresh"]
 check(not at.exception and at.session_state["authenticated"] and at.session_state["me"]["email"] == CLIENTE
-      and "client_navigation_btn_0" in [b.key for b in at.button],
+      and "side_client_navigation_btn_0" in [b.key for b in at.button],
       "al recargar con la cookie, entra sin pedir la contraseña")
 check(rotated != refresh and refresh in backend.blacklist,
       "el backend rotó el token de renovación y el nuevo quedó guardado en memoria")

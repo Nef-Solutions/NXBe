@@ -90,8 +90,9 @@ from views import payments
 from views.auth import login_screen
 from views.client import client_dashboard
 from views.professional import professional_dashboard
-from views.shared import close_professional, personal_questions_screen, sidebar
-from views.visitor import visitor_dashboard
+from views.assistant import assistant_launcher
+from views.shared import close_professional, pending_profile_sidebar, personal_questions_screen, sidebar
+from views.visitor import visitor_dashboard, visitor_login_sidebar
 
 
 # ============================================================
@@ -156,6 +157,8 @@ if not st.session_state.authenticated and not st.session_state.get("show_login")
     visitor_dashboard()
 
 elif not st.session_state.authenticated:
+    visitor_login_sidebar()
+
     st.button(
         "← Volver a explorar",
         key="back_to_visitor",
@@ -185,6 +188,7 @@ else:
     # Clientes y profesionales deben tener teléfono, dirección y comuna
     # antes de acceder al resto de la plataforma. El administrador no necesita este paso.
     if not is_profile_complete(user):
+        pending_profile_sidebar(user)
         personal_questions_screen(user)
     else:
         sidebar(user)
@@ -198,6 +202,9 @@ else:
         elif user["role"] == "admin":
             admin_dashboard(user)
 
+
+# Asistente Overil: círculo fijo al borde derecho y panel lateral derecho, en todas las secciones
+assistant_launcher(_session_user if st.session_state.authenticated else None)
 
 # Escribe o borra la cookie de sesión persistente cuando corresponde
 render_cookie_script()

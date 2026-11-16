@@ -97,7 +97,8 @@ def keys(at, prefix):
 
 
 def nav_labels(at, nav):
-    return [plain(b.label) for b in at.button if (b.key or "").startswith(f"{nav}_btn_")]
+    """Etiquetas de las secciones (botones del menú lateral: no hay barra superior)."""
+    return [plain(b.label) for b in at.button if (b.key or "").startswith(f"side_{nav}_btn_")]
 
 
 def card_ids(at):
